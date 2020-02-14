@@ -19,13 +19,29 @@ class Reach(object):
         self.observation_space = spaces.Box(-1, 1, shape=(3,))
 
         self.bullet_client = bullet_client
-        self.offset = offset
+        self.offset = offset + np.array([0, 0, 0.025])
         self.dof = dof
         self.only_positive = only_positive
 
         bullet_client.setGravity(0, 0, 0)
 
         self.object = self.bullet_client.loadURDF("objects/box.urdf")
+
+        self.camera_config = {
+            "width": 200,
+            "height": 200,
+
+            "viewMatrix": p.computeViewMatrix(
+                cameraEyePosition=[0, 0, 2],
+                cameraTargetPosition=[0, 0, 0],
+                cameraUpVector=[0, 1, 0]),
+
+            "projectionMatrix": p.computeProjectionMatrixFOV(
+                fov=60.0,
+                aspect=1.0,
+                nearVal=0.01,
+                farVal=10),
+        }
 
         self.max_steps = 5
         self.step_counter = 0
@@ -39,6 +55,13 @@ class Reach(object):
 
         return np.array(positions)
 
+    def get_camera_image(self):
+
+        width, height, rgbImg, depthImg, segImg = p.getCameraImage(
+            **self.camera_config)
+
+        return rgbImg, depthImg, segImg
+
     def reset(self, robot=None):
 
         points_contact = None
@@ -46,10 +69,10 @@ class Reach(object):
         observation = None
         new_object_position = None
 
-
         while points_contact is None or len(points_contact) or not success:
 
-            if new_object_position is None or np.linalg.norm(new_object_position) > 1:
+            while new_object_position is None or np.linalg.norm(
+                    new_object_position) > 1:
                 new_object_position = np.zeros(3)
 
                 for dd in range(self.dof):
@@ -67,7 +90,7 @@ class Reach(object):
             p.stepSimulation()
             if robot is not None:
                 points_contact = self.bullet_client.getContactPoints(robot,
-                                                                    self.object)
+                                                                     self.object)
             else:
                 points_contact = []
 
@@ -96,6 +119,8 @@ class Reach(object):
     def get_observation(self):
         state_object = self.get_position_object()
 
+        # self.get_camera_image()
+
         observation = []
 
         for position_dimension_object, limits_object in zip(state_object,
@@ -116,7 +141,7 @@ class Reach(object):
     def calculate_reward(self, robot, success):
 
         if not success:
-            done, reward = True, -10
+            done, reward = True, -1.
         else:
 
             position_tcp = robot.get_position_tcp()
@@ -125,19 +150,18 @@ class Reach(object):
 
             distance_tcp_object = np.linalg.norm(position_tcp - position_object)
 
-            if distance_tcp_object < 0.01:
-                reward = 10
+            if distance_tcp_object < 0.05:
+                reward = 1.
                 done = True
             else:
-                reward = 1 - 2 * (
-                            np.sqrt(10 * distance_tcp_object) / np.sqrt(10))
+                reward = -distance_tcp_object
 
                 done = self.step_counter >= self.max_steps
 
                 for position, limit in zip(position_object, self.limits_object):
                     done = done or (limit[0] >= position >= limit[1])
 
-                reward = np.clip(reward, -1, 1)
+        reward = np.clip(reward, -1., 1.)
 
         return done, reward
 

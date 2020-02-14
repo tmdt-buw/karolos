@@ -1,14 +1,17 @@
-import pybullet as p
-import numpy as np
 import gym
 from gym import spaces
+import numpy as np
+import pybullet as p
 import time
+import logging
 
 
 class Panda(gym.Env):
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
                  use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.):
+
+        self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
         assert dof in [2, 3]
         self.dof = dof
@@ -79,6 +82,30 @@ class Panda(gym.Env):
     def get_id(self):
         return self.robot
 
+    def get_camera_image(self):
+
+        fov, aspect, nearplane, farplane = 60, 1.0, 0.01, 5
+        projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, nearplane,
+                                                         farplane)
+        com_p, com_o, _, _, _, _ = self.bullet_client.getLinkState(self.robot,
+                                                                   8,
+                                                                   computeForwardKinematics=True)
+        com_p = np.array(com_p) + np.array([0.1, 0, 0])
+        rot_matrix = self.bullet_client.getMatrixFromQuaternion(com_o)
+        rot_matrix = np.array(rot_matrix).reshape(3, 3)
+        # Initial vectors
+        init_camera_vector = (-.5, 0, 1)
+        init_up_vector = (1, 0, 0)
+        # Rotated vectors
+        camera_vector = rot_matrix.dot(init_camera_vector)
+        up_vector = rot_matrix.dot(init_up_vector)
+        view_matrix = self.bullet_client.computeViewMatrix(com_p,
+                                                           com_p + 0.1 * camera_vector,
+                                                           up_vector)
+        img = self.bullet_client.getCameraImage(200, 200, view_matrix,
+                                                projection_matrix)
+        return img
+
     def __reset(self):
 
         for joint_id, initial_state in zip(self.ids_joints_arm,
@@ -127,13 +154,13 @@ class Panda(gym.Env):
             action = self.convert_intervals(action, [-1, 1], limits_joint)
 
             if action < limits_joint[0] or limits_joint[1] < action:
-                action_clipped = np.clip(action, limits_joint[0], limits_joint[1])
+                action_clipped = np.clip(action, limits_joint[0],
+                                         limits_joint[1])
 
                 if not np.allclose(action_clipped, action):
                     success_target_determination = False
 
                 action = action_clipped
-
 
             target_joints_arm[joint_position] = action
 
@@ -164,6 +191,9 @@ class Panda(gym.Env):
                    id_joint in self.ids_joints_hand_controllable
 
     def get_observation(self):
+
+        # self.get_camera_image()
+
         state_arm, state_hand = self.get_joint_state()
 
         positions_arm, velocities_arm = state_arm
@@ -184,12 +214,12 @@ class Panda(gym.Env):
             #     np.isclose(position_arm, limits_joint, atol=0, rtol=0.01))
 
             if not position_inside_limits:
-                print(id_joint, position_arm, limits_joint)
+                self.logger.debug(
+                    f"Arm joint {id_joint} outside limits {position_arm} {limits_joint}")
 
             success = success and position_inside_limits
 
             if self.joint_included_in_state(id_joint):
-
                 observation_joint = self.convert_intervals(position_arm,
                                                            limits_joint,
                                                            [-1, 1])
@@ -208,7 +238,8 @@ class Panda(gym.Env):
             #     np.isclose(position_hand, limits_joint, atol=0, rtol=0.01))
 
             if not position_inside_limits:
-                print(position_hand, limits_joint)
+                self.logger.debug(
+                    f"Hand outside limits {position_hand} {limits_joint}")
 
             success = success and position_inside_limits
 
@@ -246,8 +277,9 @@ class Panda(gym.Env):
         step = 0
 
         while not success and step < max_steps:
-            p.stepSimulation()
-            if p.getConnectionInfo()["connectionMethod"] == p.GUI:
+            self.bullet_client.stepSimulation()
+            if self.bullet_client.getConnectionInfo()[
+                "connectionMethod"] == p.GUI:
                 time.sleep(self.time_step)
 
             state_arm, state_hand = self.get_joint_state()
@@ -324,23 +356,35 @@ if __name__ == "__main__":
     p.setTimeStep(time_step)
     p.setRealTimeSimulation(0)
 
-    robot = Panda(p, dof=2, state_mode='reduced')
+    robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step)
+
+    action = np.array([0.8, .71, -.06])
+    success, obs = robot.step(action)
+
+    from tasks.reach import Reach
+
+    task = Reach(p)
+    task.reset()
+
+    # while True:
+    #     robot.get_camera_image()
+    #     p.stepSimulation()
+    #
+    # exit()
 
     for ii in np.linspace(-1, 1, 5):
         for jj in np.linspace(-1, 1, 5):
             for kk in np.linspace(-1, 1, 5):
-
                 print(ii, jj, kk)
 
                 success = True
 
-                obs = robot.reset()
+                # obs = robot.reset()
                 # p.stepSimulation()
 
-                action = np.array([ii,jj,kk])
+                action = np.array([ii, jj, kk])
 
                 success, obs = robot.step(action)
-
 
         # while success:
         #
