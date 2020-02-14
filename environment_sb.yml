@@ -1,0 +1,12 @@
+name: robot_rl_sb
+channels:
+  - soumith
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7.6
+  - tensorboard=1.14.0
+  - tensorflow=1.14.0
+  - pip:
+    - pybullet==2.6.5
+    - stable-baselines==2.9.0
