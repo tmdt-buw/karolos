@@ -33,27 +33,36 @@ def make_env(env_kwargs, rank, seed=0):
 
 def callback(locals_, globals_):
 
-    if locals_["epoch_num"] % save_interval == 0:
+    global test_interval, next_test_timestep, best_mean_reward
 
-        model.save(os.path.join(modeldir, f"{locals_['epoch_num']}.tf"))
+    current_timestep = locals_["self"].num_timesteps
 
-    if locals_["epoch_num"] % test_interval == 0:
+    if current_timestep >= next_test_timestep:
+
+        next_test_timestep = (current_timestep // test_interval + 1) * test_interval
+
         episode_rewards = []
 
         for tt in range(10):
             episode_reward = 0
-            obs = env.reset()
+            obs = test_env.reset()
             done = False
             while not done:
-                action, _states = model.predict(obs)
-                obs, reward, done, info = env.step(action)
+                action, _states = model.predict(obs, deterministic=True)
+                obs, reward, done, info = test_env.step(action)
                 episode_reward += reward
 
             episode_rewards.append(episode_reward)
 
+        mean_reward = np.mean(episode_rewards)
+
         summary = tf.Summary(
             value=[tf.Summary.Value(tag='test_reward', simple_value=np.mean(episode_rewards))])
-        locals_['writer'].add_summary(summary, locals_["epoch_num"])
+        locals_['writer'].add_summary(summary, current_timestep)
+
+        if mean_reward > best_mean_reward:
+            best_mean_reward = mean_reward
+            model.save(os.path.join(modeldir, f"{current_timestep}.tf"))
 
     return True
 
@@ -83,13 +92,17 @@ if __name__ == "__main__":
 
     num_cpu = cpu_count()
 
+    print(f"Using {num_cpu} environments")
+
     env = SubprocVecEnv([make_env(env_kwargs, i) for i in range(num_cpu)])
+    test_env = make_env(env_kwargs, None)()
     # env = Environment(**env_kwargs)
 
     # model = SAC(LnMlpPolicy, env, verbose=1, tensorboard_log=logdir)
     model = PPO2(MlpPolicy, env, verbose=1, tensorboard_log=logdir)
 
     test_interval = 1_000
-    save_interval = 10_000
+    next_test_timestep = 0
+    best_mean_reward = -np.inf
 
     model.learn(total_timesteps=1_000_000, reset_num_timesteps=False, callback=callback)

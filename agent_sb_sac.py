@@ -32,11 +32,13 @@ def make_env(env_kwargs, rank, seed=0):
 
 def callback(locals_, globals_):
 
-    if locals_["step"] % save_interval == 0:
+    global test_interval, next_test_timestep, best_mean_reward
 
-        model.save(os.path.join(modeldir, f"{locals_['step']}.tf"))
+    current_timestep = locals_["step"]
 
-    if locals_["step"] % test_interval == 0:
+    if current_timestep >= next_test_timestep:
+        next_test_timestep = (current_timestep // test_interval + 1) * test_interval
+
         episode_rewards = []
 
         for tt in range(10):
@@ -50,9 +52,15 @@ def callback(locals_, globals_):
 
             episode_rewards.append(episode_reward)
 
+        mean_reward = np.mean(episode_rewards)
+
         summary = tf.Summary(
-            value=[tf.Summary.Value(tag='test_reward', simple_value=np.mean(episode_rewards))])
-        locals_['writer'].add_summary(summary, locals_["step"])
+            value=[tf.Summary.Value(tag='test_reward', simple_value=mean_reward)])
+        locals_['writer'].add_summary(summary, current_timestep)
+
+        if mean_reward > best_mean_reward:
+            best_mean_reward = mean_reward
+            model.save(os.path.join(modeldir, f"{current_timestep}.tf"))
 
     return True
 
@@ -80,7 +88,7 @@ if __name__ == "__main__":
         "kwargs_robot": {"dof": 2}
     }
 
-    num_cpu = cpu_count()
+    # num_cpu = cpu_count()
 
     # env = SubprocVecEnv([make_env(env_kwargs, i) for i in range(num_cpu)])
     env = Environment(**env_kwargs)
@@ -89,6 +97,7 @@ if __name__ == "__main__":
     model = SAC(LnMlpPolicy, env, verbose=1, tensorboard_log=logdir)
 
     test_interval = 1_000
-    save_interval = 10_000
+    next_test_timestep = 0
+    best_mean_reward = -np.inf
 
     model.learn(total_timesteps=1_000_000, reset_num_timesteps=False, callback=callback)
