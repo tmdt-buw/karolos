@@ -8,20 +8,16 @@ import numpy as np
 import pybullet_utils.bullet_client as bc
 import time
 
+
 class Environment(gym.Env):
 
-    def __init__(self, task_cls, robot_cls, kwargs_task=None, kwargs_robot=None,
-                 render=False, bullet_client=None):
+    def __init__(self, task_config, robot_config, render=False,
+                 bullet_client=None):
 
         self.render = render
-        self.task_cls = task_cls
-        self.robot_cls = robot_cls
 
-        if kwargs_task is None:
-            kwargs_task = {}
-
-        if kwargs_robot is None:
-            kwargs_robot = {}
+        self.task_config = task_config
+        self.robot_config = robot_config
 
         if bullet_client is None:
             connection_mode = p.GUI if render else p.DIRECT
@@ -36,10 +32,11 @@ class Environment(gym.Env):
 
         self.bullet_client = bullet_client
 
-        planeId = self.bullet_client.loadURDF("plane.urdf")
+        # planeId = self.bullet_client.loadURDF("plane.urdf")
 
-        self.task = self.task_cls(self.bullet_client, **kwargs_task)
-        self.robot = self.robot_cls(self.bullet_client, **kwargs_robot)
+        self.task = self.make_task(task_config, self.bullet_client)
+
+        self.robot = self.make_robot(robot_config, self.bullet_client)
 
         self.action_space = self.robot.action_space
 
@@ -53,6 +50,28 @@ class Environment(gym.Env):
         self.observation_space = spaces.Box(-1, 1,
                                             shape=shape_observation_space)
 
+    def make_task(self, task_config, bullet_client):
+
+        task_name = task_config.pop("name")
+
+        print(task_config)
+
+        if task_name == 'reach':
+            task = Reach(bullet_client, **task_config)
+        else:
+            raise ValueError()
+
+        return task
+
+    def make_robot(self, robot_config, bullet_client):
+        robot_name = robot_config.pop("name")
+
+        if robot_name == 'pandas':
+            robot = Panda(bullet_client, **robot_config)
+        else:
+            raise ValueError()
+
+        return robot
 
     def reset(self):
         """Reset the environment and return new state
@@ -64,8 +83,6 @@ class Environment(gym.Env):
         #     self.reset_pybullet()
         #
         #     print("env reset pybullet", self.bullet_client.getConnectionInfo())
-
-
 
         # if not self.bullet_client.getConnectionInfo()["isConnected"]:
         #     self.bullet_client = bc.BulletClient(p.DIRECT)
@@ -89,11 +106,14 @@ class Environment(gym.Env):
 
         success = success_robot and success_task
 
-        done, reward = self.task.calculate_reward(self.robot, success)
+        done, reward, goal_reached = self.task.calculate_reward(self.robot,
+                                                                success)
 
         observation = np.concatenate((observation_robot, observation_task))
 
-        info = {}
+        info = {
+            "goal_reached": goal_reached
+        }
 
         return observation, reward, done, info
 
@@ -110,22 +130,28 @@ if __name__ == "__main__":
     robot = Panda
 
     env_kwargs1 = {
-        "task_cls": task,
-        "robot_cls": robot,
-        "render": True,
-        "kwargs_task": {"dof": 1},
-        "kwargs_robot": {"dof": 3}
+        "render": False,
+        "task_config": {"name": "reach",
+                        "dof": 3,
+                        "only_positive": False
+                        },
+        "robot_config": {
+            "name": "pandas",
+            "dof": 3
+        }
     }
 
     env_kwargs2 = {
-        "task_cls": task,
-        "robot_cls": robot,
-        "render": False,
-        "kwargs_task": {"dof": 2},
-        "kwargs_robot": {"dof": 3}
-    }
-
-
+            "render": True,
+            "task_config": {"name": "reach",
+                            "dof": 3,
+                            "only_positive": False
+                            },
+            "robot_config": {
+                "name": "pandas",
+                "dof": 3
+            }
+        }
 
     env1 = Environment(**env_kwargs1)
     env2 = Environment(**env_kwargs2)
