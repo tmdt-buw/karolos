@@ -2,11 +2,12 @@ import gym
 from gym import spaces
 import numpy as np
 import pybullet as p
-import time
 import logging
 
 
 class Panda(gym.Env):
+    tolerance_joint_rotation = np.pi / 180
+    tolerance_joint_linear = 0.001
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
                  use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.):
@@ -273,10 +274,7 @@ class Panda(gym.Env):
                                                      self.bullet_client.POSITION_CONTROL,
                                                      target_joint, force=force)
 
-        success = False
-        step = 0
-
-        while not success and step < max_steps:
+        for step in range(max_steps):
             self.bullet_client.stepSimulation()
             if self.bullet_client.getConnectionInfo()[
                 "connectionMethod"] == p.GUI:
@@ -290,15 +288,14 @@ class Panda(gym.Env):
             if np.allclose(velocities_arm, 0, atol=1e-1) and np.allclose(
                     velocities_hand, 0, atol=1e-1):
 
-                if np.allclose(positions_arm, target_joints_arm,
-                               atol=1e-1) and np.allclose(positions_hand,
-                                                          target_joints_hand,
-                                                          atol=1e-1):
-                    success = True
+                deviations_arm = np.abs(positions_arm - target_joints_arm)
+                deviations_hand = np.abs(positions_hand - target_joints_hand)
 
-            step += 1
+                if np.all(deviations_arm < self.tolerance_joint_rotation) \
+                        and np.all(deviations_hand < self.tolerance_joint_linear):
+                    return True
 
-        return success
+        return False
 
     def get_joint_state(self):
 
@@ -356,44 +353,35 @@ if __name__ == "__main__":
     p.setTimeStep(time_step)
     p.setRealTimeSimulation(0)
 
-    robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step)
+    robot = Panda(p, dof=3, state_mode='reduced', time_step=time_step)
 
-    action = np.array([0.8, .71, -.06])
-    success, obs = robot.step(action)
+    while True:
 
-    from tasks.reach import Reach
+        action = robot.action_space.sample()
 
-    task = Reach(p)
-    task.reset()
+        success, obs = robot.step(action)
 
-    # while True:
-    #     robot.get_camera_image()
-    #     p.stepSimulation()
+        if not success:
+            print(action)
+            input()
+
+    # robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step)
     #
-    # exit()
-
-    for ii in np.linspace(-1, 1, 5):
-        for jj in np.linspace(-1, 1, 5):
-            for kk in np.linspace(-1, 1, 5):
-                print(ii, jj, kk)
-
-                success = True
-
-                # obs = robot.reset()
-                # p.stepSimulation()
-
-                action = np.array([ii, jj, kk])
-
-                success, obs = robot.step(action)
-
-        # while success:
-        #
-        #     action = robot.action_space.sample()
-        #     # action = np.array([0.28,.71,-.46])
-        #     # action = -np.array([.99,.99,.99])
-        #
-        #     success, obs = robot.step(action)
-        #
-        #     print(success, obs)
-        #
-        #     p.stepSimulation()
+    # action = np.array([0.8, .71, -.06])
+    # success, obs = robot.step(action)
+    #
+    # from environments.tasks.reach import Reach
+    #
+    # task = Reach(p)
+    # task.reset()
+    #
+    # for ii in np.linspace(-1, 1, 5):
+    #     for jj in np.linspace(-1, 1, 5):
+    #         for kk in np.linspace(-1, 1, 5):
+    #             print(ii, jj, kk)
+    #
+    #             success = True
+    #
+    #             action = np.array([ii, jj, kk])
+    #
+    #             success, obs = robot.step(action)

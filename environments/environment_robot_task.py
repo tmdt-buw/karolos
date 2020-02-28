@@ -1,12 +1,11 @@
-from robots.panda import Panda
-from tasks.reach import Reach
+from environments.robots.panda import Panda
+from environments.tasks.reach import Reach
 import pybullet as p
 import pybullet_data as pd
 import gym
 from gym import spaces
 import numpy as np
 import pybullet_utils.bullet_client as bc
-import time
 
 
 class Environment(gym.Env):
@@ -124,8 +123,6 @@ class Environment(gym.Env):
 
 if __name__ == "__main__":
 
-    import multiprocessing
-
     task = Reach
     robot = Panda
 
@@ -154,23 +151,20 @@ if __name__ == "__main__":
         }
 
     env1 = Environment(**env_kwargs1)
-    env2 = Environment(**env_kwargs2)
+    # env2 = Environment(**env_kwargs2)
 
     while True:
 
-        done1 = False
-        done2 = False
+        done = False
 
-        obs1 = env1.reset()
-        obs2 = env2.reset()
+        obs = env1.reset()
 
         step = 0
 
-        while not done1 or not done2:
+        while not done:
             action1 = env1.action_space.sample()
-            obs1, reward1, done1, info1 = env1.step(action1)
-
-            action2 = env2.action_space.sample()
-            obs2, reward2, done2, info2 = env2.step(action2)
+            obs, reward, done, info = env1.step(action1)
 
             step += 1
+
+        print(info)

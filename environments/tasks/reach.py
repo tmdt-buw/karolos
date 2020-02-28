@@ -25,7 +25,8 @@ class Reach(object):
 
         bullet_client.setGravity(0, 0, 0)
 
-        self.object = self.bullet_client.loadURDF("objects/box.urdf")
+        # self.object = self.bullet_client.loadURDF("objects/box.urdf")
+        self.object = self.bullet_client.loadURDF("objects/sphere.urdf")
 
         self.camera_config = {
             "width": 200,
@@ -140,12 +141,13 @@ class Reach(object):
 
     def calculate_reward(self, robot, success):
 
+        goal_reached = False
+
         if not success:
             done, reward = True, -1.
         else:
 
             position_tcp = robot.get_position_tcp()
-
             position_object = self.get_position_object()
 
             distance_tcp_object = np.linalg.norm(position_tcp - position_object)
@@ -153,17 +155,20 @@ class Reach(object):
             if distance_tcp_object < 0.05:
                 reward = 1.
                 done = True
+                goal_reached = True
             else:
-                reward = -distance_tcp_object
+                reward = np.exp(-distance_tcp_object * 3.5) * 2 - 1
+                # reward = -distance_tcp_object
+                reward /= self.max_steps
 
                 done = self.step_counter >= self.max_steps
 
                 for position, limit in zip(position_object, self.limits_object):
                     done = done or (limit[0] >= position >= limit[1])
 
-        reward = np.clip(reward, -1., 1.)
+        reward = np.clip(reward, -1, 1)
 
-        return done, reward
+        return done, reward, goal_reached
 
 
 if __name__ == "__main__":
