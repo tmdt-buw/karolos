@@ -25,7 +25,7 @@ Your workflow for starting a new task should look like this:
 6. Once you are satisfied with your code, merge the master branch into your branch.
     * Fix potential merge conflicts
     * Make sure your code still runs as intended
-7. Change the status of the issue to "Status: Completed"
+7. Change the status of the issue to "Status: Ready for Review"
 8. Create a merge request for your branch.
     * Use the "Create Merge Request" button inside the issue.
 9. Repeat from 1.
