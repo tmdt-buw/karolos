@@ -3,23 +3,20 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 
 """
 
-import random
-
-import torch
-import torch.nn.functional as F
-import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
-
 import numpy as np
+import torch
+import torch.nn as nn
+import os.path as osp
 
 from agents.nnfactory.sac import PolicyNet, SoftQNetwork
-
 from agents.utils.replay_buffer import ReplayBuffer
 
+
+# todo make device parameter of Agent
 use_cuda = torch.cuda.is_available()
 device = torch.device('cuda' if use_cuda else 'cpu')
 
-print("Using device: -{}- torch.backends.cudnn.enabled = {} torch.cuda.is_available() = {}".format(device, torch.backends.cudnn.enabled, torch.cuda.is_available()))
+# print("Using device: -{}- torch.backends.cudnn.enabled = {} torch.cuda.is_available() = {}".format(device, torch.backends.cudnn.enabled, torch.cuda.is_available()))
 
 class AgentSAC:
     def __init__(self, config, state_dim, action_dim):
@@ -56,46 +53,27 @@ class AgentSAC:
         self.no_step = 0
         self.random = True
 
-        self.soft_q_1 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
-        self.soft_q_2 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
-        self.target_soft_q_1 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
-        self.target_soft_q_2 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
-        self.pol_net = PolicyNet(in_dim=state_dim, action_dim=action_dim, hidden_dim=self.h_dim, device=device).to(device)
+        self.critic_1 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
+        self.critic_2 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
+        self.target_critic_1 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
+        self.target_critic_2 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(device)
+        self.policy = PolicyNet(in_dim=state_dim, action_dim=action_dim, hidden_dim=self.h_dim, device=device).to(device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32, requires_grad=True, device=device)
         print("SAC Trainer target entropy:", self.target_entropy)
-        print('Soft Q Network (1,2): ', self.soft_q_1)
-        print('Policy Network: ', self.pol_net)
+        print('Soft Q Network (1,2): ', self.critic_1)
+        print('Policy Network: ', self.policy)
 
         # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
-        self.soft_q_optim_1 = torch.optim.AdamW(self.soft_q_1.parameters(), lr=self.soft_q_lr, weight_decay=self.weight_decay)
-        self.soft_q_optim_2 = torch.optim.AdamW(self.soft_q_2.parameters(), lr=self.soft_q_lr, weight_decay=self.weight_decay)
-        self.pol_optim = torch.optim.AdamW(self.pol_net.parameters(), lr=self.pol_lr, weight_decay=self.weight_decay)
+        self.optimizer_critic_1 = torch.optim.AdamW(self.critic_1.parameters(), lr=self.soft_q_lr, weight_decay=self.weight_decay)
+        self.optimizer_critic_2 = torch.optim.AdamW(self.critic_2.parameters(), lr=self.soft_q_lr, weight_decay=self.weight_decay)
+        self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(), lr=self.pol_lr, weight_decay=self.weight_decay)
         self.alpha_optim = torch.optim.AdamW([self.log_alpha], lr=self.alpha_lr, weight_decay=self.weight_decay)
 
-        for target_param, param in zip(self.target_soft_q_1.parameters(), self.soft_q_1.parameters()):
+        for target_param, param in zip(self.target_critic_1.parameters(), self.critic_1.parameters()):
             target_param.data.copy_(param.data)
-        for target_param, param in zip(self.target_soft_q_2.parameters(), self.soft_q_2.parameters()):
+        for target_param, param in zip(self.target_critic_2.parameters(), self.critic_2.parameters()):
             target_param.data.copy_(param.data)
-
-        # todo move saving functionality in function
-        # if run_no > 0:
-        #     previous = 'run_{}'.format(run_no - 1)
-        #     try:
-        #         print('Loading agents from {}/{}'.format(self.root_path, previous))
-        #         self.soft_q_1.load_state_dict(torch.load('{}/{}/soft_q1.pt'.format(self.root_path, previous)))
-        #         self.soft_q_2.load_state_dict(torch.load('{}/{}/soft_q2.pt'.format(self.root_path, previous)))
-        #         self.pol_net.load_state_dict(torch.load('{}/{}/pol_net.pt'.format(self.root_path, previous)))
-        #         self.target_soft_q_1.load_state_dict(torch.load('{}/{}/target_soft_q1.pt'.format(self.root_path, previous)))
-        #         self.target_soft_q_2.load_state_dict(torch.load('{}/{}/target_soft_q2.pt'.format(self.root_path, previous)))
-        #         self.pol_optim.load_state_dict(torch.load('{}/{}/pol_opt.pt'.format(self.root_path, previous)))
-        #         self.soft_q_optim_2.load_state_dict(torch.load('{}/{}/soft_q2_opt.pt'.format(self.root_path, previous)))
-        #         self.soft_q_optim_1.load_state_dict(torch.load('{}/{}/soft_q1_opt.pt'.format(self.root_path, previous)))
-        #
-        #     except FileNotFoundError as e :
-        #         print('Could not locate savefiles in {}/{}'.format(self.root_path, previous))
-        #         print("Err:", e)
-        #         print(' \nUsing new agents/Critic and Optimizers! \n')
 
         self.soft_q_1_criterion = nn.MSELoss()
         self.soft_q_2_criterion = nn.MSELoss()
@@ -116,19 +94,11 @@ class AgentSAC:
             next_state = torch.FloatTensor(next_state).to(device)
             done = torch.FloatTensor(np.float32(done)).unsqueeze(1).to(device)
 
-            # print("Got memory:")
-            # print('states', type(state),state)
-            # print('actions',type(actions),actions)
-            # print('rewards',type(reward),reward)
-            # print('next_states',type(next_state),next_state)
-            # print('terminals',type(done), done)
-            # exit()
+            predicted_q1 = self.critic_1(state, actions)
+            predicted_q2 = self.critic_2(state, actions)
 
-            predicted_q1 = self.soft_q_1(state, actions)
-            predicted_q2 = self.soft_q_2(state, actions)
-
-            new_action, log_prob, _, _, log_std = self.pol_net.evaluate(state)
-            new_next_action, new_log_prob, _, _, _ = self.pol_net.evaluate(next_state)
+            new_action, log_prob, _, _, log_std = self.policy.evaluate(state)
+            new_next_action, new_log_prob, _, _, _ = self.policy.evaluate(next_state)
 
             # normalize with batch mean std
             reward = self.reward_scale * (reward - reward.mean(dim=0)) / (reward.std(dim=0) + 1e-6)
@@ -144,33 +114,33 @@ class AgentSAC:
                 alpha_loss = 0
 
             # Train Q function
-            target_q_min = torch.min(self.target_soft_q_1(next_state, new_next_action),
-                                     self.target_soft_q_2(next_state, new_next_action)) - self.alpha * new_log_prob
+            target_q_min = torch.min(self.target_critic_1(next_state, new_next_action),
+                                     self.target_critic_2(next_state, new_next_action)) - self.alpha * new_log_prob
             target_q_value = reward + (1-done) * self.gamma * target_q_min
             q_val_loss1 = self.soft_q_1_criterion(predicted_q1, target_q_value.detach())
             q_val_loss2 = self.soft_q_2_criterion(predicted_q2, target_q_value.detach())
-            self.soft_q_optim_1.zero_grad()
+            self.optimizer_critic_1.zero_grad()
             q_val_loss1.backward()
-            self.soft_q_optim_1.poll()
-            self.soft_q_optim_2.zero_grad()
+            self.optimizer_critic_1.poll()
+            self.optimizer_critic_2.zero_grad()
             q_val_loss2.backward()
-            self.soft_q_optim_2.poll()
+            self.optimizer_critic_2.poll()
 
             # Training Policy Function
-            predicted_new_q_val = torch.min(self.soft_q_1(state, new_action), self.soft_q_2(state, new_action))
+            predicted_new_q_val = torch.min(self.critic_1(state, new_action), self.critic_2(state, new_action))
             pol_loss = (self.alpha * log_prob - predicted_new_q_val).mean()
 
-            self.pol_optim.zero_grad()
+            self.optimizer_policy.zero_grad()
             pol_loss.backward()
-            self.pol_optim.poll()
+            self.optimizer_policy.poll()
 
             # Target update
-            for target_p, p in zip(self.target_soft_q_1.parameters(), self.soft_q_1.parameters()):
+            for target_p, p in zip(self.target_critic_1.parameters(), self.critic_1.parameters()):
                 target_p.data.copy_(
                     target_p.data * (1.0 - self.tau) + p.data * self.tau
                 )
 
-            for target_p, p in zip(self.target_soft_q_2.parameters(), self.soft_q_2.parameters()):
+            for target_p, p in zip(self.target_critic_2.parameters(), self.critic_2.parameters()):
                 target_p.data.copy_(
                     target_p.data * (1.0 - self.tau) + p.data * self.tau
                 )
@@ -178,45 +148,53 @@ class AgentSAC:
             return predicted_new_q_val.mean()
 
     def add_experience(self, experience):
+
         for e in experience:
             self.memory.add(*e)
+            print("add", e)
 
     def save(self, path):
-        # save the model every n steps
+        torch.save(self.policy.state_dict(), osp.join(path, "policy.pt"))
+        torch.save(self.critic_1.state_dict(), osp.join(path, "critic_1.pt"))
+        torch.save(self.critic_2.state_dict(), osp.join(path, "critic_2.pt"))
+        torch.save(self.target_critic_1.state_dict(), osp.join(path, "target_critic_1.pt"))
+        torch.save(self.target_critic_2.state_dict(), osp.join(path, "target_critic_2.pt"))
+        
+        torch.save(self.optimizer_policy.state_dict(), osp.join(path, "optimizer_policy.pt"))
+        torch.save(self.optimizer_critic_1.state_dict(), osp.join(path, "optimizer_critic_1.pt"))
+        torch.save(self.optimizer_critic_2.state_dict(), osp.join(path, "optimizer_critic_2.pt"))
 
-        # set evaluation mode (disable dropout, batchnorm)
-        # https://pytorch.org/docs/stable/nn.html?highlight=eval#torch.nn.Module.eval
-        self.pol_net.eval()
-        self.soft_q_1.eval()
-        self.soft_q_2.eval()
-        self.target_soft_q_1.eval()
-        self.target_soft_q_2.eval()
+    def load(self, path, train_mode=True):
+                
+        self.policy.load_state_dict(torch.load(osp.join(path, "policy.pt")))
+        self.critic_1.load_state_dict(torch.load(osp.join(path, "critic_1.pt")))
+        self.critic_2.load_state_dict(torch.load(osp.join(path, "critic_2.pt")))
+        self.target_critic_1.load_state_dict(torch.load(osp.join(path, "target_critic_1.pt")))
+        self.target_critic_2.load_state_dict(torch.load(osp.join(path, "target_critic_2.pt")))
 
-        torch.save(self.pol_net.state_dict(), '{}/{}/pol_net.pt'.format(self.root_path, self.run_name))
-        torch.save(self.soft_q_1.state_dict(), '{}/{}/soft_q1.pt'.format(self.root_path, self.run_name))
-        torch.save(self.soft_q_2.state_dict(), '{}/{}/soft_q2.pt'.format(self.root_path, self.run_name))
-        torch.save(self.target_soft_q_1.state_dict(), '{}/{}/target_soft_q1.pt'.format(self.root_path, self.run_name))
-        torch.save(self.target_soft_q_2.state_dict(), '{}/{}/target_soft_q2.pt'.format(self.root_path, self.run_name))
+        self.optimizer_policy.load_state_dict(torch.load(osp.join(path, "optimizer_policy.pt")))
+        self.optimizer_critic_1.load_state_dict(torch.load(osp.join(path, "optimizer_critic_1.pt")))
+        self.optimizer_critic_2.load_state_dict(torch.load(osp.join(path, "optimizer_critic_2.pt")))
+        
+        if train_mode:
+            self.policy.train()
+            self.critic_1.train()
+            self.critic_2.train()
+            self.target_critic_1.train()
+            self.target_critic_2.train()
+        else:
+            self.policy.eval()
+            self.critic_1.eval()
+            self.critic_2.eval()
+            self.target_critic_1.eval()
+            self.target_critic_2.eval()
 
-        torch.save(self.pol_optim.state_dict(), '{}/{}/pol_opt.pt'.format(self.root_path, self.run_name))
-        torch.save(self.soft_q_optim_2.state_dict(), '{}/{}/soft_q2_opt.pt'.format(self.root_path, self.run_name))
-        torch.save(self.soft_q_optim_1.state_dict(), '{}/{}/soft_q1_opt.pt'.format(self.root_path, self.run_name))
-
-        self.pol_net.train()
-        self.soft_q_1.train()
-        self.soft_q_2.train()
-        self.target_soft_q_1.train()
-        self.target_soft_q_2.train()
-
-    def load(self, path):
-        # todo
-        ...
 
     def predict(self, states, deterministic=True):
 
         states = torch.FloatTensor(states).to(device)
 
-        mean, log_std = self.pol_net(states)
+        mean, log_std = self.policy(states)
 
         mean = mean.detach().cpu().numpy()
 
@@ -279,6 +257,13 @@ if __name__ == '__main__':
     os.system('mkdir -p {}'.format(config['root_path']))
 
     pprint.pprint(config)
+
+    agent = AgentSAC(config, state_dim=(5,), action_dim=(5,))
+
+    agent.save(".")
+    agent.load(".")
+
+    exit()
 
     """
     Use this function to test your agents on the pendulum v0 open ai gym. Continuous space
