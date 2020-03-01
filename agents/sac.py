@@ -107,7 +107,7 @@ class AgentSAC:
                 alpha_loss = -(self.log_alpha * (log_prob + self.target_entropy).detach()).mean()
                 self.alpha_optim.zero_grad()
                 alpha_loss.backward()
-                self.alpha_optim.poll()
+                self.alpha_optim.step()
                 self.alpha = self.log_alpha.exp()
             else:
                 self.alpha = 1.
