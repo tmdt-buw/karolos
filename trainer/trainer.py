@@ -1,6 +1,10 @@
-from environments.orchestrator import Orchestrator
-from agents.sac import AgentSAC
+import json
 import numpy as np
+from agents.sac import AgentSAC
+from environments.orchestrator import Orchestrator
+from torch.utils.tensorboard.writer import SummaryWriter
+from collections import defaultdict
+
 
 class Trainer:
 
@@ -39,10 +43,19 @@ class Trainer:
         models_dir = osp.join(results_dir, "models")
         log_dir = results_dir
 
-        os.makedirs(results_dir)
-        os.makedirs(models_dir)
+        results_dir = osp.join("..", results_dir)
+        models_dir = osp.join("..", models_dir)
+        log_dir = osp.join("..", log_dir)
 
-        import json
+        if not osp.exists(results_dir):
+            os.makedirs(results_dir)
+        if not osp.exists(models_dir):
+            os.makedirs(models_dir)
+        if not osp.exists(log_dir):
+            os.makedirs(log_dir)
+
+        self.writer = SummaryWriter(log_dir)
+
         with open(osp.join(results_dir, 'config.json'), 'w') as f:
             json.dump(training_config, f)
 
@@ -56,22 +69,126 @@ class Trainer:
         agent_config = training_config.pop("agent_config")
 
         # add action and state spaces to config
-        state_dim = env_orchestrator.observation_space.shape
-        action_dim = env_orchestrator.action_space.shape
-
-        agent = self.get_agent(agent_config, state_dim, action_dim)
+        agent = self.get_agent(agent_config,
+                               env_orchestrator.observation_space,
+                               env_orchestrator.action_space)
 
         # reset all
         env_responses = env_orchestrator.reset_all()
 
-        step = 0
+        steps = defaultdict(int)
 
         states = {}
         actions = {}
+        episodic_reward = {}
 
         requests = []
 
-        while step < training_config["total_timesteps"]:
+        print(training_config)
+
+        nb_tests = training_config["nb_tests"]
+        test_interval = training_config["test_interval"]
+        next_test_timestep = 0
+
+        best_success_ratio = 0.5
+
+        assert nb_tests >= nb_envs
+
+        while sum(steps.values()) < training_config["total_timesteps"]:
+
+            # Test
+            if sum(steps.values()) >= next_test_timestep:
+
+                next_test_timestep = \
+                    (sum(steps.values()) // test_interval + 1) * test_interval
+
+                # reset all
+                env_responses = env_orchestrator.reset_all()
+
+                results_episodes = []
+                tests_launched = nb_envs
+
+                while len(results_episodes) < nb_tests:
+
+                    for env_id, response in env_responses:
+                        func, data = response
+
+                        if func == "reset":
+                            states[env_id] = data
+                            actions.pop(env_id, None)
+                            episodic_reward[env_id] = []
+                        elif func == "step":
+                            state, reward, done, info = data
+
+                            self.writer.add_scalar('test reward step',
+                                                   reward,
+                                                   sum(steps.values()) + 1
+                                                   )
+
+                            episodic_reward[env_id].append(reward)
+                            previous_state = states.pop(env_id, None)
+                            if previous_state is not None:
+                                experience = (previous_state,
+                                              actions.pop(env_id), reward,
+                                              state, done)
+                                agent.add_experience([experience])
+                            if done:
+                                episode_reward = sum(episodic_reward[env_id])
+
+                                self.writer.add_scalar('test reward episode',
+                                                       episode_reward,
+                                                       sum(steps.values()) + 1
+                                                       )
+
+                                results_episodes.append(info["goal_reached"])
+                                if tests_launched < nb_tests:
+                                    requests.append((env_id, "reset", None))
+                                    tests_launched += 1
+                            else:
+                                states[env_id] = state
+                            steps[env_id] += 1
+                        else:
+                            raise NotImplementedError(
+                                f"Undefined behavior for {env_id}"
+                                f" | {response}")
+
+                    required_predictions = list(
+                        set(states.keys()) - set(actions.keys()))
+
+                    if required_predictions:
+                        observations = [states[env_id] for env_id in
+                                        required_predictions]
+                        observations = np.stack(observations)
+
+                        # predictions = agent.random_action(observations)
+                        predictions = agent.predict(observations,
+                                                    deterministic=True)
+
+                        for env_id, prediction in zip(required_predictions,
+                                                      predictions):
+                            actions[env_id] = prediction
+                            requests.append((env_id, "step", prediction))
+
+                    env_responses = env_orchestrator.send_receive(requests)
+                    requests = []
+
+                success_ratio = sum(results_episodes) / len(results_episodes)
+
+                self.writer.add_scalar('test success ratio',
+                                       success_ratio,
+                                       sum(steps.values()) + 1
+                                       )
+
+                if success_ratio >= best_success_ratio:
+                    best_success_ratio = success_ratio
+                    agent.save(os.path.join(models_dir,
+                                            f"{sum(steps.values()) + 1}_"
+                                            f"{success_ratio:.3f}"))
+
+                # reset all
+                env_responses = env_orchestrator.reset_all()
+
+            # Train
 
             for env_id, response in env_responses:
                 func, data = response
@@ -79,21 +196,36 @@ class Trainer:
                 if func == "reset":
                     states[env_id] = data
                     actions.pop(env_id, None)
+                    episodic_reward[env_id] = []
                 elif func == "step":
                     state, reward, done, info = data
+
+                    self.writer.add_scalar('train reward step',
+                                           reward,
+                                           sum(steps.values()) + 1
+                                           )
+
+                    episodic_reward[env_id].append(reward)
                     previous_state = states.pop(env_id, None)
                     if previous_state is not None:
                         experience = (previous_state, actions.pop(env_id),
                                       reward, state, done)
-                        # todo store experience
+                        agent.add_experience([experience])
                     if done:
+                        episode_reward = sum(episodic_reward[env_id])
+
+                        self.writer.add_scalar('train reward episode',
+                                               episode_reward,
+                                               sum(steps.values()) + 1
+                                               )
+
                         requests.append((env_id, "reset", None))
                     else:
                         states[env_id] = state
-                    step += 1
+                    steps[env_id] += 1
                 else:
-                    raise NotImplementedError(f"Undefined behavior for {env_id}"
-                                              f" | {response}")
+                    raise NotImplementedError(
+                        f"Undefined behavior for {env_id} | {response}")
 
             required_predictions = list(
                 set(states.keys()) - set(actions.keys()))
@@ -116,6 +248,8 @@ class Trainer:
 
             env_responses = env_orchestrator.send_receive(requests)
             requests = []
+
+            agent.learn()
 
 
 if __name__ == "__main__":
