@@ -16,12 +16,15 @@ from agents.utils.replay_buffer import ReplayBuffer
 use_cuda = torch.cuda.is_available()
 device = torch.device('cuda' if use_cuda else 'cpu')
 
-# print("Using device: -{}- torch.backends.cudnn.enabled = {}
-# torch.cuda.is_available() = {}".format(device, torch.backends.cudnn.enabled,
-# torch.cuda.is_available()))
 
 class AgentSAC:
-    def __init__(self, config, state_dim, action_dim):
+    def __init__(self, config, observation_space, action_space):
+
+        self.observation_space = observation_space
+        self.action_space = action_space
+
+        state_dim = self.observation_space.shape
+        action_dim = self.action_space.shape
 
         assert len(state_dim) == 1
         assert len(action_dim) == 1
@@ -113,12 +116,14 @@ class AgentSAC:
         predicted_q1 = self.critic_1(states, actions)
         predicted_q2 = self.critic_2(states, actions)
 
+        #
+
         new_action, log_prob, _, _, log_std = self.policy.evaluate(states)
         new_next_action, new_log_prob, _, _, _ = self.policy.evaluate(
             next_states)
 
         # normalize with batch mean std
-        #rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
+        # rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
         #        rewards.std(dim=0) + 1e-6)
 
         if self.auto_entropy is True:
@@ -176,6 +181,10 @@ class AgentSAC:
             self.memory.add(*e)
 
     def save(self, path):
+
+        if not osp.exists(path):
+            os.makedirs(path)
+
         torch.save(self.policy.state_dict(), osp.join(path, "policy.pt"))
         torch.save(self.critic_1.state_dict(), osp.join(path, "critic_1.pt"))
         torch.save(self.critic_2.state_dict(), osp.join(path, "critic_2.pt"))
@@ -243,10 +252,12 @@ class AgentSAC:
 
             for mean_, std_ in zip(mean, std):
                 action_ = np.random.multivariate_normal(mean_, np.diag(std_))
-                action_ = np.tanh(action_)
+                # action_ = np.tanh(action_)
                 action.append(action_)
 
             action = np.stack(action)
+
+        action = np.tanh(action)
 
         return action
 
