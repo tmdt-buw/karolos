@@ -1,9 +1,13 @@
-import json
-import numpy as np
 from agents.sac import AgentSAC
-from environments.orchestrator import Orchestrator
-from torch.utils.tensorboard.writer import SummaryWriter
 from collections import defaultdict
+import datetime
+from environments.orchestrator import Orchestrator
+import json
+from multiprocessing import cpu_count
+import numpy as np
+import os
+import os.path as osp
+from torch.utils.tensorboard.writer import SummaryWriter
 
 
 class Trainer:
@@ -231,18 +235,14 @@ class Trainer:
                 set(states.keys()) - set(actions.keys()))
 
             if required_predictions:
-
-                observations = [states[env_id] for env_id in required_predictions]
+                observations = [states[env_id] for env_id in
+                                required_predictions]
                 observations = np.stack(observations)
 
-                print(observations.shape)
-
-                predictions = agent.random_action(observations)
                 predictions = agent.predict(observations, deterministic=False)
 
                 for env_id, prediction in zip(required_predictions,
                                               predictions):
-
                     actions[env_id] = prediction
                     requests.append((env_id, "step", prediction))
 
@@ -253,19 +253,15 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    import os.path as osp
-    import os
-    import datetime
-
     results_dir = osp.join("results",
                            datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
     training_config = {
         "base_pkg": "stable-baselines",
         "algorithm": "SAC",
-        "test_interval": 10_000,
-        "nb_tests": 100,
-        "total_timesteps": 1_000_000,
+        "test_interval": 1_000_000,
+        "nb_tests": 1_000,
+        "total_timesteps": 50_000_000,
         "results_dir": results_dir,
         "agent_config": {
             "algorithm": "sac",
@@ -286,7 +282,7 @@ if __name__ == "__main__":
             "tensorboard_histogram_interval": 5
         },
         "env_config": {
-            "nb_envs": 2,
+            "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
