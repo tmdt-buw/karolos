@@ -53,8 +53,6 @@ class Environment(gym.Env):
 
         task_name = task_config.pop("name")
 
-        print(task_config)
-
         if task_name == 'reach':
             task = Reach(bullet_client, **task_config)
         else:

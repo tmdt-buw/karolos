@@ -1,5 +1,5 @@
-from robots.panda import Panda
-from tasks.reach import Reach
+from environments.robots.panda import Panda
+from environments.tasks.reach import Reach
 import gym
 import numpy as np
 from environments.environment_robot_task import Environment

@@ -1,5 +1,5 @@
 import multiprocessing as mp
-
+import random
 
 class Orchestrator(object):
 
@@ -29,6 +29,8 @@ class Orchestrator(object):
 
             if func == "close":
                 break
+            if func == "ping":
+                pipe.send(("ping", params))
             elif func == "reset":
                 pipe.send(("reset", env.reset()))
             elif func == "step":
@@ -67,7 +69,11 @@ class Orchestrator(object):
 
         for env_id, func, params in actions:
 
-            print("send", [func, params])
+            if func == "step":
+                if not self.action_space.contains(params):
+                    print(params)
+
+            # print("send", [func, params])
 
             self.pipes[env_id].send([func, params])
 
@@ -79,25 +85,40 @@ class Orchestrator(object):
             if pipe.poll():
                 response = pipe.recv()
 
-                print("receive", response)
+                # print("receive", response)
 
                 responses.append((env_id, response))
 
         return responses
 
     def reset_all(self):
+        """Resets all environment. Blocks until all environments are reset."""
+
+        token = random.getrandbits(10)
+
+        # send ping with token to flush the pipes
+        self.send([(env_id, "ping", token) for env_id in self.pipes.keys()])
+        self.send([(env_id, "reset", None) for env_id in self.pipes.keys()])
+
+        required_env_ids = self.pipes.keys()
 
         responses = []
 
         # send reset commands
         for env_id, pipe in self.pipes.items():
-            pipe.send(["reset", None])
 
+            while True:
+                response = pipe.recv()
+                func, data = response
+
+                if func == "ping" and data == token:
+                    break
+
+            # next response is reset
             response = pipe.recv()
+            func, data = response
 
-            func, state = response
-
-            assert func == "reset"
+            assert func == "reset", func
 
             responses.append((env_id, response))
 
