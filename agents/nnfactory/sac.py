@@ -5,9 +5,6 @@ import torch.nn.functional as F
 import numpy as np
 
 
-# use_cuda = torch.cuda.is_available()
-# device = torch.device('cuda' if use_cuda else 'cpu')
-
 class ValueNet(nn.Module):
     def __init__(self, state_dim, hidden_dim, init_w=3e-3):
         super(ValueNet, self).__init__()
@@ -81,9 +78,6 @@ class PolicyNet(nn.Module):
         self.log_std_linear = nn.Linear(hidden_dim, action_dim)
         self.log_std_linear.weight.data.uniform_(-init_w, init_w)
         self.log_std_linear.bias.data.uniform_(-init_w, init_w)
-
-        # init
-        # print(self)
 
     def forward(self, state):
         x = F.relu(self.l1(state))
