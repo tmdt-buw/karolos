@@ -132,10 +132,24 @@ class Trainer:
                             episodic_reward[env_id].append(reward)
                             previous_state = states.pop(env_id, None)
                             if previous_state is not None:
+
+                                action = actions.pop(env_id)
+
                                 experience = (previous_state,
-                                              actions.pop(env_id), reward,
+                                              action, reward,
                                               state, done)
                                 agent.add_experience([experience])
+
+                                if "her" in info:
+                                    state_her = info["her"]["observation"]
+                                    reward_her = info["her"]["reward"]
+                                    done_her = info["her"]["done"]
+
+                                    experience = (previous_state,
+                                                  action, reward_her,
+                                                  state_her, done_her)
+                                    agent.add_experience([experience])
+
                             if done:
                                 episode_reward = sum(episodic_reward[env_id])
 
@@ -212,9 +226,23 @@ class Trainer:
                     episodic_reward[env_id].append(reward)
                     previous_state = states.pop(env_id, None)
                     if previous_state is not None:
-                        experience = (previous_state, actions.pop(env_id),
-                                      reward, state, done)
+                        action = actions.pop(env_id)
+
+                        experience = (previous_state,
+                                      action, reward,
+                                      state, done)
                         agent.add_experience([experience])
+
+                        if "her" in info:
+                            state_her = info["her"]["observation"]
+                            reward_her = info["her"]["reward"]
+                            done_her = info["her"]["done"]
+
+                            experience = (previous_state,
+                                          action, reward_her,
+                                          state_her, done_her)
+                            agent.add_experience([experience])
+
                     if done:
                         episode_reward = sum(episodic_reward[env_id])
 

@@ -8,7 +8,7 @@ import numpy as np
 import pybullet_utils.bullet_client as bc
 
 
-class Environment(gym.Env):
+class Environment(gym.GoalEnv):
 
     def __init__(self, task_config, robot_config, render=False,
                  bullet_client=None):
@@ -96,6 +96,11 @@ class Environment(gym.Env):
     def render(self, mode='human'):
         ...
 
+    def compute_reward(self, achieved_goal, desired_goal, info):
+        reward = self.task.compute_reward(achieved_goal, desired_goal, info)
+
+        return reward, info
+
     def step(self, action):
 
         success_robot, observation_robot = self.robot.step(action)
@@ -103,14 +108,25 @@ class Environment(gym.Env):
 
         success = success_robot and success_task
 
-        done, reward, goal_reached = self.task.calculate_reward(self.robot,
-                                                                success)
+        info = {
+            "success": success
+        }
+
+        achieved_goal, desired_goal, info = self.task.get_goals(self.robot, info)
+
+        reward, info = self.compute_reward(achieved_goal, desired_goal, info)
+
+        done = self.task.compute_done(self.robot, info)
 
         observation = np.concatenate((observation_robot, observation_task))
 
-        info = {
-            "goal_reached": goal_reached
-        }
+        if success:
+            # todo make generic by merging task observation and achived goal
+            info["her"] = {"observation": np.concatenate((observation_robot,
+                                                          achieved_goal)),
+                           "reward": 1,
+                           "done": True
+                           }
 
         return observation, reward, done, info
 
@@ -137,16 +153,16 @@ if __name__ == "__main__":
     }
 
     env_kwargs2 = {
-            "render": True,
-            "task_config": {"name": "reach",
-                            "dof": 3,
-                            "only_positive": False
-                            },
-            "robot_config": {
-                "name": "pandas",
-                "dof": 3
-            }
+        "render": True,
+        "task_config": {"name": "reach",
+                        "dof": 3,
+                        "only_positive": False
+                        },
+        "robot_config": {
+            "name": "pandas",
+            "dof": 3
         }
+    }
 
     env1 = Environment(**env_kwargs1)
     # env2 = Environment(**env_kwargs2)

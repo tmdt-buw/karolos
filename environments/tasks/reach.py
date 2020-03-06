@@ -139,36 +139,40 @@ class Reach(object):
         else:
             return True, observation
 
-    def calculate_reward(self, robot, success):
+    def get_goals(self, robot, info):
+        achieved_goal = robot.get_position_tcp()
+        desired_goal = self.get_position_object()
 
-        goal_reached = False
+        return achieved_goal, desired_goal, info
 
-        if not success:
-            done, reward = True, -1.
+    def compute_reward(self, achieved_goal, desired_goal, info):
+
+        info["goal_reached"] = False
+
+        if not info["success"]:
+            reward = -1.
         else:
-
-            position_tcp = robot.get_position_tcp()
-            position_object = self.get_position_object()
-
-            distance_tcp_object = np.linalg.norm(position_tcp - position_object)
+            distance_tcp_object = np.linalg.norm(achieved_goal - desired_goal)
 
             if distance_tcp_object < 0.05:
                 reward = 1.
-                done = True
-                goal_reached = True
             else:
                 reward = np.exp(-distance_tcp_object * 3.5) * 2 - 1
-                # reward = -distance_tcp_object
                 reward /= self.max_steps
-
-                done = self.step_counter >= self.max_steps
-
-                for position, limit in zip(position_object, self.limits_object):
-                    done = done or (limit[0] >= position >= limit[1])
 
         reward = np.clip(reward, -1, 1)
 
-        return done, reward, goal_reached
+        return reward
+
+    def compute_done(self, robot, info):
+        achieved_goal, desired_goal, _ = self.get_goals(robot, info)
+
+        distance_tcp_object = np.linalg.norm(achieved_goal - desired_goal)
+
+        done = self.step_counter >= self.max_steps or \
+               distance_tcp_object < 0.05 or not info["success"]
+
+        return done
 
 
 if __name__ == "__main__":
