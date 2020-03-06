@@ -42,7 +42,6 @@ class AgentSAC:
         self.gamma = config['gamma']
         self.memory_size = config['memory_size']
         self.tau = config['tau']
-        self.backup_interval = config["backup_interval"]
         self.auto_entropy = config['auto_entropy']
         self.tb_histogram_interval = config["tensorboard_histogram_interval"]
 
@@ -61,14 +60,14 @@ class AgentSAC:
         self.target_critic_2 = SoftQNetwork(state_dim, action_dim,
                                             self.h_dim).to(device)
         self.policy = PolicyNet(in_dim=state_dim, action_dim=action_dim,
-                                hidden_dim=self.h_dim, device=device).to(
-            device)
+                                hidden_dim=self.h_dim, device=device).to(device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
                                      requires_grad=True, device=device)
-        print("SAC Trainer target entropy:", self.target_entropy)
-        print('Soft Q Network (1,2): ', self.critic_1)
-        print('Policy Network: ', self.policy)
+
+        # print("SAC Trainer target entropy:", self.target_entropy)
+        # print('Soft Q Network (1,2): ', self.critic_1)
+        # print('Policy Network: ', self.policy)
 
         # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
         self.optimizer_critic_1 = torch.optim.AdamW(self.critic_1.parameters(),
@@ -117,8 +116,6 @@ class AgentSAC:
         predicted_q1 = self.critic_1(states, actions)
         predicted_q2 = self.critic_2(states, actions)
 
-        #
-
         new_action, log_prob, _, _, log_std = self.policy.evaluate(states)
         new_next_action, new_log_prob, _, _, _ = self.policy.evaluate(
             next_states)
@@ -136,7 +133,6 @@ class AgentSAC:
             self.alpha = self.log_alpha.exp()
         else:
             self.alpha = 1.
-            alpha_loss = 0
 
         # Train Q function
         target_critic_min = torch.min(
@@ -276,7 +272,6 @@ class AgentSAC:
 
 
 if __name__ == '__main__':
-    import os
     import pprint
     from pathlib import Path
 
@@ -290,7 +285,6 @@ if __name__ == '__main__':
         "gamma": 0.99,
         "memory_size": 100000,
         "tau": 0.01,
-        "backup_interval": 100,
         "hidden_dim": 512,
         "state_dim": 3,
         "action_dim": 1,
@@ -319,10 +313,9 @@ if __name__ == '__main__':
 
 
     def test_agent():
-        import random
-
         import gym
         import numpy as np
+        import random
 
         from IPython.display import clear_output
         import matplotlib.pyplot as plt
