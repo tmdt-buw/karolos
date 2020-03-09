@@ -1,5 +1,6 @@
 from environments.robots.panda import Panda
 from environments.tasks.reach import Reach
+from environments.tasks.move_box import MoveBox
 import pybullet as p
 import pybullet_data as pd
 import gym
@@ -31,8 +32,6 @@ class Environment(gym.Env):
 
         self.bullet_client = bullet_client
 
-        # planeId = self.bullet_client.loadURDF("plane.urdf")
-
         self.task = self.make_task(task_config, self.bullet_client)
 
         self.robot = self.make_robot(robot_config, self.bullet_client)
@@ -55,6 +54,9 @@ class Environment(gym.Env):
 
         if task_name == 'reach':
             task = Reach(bullet_client, **task_config)
+        elif task_name == 'move_box':
+            task = MoveBox(bullet_client, **task_config)
+            self.bullet_client.loadURDF("plane.urdf")  # for gravity
         else:
             raise ValueError()
 
@@ -138,7 +140,7 @@ if __name__ == "__main__":
 
     env_kwargs2 = {
             "render": True,
-            "task_config": {"name": "reach",
+            "task_config": {"name": "move_box",
                             "dof": 3,
                             "only_positive": False
                             },
@@ -148,7 +150,7 @@ if __name__ == "__main__":
             }
         }
 
-    env1 = Environment(**env_kwargs1)
+    env1 = Environment(**env_kwargs2)
     # env2 = Environment(**env_kwargs2)
 
     while True:

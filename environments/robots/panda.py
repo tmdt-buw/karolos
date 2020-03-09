@@ -3,6 +3,7 @@ from gym import spaces
 import numpy as np
 import pybullet as p
 import logging
+import time
 
 
 class Panda(gym.Env):
