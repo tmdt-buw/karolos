@@ -11,7 +11,7 @@ import pybullet_utils.bullet_client as bc
 class Environment(gym.Env):
 
     def __init__(self, task_config, robot_config, render=False,
-                 bullet_client=None):
+                 bullet_client=None, **kwargs):
 
         self.render = render
 

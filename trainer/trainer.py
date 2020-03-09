@@ -8,6 +8,7 @@ import numpy as np
 import os
 import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
+from agents import get_agent
 
 
 class Trainer:
@@ -27,16 +28,6 @@ class Trainer:
             raise NotImplementedError(f"Unknown base package: {base_pkg}")
 
         return env_init
-
-    def get_agent(self, agent_config, state_dim, action_dim):
-        algorithm = agent_config.pop("algorithm")
-
-        if algorithm == "sac":
-            agent = AgentSAC(agent_config, state_dim, action_dim)
-        else:
-            raise NotImplementedError(f"Unknown algorithm {algorithm}")
-
-        return agent
 
     def check_experiment(self, directory, config):
         """
@@ -63,13 +54,16 @@ class Trainer:
             print(ordered(config))
             dec = input('Quit <any> or New Experiment <n> ?')
             if dec == 'n' or dec == 'N':
-                new_exp = osp.join("..", exp_config['results_dir'])+datetime.datetime.now().strftime("_%Y%m%d-%H%M%S")
+                new_exp = osp.join("..", exp_config[
+                    'results_dir']) + datetime.datetime.now().strftime(
+                    "_%Y%m%d-%H%M%S")
                 print('adding datetime to Experiment folder: ', new_exp, '\n')
                 return new_exp, config, True
             else:
                 exit('quitting')
         else:
-            print('Experiment config matches given config, loading experiment config')
+            print(
+                'Experiment config matches given config, loading experiment config')
             return osp.join("..", exp_config['results_dir']), exp_config, False
 
     def __init__(self, training_config):
@@ -78,7 +72,8 @@ class Trainer:
 
         # create results directories
         try:
-            results_dir = osp.join('results/', training_config.pop('experiment_name'))
+            results_dir = osp.join('results/',
+                                   training_config.pop('experiment_name'))
             training_config['results_dir'] = results_dir
         except KeyError:
             results_dir = training_config.pop('results_dir')
@@ -89,7 +84,8 @@ class Trainer:
         if not osp.exists(results_dir):
             os.makedirs(results_dir)
         else:
-            results_dir, training_config, load_new_agent = self.check_experiment(results_dir, training_config)
+            results_dir, training_config, load_new_agent = self.check_experiment(
+                results_dir, training_config)
             if load_new_agent:
                 os.makedirs(results_dir)
 
@@ -117,9 +113,9 @@ class Trainer:
         agent_config = training_config.pop("agent_config")
 
         # add action and state spaces to config
-        agent = self.get_agent(agent_config,
-                               env_orchestrator.observation_space,
-                               env_orchestrator.action_space)
+        agent = get_agent(agent_config,
+                          env_orchestrator.observation_space,
+                          env_orchestrator.action_space)
 
         if not load_new_agent:
             print('\nloading previous agent from', models_dir, '\n')
@@ -147,7 +143,8 @@ class Trainer:
 
         while sum(steps.values()) < training_config["total_timesteps"]:
 
-            next_save_timestep = (sum(steps.values()) // save_interval + 1) * save_interval
+            next_save_timestep = (sum(
+                steps.values()) // save_interval + 1) * save_interval
 
             # Save
             if sum(steps.values()) >= next_save_timestep:
