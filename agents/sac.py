@@ -3,6 +3,7 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 
 """
 
+import os
 import os.path as osp
 
 import numpy as np
@@ -271,7 +272,6 @@ class AgentSAC:
 
 
 if __name__ == '__main__':
-    import os
     import pprint
     from pathlib import Path
 
@@ -313,10 +313,9 @@ if __name__ == '__main__':
 
 
     def test_agent():
-        import random
-
         import gym
         import numpy as np
+        import random
 
         from IPython.display import clear_output
         import matplotlib.pyplot as plt

@@ -5,7 +5,6 @@ import pybullet as p
 import logging
 import time
 
-
 class Panda(gym.Env):
     tolerance_joint_rotation = np.pi / 180
     tolerance_joint_linear = 0.001
