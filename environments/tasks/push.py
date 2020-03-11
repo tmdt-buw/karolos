@@ -3,39 +3,62 @@ import numpy as np
 from gym import spaces
 
 
-class Reach(Task):
+class Push(Task):
 
-    def __init__(self, bullet_client, offset=(0, 0, 0),
-                 dof=1,
+    def __init__(self, bullet_client, offset=(0, 0, 0), dof=1,
                  only_positive=False):
 
-        super(Reach, self).__init__(bullet_client=bullet_client,
-                                    gravity=[0, 0, 0],
-                                    offset=offset,
-                                    dof=dof,
-                                    only_positive=only_positive)
+        super(Push, self).__init__(bullet_client=bullet_client,
+                                   gravity=[0, 0, -9.81],
+                                   # assuming 1kg box weight
+                                   offset=offset,
+                                   dof=dof,
+                                   only_positive=only_positive)
 
         self.limits = np.array([
             (-1., 1.),
             (-1., 1.),
-            (-0.2, 1.)
+            (0., 1.)
         ])
 
-        self.observation_space = spaces.Box(-1, 1, shape=(3,))
+        self.observation_space = spaces.Box(-1, 1, shape=(6,))
+
+        # add plane to place box on
+        bullet_client.loadURDF("plane.urdf")
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf", useFixedBase=True)
+        self.object = self.bullet_client.loadURDF("objects/box.urdf")
+
+        # self.camera_config = {
+        #     "width": 200,
+        #     "height": 200,
+        #
+        #     "viewMatrix": p.computeViewMatrix(
+        #         cameraEyePosition=[0, 0, 2],
+        #         cameraTargetPosition=[0, 0, 0],
+        #         cameraUpVector=[0, 1, 0]),
+        #
+        #     "projectionMatrix": p.computeProjectionMatrixFOV(
+        #         fov=60.0,
+        #         aspect=1.0,
+        #         nearVal=0.01,
+        #         farVal=10),
+        # }
+        # width, height, rgbImg, depthImg, segImg = p.getCameraImage(
+        #     **self.camera_config)
 
         self.max_steps = 5
 
     def reset(self, robot=None):
 
-        super(Reach, self).reset()
+        super(Push, self).reset()
 
         observation = None
         success = False
 
         while not success:
             self.reset_object(self.target, robot)
+            self.reset_object(self.object, robot)
             success, observation = self.get_observation()
 
         return observation
@@ -49,17 +72,32 @@ class Reach(Task):
 
         return position_target
 
+    def get_object(self):
+        position_object, _ = self.bullet_client.getBasePositionAndOrientation(
+            self.object)
+
+        position_object = np.array(position_object)
+
+        return position_object
+
     def get_observation(self):
 
         position_target = self.get_target()
+        position_object = self.get_object()
 
         observation = []
 
         for position_dimension_target, limits in zip(position_target,
-                                                            self.limits):
+                                                     self.limits):
             observation_target = self.convert_intervals(
                 position_dimension_target, limits, [-1, 1])
             observation.append(observation_target)
+
+        for position_dimension_object, limits in zip(position_object,
+                                                            self.limits):
+            observation_object = self.convert_intervals(
+                position_dimension_object, limits, [-1, 1])
+            observation.append(observation_object)
 
         observation = np.array(observation)
 
@@ -72,7 +110,7 @@ class Reach(Task):
 
     def get_goals(self, robot, success):
         if success:
-            achieved_goal = robot.get_position_tcp()
+            achieved_goal = self.get_object()
         else:
             achieved_goal = None
         desired_goal = self.get_target()
@@ -111,7 +149,6 @@ class Reach(Task):
 
         return done, goal_reached
 
-
 if __name__ == "__main__":
     import pybullet as p
     import pybullet_data as pd
@@ -124,7 +161,7 @@ if __name__ == "__main__":
     p.setTimeStep(time_step)
     p.setRealTimeSimulation(0)
 
-    task = Reach(p, dof=3)
+    task = Push(p, dof=3)
 
     while True:
         p.stepSimulation()
@@ -139,3 +176,5 @@ if __name__ == "__main__":
         print(obs)
 
         p.stepSimulation()
+
+        input()

@@ -76,16 +76,26 @@ class Environment(gym.Env):
         success_robot, observation_robot = self.robot.step(action)
         success_task, observation_task = self.task.step()
 
-        success = success_robot and success_task
+        info = {
+            "success": {
+                "robot": success_robot,
+                "task": success_task
+            }
+        }
 
-        done, reward, goal_reached = self.task.calculate_reward(self.robot,
-                                                                success)
+        success = np.all(info["success"].values())
+
+        achieved_goal, desired_goal = self.task.get_goals(self.robot, success)
+
+        info["achieved_goal"] = achieved_goal
+        info["desired_goal"] = desired_goal
+
+        reward = self.task.compute_reward(achieved_goal, desired_goal)
+        done, goal_reached = self.task.compute_done(achieved_goal, desired_goal)
+
+        info["goal_reached"] = goal_reached
 
         observation = np.concatenate((observation_robot, observation_task))
-
-        info = {
-            "goal_reached": goal_reached
-        }
 
         return observation, reward, done, info
 
@@ -94,7 +104,7 @@ if __name__ == "__main__":
 
     env_kwargs1 = {
         "render": False,
-        "task_config": {"name": "reach",
+        "task_config": {"name": "push",
                         "dof": 3,
                         "only_positive": False
                         },
@@ -104,20 +114,7 @@ if __name__ == "__main__":
         }
     }
 
-    env_kwargs2 = {
-        "render": True,
-        "task_config": {"name": "move_box",
-                        "dof": 3,
-                        "only_positive": False
-                        },
-        "robot_config": {
-            "name": "pandas",
-            "dof": 3
-        }
-    }
-
-    env1 = Environment(**env_kwargs2)
-    # env2 = Environment(**env_kwargs2)
+    env1 = Environment(**env_kwargs1)
 
     while True:
 
