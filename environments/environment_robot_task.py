@@ -1,5 +1,5 @@
-from environments.robots.panda import Panda
-from environments.tasks.reach import Reach
+from environments.robots import get_robot
+from environments.tasks import get_task
 import pybullet as p
 import pybullet_data as pd
 import gym
@@ -8,11 +8,10 @@ import numpy as np
 import pybullet_utils.bullet_client as bc
 
 
-class Environment(gym.GoalEnv):
+class Environment(gym.Env):
 
     def __init__(self, task_config, robot_config, render=False,
-                 bullet_client=None):
-
+                 bullet_client=None, **kwargs):
         self.render = render
 
         self.task_config = task_config
@@ -31,11 +30,9 @@ class Environment(gym.GoalEnv):
 
         self.bullet_client = bullet_client
 
-        # planeId = self.bullet_client.loadURDF("plane.urdf")
+        self.task = get_task(task_config, self.bullet_client)
 
-        self.task = self.make_task(task_config, self.bullet_client)
-
-        self.robot = self.make_robot(robot_config, self.bullet_client)
+        self.robot = get_robot(robot_config, self.bullet_client)
 
         self.action_space = self.robot.action_space
 
@@ -48,27 +45,6 @@ class Environment(gym.GoalEnv):
 
         self.observation_space = spaces.Box(-1, 1,
                                             shape=shape_observation_space)
-
-    def make_task(self, task_config, bullet_client):
-
-        task_name = task_config.pop("name")
-
-        if task_name == 'reach':
-            task = Reach(bullet_client, **task_config)
-        else:
-            raise ValueError()
-
-        return task
-
-    def make_robot(self, robot_config, bullet_client):
-        robot_name = robot_config.pop("name")
-
-        if robot_name == 'pandas':
-            robot = Panda(bullet_client, **robot_config)
-        else:
-            raise ValueError()
-
-        return robot
 
     def reset(self):
         """Reset the environment and return new state
@@ -96,65 +72,39 @@ class Environment(gym.GoalEnv):
     def render(self, mode='human'):
         ...
 
-    def compute_reward(self, achieved_goal, desired_goal, info):
-        reward = self.task.compute_reward(achieved_goal, desired_goal, info)
-
-        return reward, info
-
     def step(self, action):
-
         success_robot, observation_robot = self.robot.step(action)
         success_task, observation_task = self.task.step()
 
-        success = success_robot and success_task
-
         info = {
-            "success": success
+            "success": {
+                "robot": success_robot,
+                "task": success_task
+            }
         }
 
-        achieved_goal, desired_goal, info = self.task.get_goals(self.robot, info)
+        success = np.all(info["success"].values())
 
-        reward, info = self.compute_reward(achieved_goal, desired_goal, info)
+        achieved_goal, desired_goal = self.task.get_goals(self.robot, success)
 
-        done = self.task.compute_done(self.robot, info)
+        info["achieved_goal"] = achieved_goal
+        info["desired_goal"] = desired_goal
+
+        reward = self.task.compute_reward(achieved_goal, desired_goal)
+        done, goal_reached = self.task.compute_done(achieved_goal, desired_goal)
+
+        info["goal_reached"] = goal_reached
 
         observation = np.concatenate((observation_robot, observation_task))
 
-        if success:
-            # todo make generic by merging task observation and achived goal
-            info["her"] = {"observation": np.concatenate((observation_robot,
-                                                          achieved_goal)),
-                           "reward": 1,
-                           "done": True
-                           }
-
         return observation, reward, done, info
-
-    def test_compatability(self):
-        # todo check if task can be completed with robot (dimensionalities)
-        ...
 
 
 if __name__ == "__main__":
 
-    task = Reach
-    robot = Panda
-
     env_kwargs1 = {
         "render": False,
-        "task_config": {"name": "reach",
-                        "dof": 3,
-                        "only_positive": False
-                        },
-        "robot_config": {
-            "name": "pandas",
-            "dof": 3
-        }
-    }
-
-    env_kwargs2 = {
-        "render": True,
-        "task_config": {"name": "reach",
+        "task_config": {"name": "push",
                         "dof": 3,
                         "only_positive": False
                         },
@@ -165,7 +115,6 @@ if __name__ == "__main__":
     }
 
     env1 = Environment(**env_kwargs1)
-    # env2 = Environment(**env_kwargs2)
 
     while True:
 

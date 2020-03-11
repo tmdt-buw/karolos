@@ -8,6 +8,7 @@ import numpy as np
 import os
 import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
+from agents import get_agent
 
 
 class Trainer:
@@ -28,31 +29,69 @@ class Trainer:
 
         return env_init
 
-    def get_agent(self, agent_config, state_dim, action_dim):
-        algorithm = agent_config.pop("algorithm")
+    def check_experiment(self, directory, config):
+        """
+        1. check if config eq config in result dir, if not -> overwrite or rename experiment
+        2. return result dir
+        """
 
-        if algorithm == "sac":
-            agent = AgentSAC(agent_config, state_dim, action_dim)
+        def ordered(obj):
+            if isinstance(obj, dict):
+                return sorted((k, ordered(v)) for k, v in obj.items())
+            if isinstance(obj, list):
+                return sorted(ordered(x) for x in obj)
+            else:
+                return obj
+
+        print('Found experiment folder with same name')
+
+        with open(directory + '/config.json', 'r+') as fp:
+            exp_config = json.load(fp)
+
+        if not ordered(exp_config) == ordered(config):
+            print('Experiment config and given config do not match:')
+            print(ordered(exp_config))
+            print(ordered(config))
+            dec = input('Quit <any> or New Experiment <n> ?')
+            if dec == 'n' or dec == 'N':
+                new_exp = osp.join("..", exp_config[
+                    'results_dir']) + datetime.datetime.now().strftime(
+                    "_%Y%m%d-%H%M%S")
+                print('adding datetime to Experiment folder: ', new_exp, '\n')
+                return new_exp, config, True
+            else:
+                exit('quitting')
         else:
-            raise NotImplementedError(f"Unknown algorithm {algorithm}")
-
-        return agent
+            print(
+                'Experiment config matches given config, loading experiment config')
+            return osp.join("..", exp_config['results_dir']), exp_config, False
 
     def __init__(self, training_config):
 
         assert training_config["base_pkg"] in ["stable-baselines"]
 
         # create results directories
-        results_dir = training_config.pop("results_dir")
-        models_dir = osp.join(results_dir, "models")
-        log_dir = results_dir
+        try:
+            results_dir = osp.join('results/',
+                                   training_config.pop('experiment_name'))
+            training_config['results_dir'] = results_dir
+        except KeyError:
+            results_dir = training_config.pop('results_dir')
 
         results_dir = osp.join("..", results_dir)
-        models_dir = osp.join("..", models_dir)
-        log_dir = osp.join("..", log_dir)
+        load_new_agent = True
 
         if not osp.exists(results_dir):
             os.makedirs(results_dir)
+        else:
+            results_dir, training_config, load_new_agent = self.check_experiment(
+                results_dir, training_config)
+            if load_new_agent:
+                os.makedirs(results_dir)
+
+        models_dir = osp.join(results_dir, "models")
+        log_dir = results_dir
+
         if not osp.exists(models_dir):
             os.makedirs(models_dir)
         if not osp.exists(log_dir):
@@ -60,8 +99,9 @@ class Trainer:
 
         self.writer = SummaryWriter(log_dir)
 
-        with open(osp.join(results_dir, 'config.json'), 'w') as f:
-            json.dump(training_config, f)
+        if load_new_agent:
+            with open(osp.join(results_dir, 'config.json'), 'w') as f:
+                json.dump(training_config, f)
 
         # get environment
         env_config = training_config.pop("env_config")
@@ -73,9 +113,13 @@ class Trainer:
         agent_config = training_config.pop("agent_config")
 
         # add action and state spaces to config
-        agent = self.get_agent(agent_config,
-                               env_orchestrator.observation_space,
-                               env_orchestrator.action_space)
+        agent = get_agent(agent_config,
+                          env_orchestrator.observation_space,
+                          env_orchestrator.action_space)
+
+        if not load_new_agent:
+            print('\nloading previous agent from', models_dir, '\n')
+            agent.load(models_dir, train_mode=True)
 
         # reset all
         env_responses = env_orchestrator.reset_all()
@@ -88,10 +132,9 @@ class Trainer:
 
         requests = []
 
-        print(training_config)
-
         nb_tests = training_config["nb_tests"]
         test_interval = training_config["test_interval"]
+        save_interval = training_config["save_interval_steps"]
         next_test_timestep = 0
 
         best_success_ratio = 0.5
@@ -99,6 +142,14 @@ class Trainer:
         assert nb_tests >= nb_envs
 
         while sum(steps.values()) < training_config["total_timesteps"]:
+
+            next_save_timestep = (sum(
+                steps.values()) // save_interval + 1) * save_interval
+
+            # Save
+            if sum(steps.values()) >= next_save_timestep:
+                agent.save(models_dir)
+                print("\nsaved agent in", models_dir, '\n')
 
             # Test
             if sum(steps.values()) >= next_test_timestep:
@@ -290,6 +341,8 @@ if __name__ == "__main__":
         "test_interval": 1_000_000,
         "nb_tests": 1_000,
         "total_timesteps": 50_000_000,
+        "save_interval_steps": 1_000_000,
+        "experiment_name": "123",
         "results_dir": results_dir,
         "agent_config": {
             "algorithm": "sac",
@@ -304,13 +357,12 @@ if __name__ == "__main__":
             "auto_entropy": True,
             "memory_size": 2500,
             "tau": 0.0025,
-            "backup_interval": 100,
-            "hidden_dim": 512,
+            "hidden_dim": 8,
             "seed": 192,
             "tensorboard_histogram_interval": 5
         },
         "env_config": {
-            "nb_envs": cpu_count(),
+            "nb_envs": 1,
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
