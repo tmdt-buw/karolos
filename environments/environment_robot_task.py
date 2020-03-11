@@ -1,6 +1,5 @@
-from environments.robots.panda import Panda
-from environments.tasks.reach import Reach
-from environments.tasks.move_box import MoveBox
+from environments.robots import get_robot
+from environments.tasks import get_task
 import pybullet as p
 import pybullet_data as pd
 import gym
@@ -13,7 +12,6 @@ class Environment(gym.Env):
 
     def __init__(self, task_config, robot_config, render=False,
                  bullet_client=None, **kwargs):
-
         self.render = render
 
         self.task_config = task_config
@@ -32,9 +30,9 @@ class Environment(gym.Env):
 
         self.bullet_client = bullet_client
 
-        self.task = self.make_task(task_config, self.bullet_client)
+        self.task = get_task(task_config, self.bullet_client)
 
-        self.robot = self.make_robot(robot_config, self.bullet_client)
+        self.robot = get_robot(robot_config, self.bullet_client)
 
         self.action_space = self.robot.action_space
 
@@ -47,30 +45,6 @@ class Environment(gym.Env):
 
         self.observation_space = spaces.Box(-1, 1,
                                             shape=shape_observation_space)
-
-    def make_task(self, task_config, bullet_client):
-
-        task_name = task_config.pop("name")
-
-        if task_name == 'reach':
-            task = Reach(bullet_client, **task_config)
-        elif task_name == 'move_box':
-            task = MoveBox(bullet_client, **task_config)
-            self.bullet_client.loadURDF("plane.urdf")  # for gravity
-        else:
-            raise ValueError()
-
-        return task
-
-    def make_robot(self, robot_config, bullet_client):
-        robot_name = robot_config.pop("name")
-
-        if robot_name == 'pandas':
-            robot = Panda(bullet_client, **robot_config)
-        else:
-            raise ValueError()
-
-        return robot
 
     def reset(self):
         """Reset the environment and return new state
@@ -99,7 +73,6 @@ class Environment(gym.Env):
         ...
 
     def step(self, action):
-
         success_robot, observation_robot = self.robot.step(action)
         success_task, observation_task = self.task.step()
 
@@ -116,15 +89,8 @@ class Environment(gym.Env):
 
         return observation, reward, done, info
 
-    def test_compatability(self):
-        # todo check if task can be completed with robot (dimensionalities)
-        ...
-
 
 if __name__ == "__main__":
-
-    task = Reach
-    robot = Panda
 
     env_kwargs1 = {
         "render": False,
@@ -139,16 +105,16 @@ if __name__ == "__main__":
     }
 
     env_kwargs2 = {
-            "render": True,
-            "task_config": {"name": "move_box",
-                            "dof": 3,
-                            "only_positive": False
-                            },
-            "robot_config": {
-                "name": "pandas",
-                "dof": 3
-            }
+        "render": True,
+        "task_config": {"name": "move_box",
+                        "dof": 3,
+                        "only_positive": False
+                        },
+        "robot_config": {
+            "name": "pandas",
+            "dof": 3
         }
+    }
 
     env1 = Environment(**env_kwargs2)
     # env2 = Environment(**env_kwargs2)

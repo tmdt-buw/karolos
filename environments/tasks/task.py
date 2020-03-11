@@ -2,7 +2,7 @@ import pybullet as p
 import numpy as np
 from gym import spaces
 
-class MetaTask(object):
+class Task(object):
 
     def __init__(self,
                  bullet_client,

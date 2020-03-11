@@ -1,8 +1,8 @@
-from environments.tasks.metatask import MetaTask
+from environments.tasks.task import Task
 import numpy as np
 
 
-class Reach(MetaTask):
+class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
                  dof=1,

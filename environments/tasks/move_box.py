@@ -1,8 +1,8 @@
-from environments.tasks.metatask import MetaTask
+from environments.tasks.task import Task
 import numpy as np
 
 
-class MoveBox(MetaTask):
+class MoveBox(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
                  goal_box=(0.5, 0.5, 0.5),
