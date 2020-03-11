@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import random
+from environments import get_env
 
 class Orchestrator(object):
 
@@ -21,7 +22,7 @@ class Orchestrator(object):
 
     def run(self, env_config, pipe):
 
-        env = self.get_env(env_config)()
+        env = get_env(env_config)()
 
         while True:
 
@@ -43,22 +44,6 @@ class Orchestrator(object):
                 pipe.send(("observation space", env.observation_space))
             else:
                 raise NotImplementedError(func)
-
-    def get_env(self, env_config):
-        base_pkg = env_config.pop("base_pkg")
-
-        assert base_pkg in ["robot-task-rl"]
-
-        if base_pkg == "robot-task-rl":
-            from environments.environment_robot_task import Environment
-
-            def env_init():
-                env = Environment(**env_config)
-                return env
-        else:
-            raise NotImplementedError(f"Unknown base package: {base_pkg}")
-
-        return env_init
 
     def send_receive(self, actions=()):
         self.send(actions)
