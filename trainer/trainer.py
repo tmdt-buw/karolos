@@ -139,6 +139,8 @@ class Trainer:
 
         best_success_ratio = 0.5
 
+        agent.save(models_dir)
+
         assert nb_tests >= nb_envs
 
         while sum(steps.values()) < training_config["total_timesteps"]:
