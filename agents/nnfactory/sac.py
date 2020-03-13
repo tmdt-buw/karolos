@@ -51,7 +51,7 @@ class SoftQNetwork(nn.Module):
 
 
 class PolicyNet(nn.Module):
-    def __init__(self, in_dim, action_dim, hidden_dim, device, log_std_min=-20,
+    def __init__(self, in_dim, action_dim, hidden_dim, log_std_min=-20,
                  log_std_max=2, init_w=3e-3):
         assert len(in_dim) == 1
         assert len(action_dim) == 1
@@ -61,8 +61,6 @@ class PolicyNet(nn.Module):
 
         super(PolicyNet, self).__init__()
         # device is initialized by agents Class
-
-        self.device = device
 
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
@@ -91,28 +89,29 @@ class PolicyNet(nn.Module):
 
         return mean, log_std
 
+    # todo: move functionality in Agent
     def evaluate(self, state, eps=1e-06):
         mean, log_std = self.forward(state)
         std = log_std.exp()
 
         normal = Normal(0, 1)
         z = normal.sample()
-        action = torch.tanh(mean + std * z.to(self.device))
+        action = torch.tanh(mean + std * z)
         log_prob = Normal(mean, std).log_prob(
-            mean + std * z.to(self.device)) - torch.log(
+            mean + std * z) - torch.log(
             1. - action.pow(2) + eps)
         log_prob = log_prob.sum(dim=1, keepdim=True)
         return action, log_prob, z, mean, log_std
 
     def get_action(self, state):
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        state = torch.FloatTensor(state).unsqueeze(0)
 
         mean, log_std = self.forward(state)
 
         std = log_std.exp()
 
         normal = Normal(0, 1)
-        z = normal.sample().to(self.device)
+        z = normal.sample()
         # action [-1,1]
         # when testing, we can only use the mean (see spinningup doc)
         action = torch.tanh(mean + std * z)

@@ -60,8 +60,7 @@ class AgentSAC:
         self.target_critic_2 = SoftQNetwork(state_dim, action_dim,
                                             self.h_dim).to(device)
         self.policy = PolicyNet(in_dim=state_dim, action_dim=action_dim,
-                                hidden_dim=self.h_dim, device=device).to(
-            device)
+                                hidden_dim=self.h_dim).to(device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
                                      requires_grad=True, device=device)
