@@ -1,30 +1,28 @@
-from collections import  deque, namedtuple
-import random
-import torch
+from collections import deque, namedtuple
 import numpy as np
+import random
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, buffer_size, batch_size, seed):
-
+    def __init__(self, buffer_size):
         self.memory = deque(maxlen=buffer_size)
-        self.batch_size = batch_size
-        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
-        random.seed(seed)
+        self.experience = namedtuple("Experience",
+                                     field_names=["state", "action", "reward",
+                                                  "next_state", "done"])
 
     def add(self, state, action, reward, next_state, done):
         """Add a new experience to memory."""
         e = self.experience(state, action, reward, next_state, done)
         self.memory.append(e)
 
-    def sample(self):
+    def sample(self, n_samples):
         """Randomly sample a batch of experiences from memory."""
-        experiences = random.sample(self.memory, k=self.batch_size)
+        experiences = random.sample(self.memory, k=n_samples)
 
-        states, actions, rewards, next_states, terminals = map(np.stack, zip(*experiences))
+        states, actions, rewards, next_states, terminals = map(np.stack, zip(
+            *experiences))
 
         return states, actions, rewards, next_states, terminals
 

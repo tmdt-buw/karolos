@@ -60,7 +60,8 @@ class AgentSAC:
         self.target_critic_2 = SoftQNetwork(state_dim, action_dim,
                                             self.h_dim).to(device)
         self.policy = PolicyNet(in_dim=state_dim, action_dim=action_dim,
-                                hidden_dim=self.h_dim, device=device).to(device)
+                                hidden_dim=self.h_dim, device=device).to(
+            device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
                                      requires_grad=True, device=device)
@@ -93,9 +94,7 @@ class AgentSAC:
         self.criterion_critic_1 = nn.MSELoss()
         self.criterion_critic_2 = nn.MSELoss()
 
-        self.memory = ReplayBuffer(buffer_size=self.memory_size,
-                                   batch_size=self.batch_size,
-                                   seed=config["seed"])
+        self.memory = ReplayBuffer(buffer_size=self.memory_size)
 
     def learn(self):
 
@@ -105,7 +104,8 @@ class AgentSAC:
         self.target_critic_1.train()
         self.target_critic_2.train()
 
-        states, actions, rewards, next_states, dones = self.memory.sample()
+        states, actions, rewards, next_states, dones = self.memory.sample(
+            self.batch_size)
 
         states = torch.FloatTensor(states).to(device)
         actions = torch.FloatTensor(actions).to(device)
@@ -291,8 +291,9 @@ if __name__ == '__main__':
         "seed": 192,
         "tensorboard_histogram_interval": 100,
         "auto_entropy": True,
-        "root_path": Path(__file__).parent.resolve().as_posix().replace(' ',
-                                                                        '\ ') + '/test_0/',
+        "root_path":
+            Path(__file__).parent.resolve().as_posix().replace(' ',
+                                                               '\ ') + '/test_0/',
         "run_name": 'test_0'
     }
 
