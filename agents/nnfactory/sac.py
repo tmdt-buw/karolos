@@ -51,9 +51,9 @@ class SoftQNetwork(nn.Module):
 
     def forward(self, state, action):
         x = torch.cat([state, action], 1)
-        x = self.net(x)
+        out = self.net(x)
 
-        return x
+        return out
 
 
 class PolicyNet(nn.Module):
@@ -92,8 +92,8 @@ class PolicyNet(nn.Module):
         self.log_std_linear.bias.data.uniform_(-init_w, init_w)
 
 
-    def forward(self, x):
-        x = self.net(x)
+    def forward(self, state):
+        x = self.net(state)
 
         mean = self.mean_linear(x)
         log_std = self.log_std_linear(x)
