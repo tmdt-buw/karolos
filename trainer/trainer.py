@@ -1,3 +1,8 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath("."))
+
 from agents.sac import AgentSAC
 from collections import defaultdict
 import datetime
@@ -84,8 +89,8 @@ class Trainer:
         if not osp.exists(results_dir):
             os.makedirs(results_dir)
         else:
-            results_dir, training_config, load_new_agent = self.check_experiment(
-                results_dir, training_config)
+            results_dir, training_config, load_new_agent = \
+                self.check_experiment(results_dir, training_config)
             if load_new_agent:
                 os.makedirs(results_dir)
 
@@ -140,6 +145,10 @@ class Trainer:
         best_success_ratio = 0.5
 
         assert nb_tests >= nb_envs
+
+        from tqdm import tqdm
+
+        pbar = tqdm(total=training_config["total_timesteps"])
 
         while sum(steps.values()) < training_config["total_timesteps"]:
 
@@ -329,6 +338,9 @@ class Trainer:
             requests = []
 
             agent.learn()
+
+            pbar.update(sum(steps.values()) - pbar.n)
+            pbar.refresh()
 
 
 if __name__ == "__main__":
