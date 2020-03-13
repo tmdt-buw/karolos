@@ -330,6 +330,7 @@ if __name__ == "__main__":
             "memory_size": 2500,
             "tau": 0.0025,
             "hidden_dim": 8,
+            "hidden_layers": 4,
             "seed": 192,
             "tensorboard_histogram_interval": 5
         },

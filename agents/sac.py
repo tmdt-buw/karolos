@@ -16,7 +16,7 @@ from agents.utils.replay_buffer import ReplayBuffer
 # todo make device parameter of Agent
 use_cuda = torch.cuda.is_available()
 device = torch.device('cuda' if use_cuda else 'cpu')
-
+print('\n DEVICE', device, '\n')
 
 class AgentSAC:
     def __init__(self, config, observation_space, action_space):
@@ -31,6 +31,7 @@ class AgentSAC:
         assert len(action_dim) == 1
 
         self.h_dim = config["hidden_dim"]
+        self.h_layers = config['hidden_layers']
         self.action_dim = action_dim
         self.soft_q_lr = config["soft_q_lr"]
         self.pol_lr = config["policy_lr"]
@@ -51,16 +52,17 @@ class AgentSAC:
         torch.manual_seed(config['seed'])
 
         # generate networks
-        self.critic_1 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(
+        self.critic_1 = SoftQNetwork(state_dim, action_dim, self.h_dim, self.h_layers).to(
             device)
-        self.critic_2 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(
+        self.critic_2 = SoftQNetwork(state_dim, action_dim, self.h_dim, self.h_layers).to(
             device)
         self.target_critic_1 = SoftQNetwork(state_dim, action_dim,
-                                            self.h_dim).to(device)
+                                            self.h_dim, self.h_layers).to(device)
         self.target_critic_2 = SoftQNetwork(state_dim, action_dim,
-                                            self.h_dim).to(device)
+                                            self.h_dim, self.h_layers).to(device)
         self.policy = PolicyNet(in_dim=state_dim, action_dim=action_dim,
-                                hidden_dim=self.h_dim, device=device).to(
+                                hidden_dim=self.h_dim, device=device,
+                                num_layers_linear_hidden=self.h_layers).to(
             device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
@@ -286,6 +288,7 @@ if __name__ == '__main__':
         "memory_size": 100000,
         "tau": 0.01,
         "hidden_dim": 512,
+        "hidden_layers": 3,
         "state_dim": 3,
         "action_dim": 1,
         "seed": 192,

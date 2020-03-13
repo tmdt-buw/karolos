@@ -6,6 +6,7 @@ import numpy as np
 
 
 class ValueNet(nn.Module):
+    # not used
     def __init__(self, state_dim, hidden_dim, init_w=3e-3):
         super(ValueNet, self).__init__()
         self.l1 = nn.Linear(state_dim, hidden_dim)
@@ -15,7 +16,6 @@ class ValueNet(nn.Module):
         # initialize,
         self.l3.weight.data.uniform_(-init_w, init_w)
         self.l3.bias.data.uniform_(-init_w, init_w)
-        # print(self)
 
     def forward(self, state):
         x = F.relu(self.l1(state))
@@ -25,7 +25,8 @@ class ValueNet(nn.Module):
 
 
 class SoftQNetwork(nn.Module):
-    def __init__(self, in_dim, action_dim, hidden_dim, init_w=3e-3):
+    def __init__(self, in_dim, action_dim, hidden_dim,
+                 num_layers_linear_hidden, init_w=3e-3):
         assert len(in_dim) == 1
         assert len(action_dim) == 1
 
@@ -33,26 +34,32 @@ class SoftQNetwork(nn.Module):
         action_dim = np.product(action_dim)
 
         super(SoftQNetwork, self).__init__()
-        self.l1 = nn.Linear(in_dim + action_dim, hidden_dim)
-        self.l2 = nn.Linear(hidden_dim, hidden_dim)
-        self.l3 = nn.Linear(hidden_dim, 1)
+
+        layers = [nn.Linear(in_dim + action_dim, hidden_dim)]
+
+        for l in range(num_layers_linear_hidden):
+            layers.append(nn.ReLU())
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+
+        layers.append(nn.Linear(hidden_dim, 1))
 
         # init
-        self.l3.weight.data.uniform_(-init_w, init_w)
-        self.l3.bias.data.uniform_(-init_w, init_w)
-        # print(self)
+        layers[-1].weight.data.uniform_(-init_w, init_w)
+        layers[-1].bias.data.uniform_(-init_w, init_w)
+
+        self.net = nn.Sequential(*layers)
 
     def forward(self, state, action):
         x = torch.cat([state, action], 1)
-        x = F.relu(self.l1(x))
-        x = F.relu(self.l2(x))
-        x = self.l3(x)
+        x = self.net(x)
+
         return x
 
 
 class PolicyNet(nn.Module):
-    def __init__(self, in_dim, action_dim, hidden_dim, device, log_std_min=-20,
-                 log_std_max=2, init_w=3e-3):
+    def __init__(self, in_dim, action_dim, hidden_dim, device, num_layers_linear_hidden,
+             log_std_min=-20, log_std_max=2, init_w=3e-3):
+
         assert len(in_dim) == 1
         assert len(action_dim) == 1
 
@@ -67,9 +74,14 @@ class PolicyNet(nn.Module):
         self.log_std_min = log_std_min
         self.log_std_max = log_std_max
 
-        self.l1 = nn.Linear(in_dim, hidden_dim)
-        self.l2 = nn.Linear(hidden_dim, hidden_dim)
-        self.l3 = nn.Linear(hidden_dim, hidden_dim)
+        layers = [nn.Linear(in_dim, hidden_dim)]
+
+        for l in range(num_layers_linear_hidden):
+            layers.append(nn.ReLU())
+            layers.append(nn.Linear(hidden_dim, hidden_dim))
+        layers.append(nn.ReLU())
+
+        self.net = nn.Sequential(*layers)
 
         self.mean_linear = nn.Linear(hidden_dim, action_dim)
         self.mean_linear.weight.data.uniform_(-init_w, init_w)
@@ -79,10 +91,9 @@ class PolicyNet(nn.Module):
         self.log_std_linear.weight.data.uniform_(-init_w, init_w)
         self.log_std_linear.bias.data.uniform_(-init_w, init_w)
 
-    def forward(self, state):
-        x = F.relu(self.l1(state))
-        x = F.relu(self.l2(x))
-        x = F.relu(self.l3(x))
+
+    def forward(self, x):
+        x = self.net(x)
 
         mean = self.mean_linear(x)
         log_std = self.log_std_linear(x)
@@ -121,11 +132,11 @@ class PolicyNet(nn.Module):
 
 
 if __name__ == '__main__':
-    use_cuda = torch.cuda.is_available()
+    use_cuda = False
     device = torch.device('cuda' if use_cuda else 'cpu')
-
-    pol = PolicyNet(4, 2, device, 32)
-    state = torch.tensor([1, 1, 1, 1], dtype=torch.float32)
-    for i in range(20):
-        a = pol.get_action(state)
-        print(a)
+    print(device)
+    t = SoftQNetwork([4], [3], 512, 3).to(device)
+    print(t.forward(torch.FloatTensor([[1,1,1,1]]).to(device),
+                    torch.FloatTensor([[1,1,1]]).to(device)))
+    t2 = PolicyNet([4], [3], 512, device, 3)
+    print(t2.forward(torch.FloatTensor([1,1,1,1]).to(device)))
