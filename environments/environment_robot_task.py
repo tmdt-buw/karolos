@@ -100,14 +100,15 @@ class Environment(gym.Env):
             # todo make generic by merging task observation and achived goal
             her_goal = achieved_goal
             her_done, _ = self.task.compute_done(achieved_goal,
-                                                          her_goal)
+                                                 her_goal)
 
-            info["her"] = {"observation": np.concatenate((observation_robot,
-                                                          her_goal)),
-                           "reward": self.task.compute_reward(achieved_goal,
-                                                              her_goal),
-                           "done": her_goal
-                           }
+            info["her"] = {
+                "observation": np.concatenate((observation_robot,
+                                               her_goal)),
+                "reward": self.task.compute_reward(achieved_goal,
+                                                   her_goal),
+                "done": her_done
+            }
 
         observation = np.concatenate((observation_robot, observation_task))
 

@@ -342,11 +342,9 @@ if __name__ == "__main__":
         "nb_tests": 1_000,
         "total_timesteps": 50_000_000,
         "save_interval_steps": 1_000_000,
-        "experiment_name": "123",
         "results_dir": results_dir,
         "agent_config": {
             "algorithm": "sac",
-
             "soft_q_lr": 0.0005,
             "policy_lr": 0.0005,
             "alpha": 1,
@@ -362,7 +360,7 @@ if __name__ == "__main__":
             "tensorboard_histogram_interval": 5
         },
         "env_config": {
-            "nb_envs": 1,
+            "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
