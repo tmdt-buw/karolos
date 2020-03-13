@@ -36,15 +36,17 @@ class Environment(gym.Env):
 
         self.action_space = self.robot.action_space
 
-        self.observation_space_task = self.task.observation_space
-        self.observation_space_robot = self.robot.observation_space
+        self.observation_space = spaces.Dict({
+            'task': self.task.observation_space,
+            'robot': self.robot.observation_space
+        })
 
-        shape_observation_space = tuple(
-            np.array(self.observation_space_task.shape) + np.array(
-                self.observation_space_robot.shape))
-
-        self.observation_space = spaces.Box(-1, 1,
-                                            shape=shape_observation_space)
+        # shape_observation_space = tuple(
+        #     np.array(self.observation_space['task'].shape) + np.array(
+        #         self.observation_space['robot'].shape))
+        #
+        # self.observation_space = spaces.Box(-1, 1,
+        #                                     shape=shape_observation_space)
 
     def reset(self):
         """Reset the environment and return new state
@@ -63,9 +65,12 @@ class Environment(gym.Env):
         observation_robot = self.robot.reset()
         observation_task = self.task.reset()
 
-        observation = np.concatenate((observation_robot, observation_task))
+        observation = {
+            'task': observation_robot,
+            'robot': observation_task
+        }
 
-        assert self.observation_space.contains(observation)
+        assert self.observation_space == observation
 
         return observation
 
@@ -91,8 +96,7 @@ class Environment(gym.Env):
         info["desired_goal"] = desired_goal
 
         reward = self.task.compute_reward(achieved_goal, desired_goal)
-        done, goal_reached = self.task.compute_done(achieved_goal,
-                                                    desired_goal)
+        done, goal_reached = self.task.compute_done(achieved_goal, desired_goal)
 
         info["goal_reached"] = goal_reached
 
@@ -109,7 +113,10 @@ class Environment(gym.Env):
                 "done": her_done
             }
 
-        observation = np.concatenate((observation_robot, observation_task))
+        observation = {
+            'task': observation_robot,
+            'robot': observation_task
+        }
 
         return observation, reward, done, info
 
@@ -117,7 +124,7 @@ class Environment(gym.Env):
 if __name__ == "__main__":
 
     env_kwargs1 = {
-        "render": True,
+        "render": False,
         "task_config": {"name": "push",
                         "dof": 3,
                         "only_positive": False
@@ -127,30 +134,8 @@ if __name__ == "__main__":
             "dof": 3
         }
     }
-    env_kwargs2 = {
-        "render": True,
-        "task_config": {"name": "push",
-                        "dof": 3,
-                        "only_positive": False
-                        },
-        "robot_config": {
-            "name": "pandas",
-            "offset": [2,0,0],
-            "dof": 3
-        }
-    }
 
-
-    bullet_client = bc.BulletClient(p.GUI)
-    bullet_client.setAdditionalSearchPath(pd.getDataPath())
-
-    time_step = 1. / 60.
-    bullet_client.setTimeStep(time_step)
-    bullet_client.setRealTimeSimulation(0)
-
-    env1 = Environment(**env_kwargs1, bullet_client=bullet_client)
-
-    env2 = Environment(**env_kwargs2, bullet_client=bullet_client)
+    env1 = Environment(**env_kwargs1)
 
     while True:
 
