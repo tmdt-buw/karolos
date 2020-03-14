@@ -3,7 +3,6 @@ import os
 
 sys.path.insert(0, os.path.abspath("."))
 
-from agents.sac import AgentSAC
 from collections import defaultdict
 import datetime
 from environments.orchestrator import Orchestrator
@@ -83,7 +82,7 @@ class Trainer:
         except KeyError:
             results_dir = training_config.pop('results_dir')
 
-        results_dir = osp.join("..", results_dir)
+        results_dir = osp.join(".", results_dir)
         load_new_agent = True
 
         if not osp.exists(results_dir):
@@ -200,14 +199,23 @@ class Trainer:
                                               state, done)
                                 agent.add_experience([experience])
 
-                                if "her" in info:
-                                    state_her = info["her"]["observation"]
-                                    reward_her = info["her"]["reward"]
-                                    done_her = info["her"]["done"]
+                                if training_config["use_hindsight_experience_replay"] and "her" in info:
+                                    her_goal = info["her"]["achieved_goal"]
 
-                                    experience = (previous_state,
-                                                  action, reward_her,
-                                                  state_her, done_her)
+                                    her_previous_state = previous_state.copy()
+                                    her_previous_state[
+                                    -len(her_goal):] = her_goal
+
+                                    her_reward = info["her"]["reward"]
+
+                                    her_state = state.copy()
+                                    her_state[-len(her_goal):] = her_goal
+
+                                    her_done = info["her"]["done"]
+
+                                    experience = (her_previous_state,
+                                                  action, her_reward,
+                                                  her_state, her_done)
                                     agent.add_experience([experience])
 
                             if done:
@@ -293,14 +301,22 @@ class Trainer:
                                       state, done)
                         agent.add_experience([experience])
 
-                        if "her" in info:
-                            state_her = info["her"]["observation"]
-                            reward_her = info["her"]["reward"]
-                            done_her = info["her"]["done"]
+                        if training_config["use_hindsight_experience_replay"] and "her" in info:
+                            her_goal = info["her"]["achieved_goal"]
 
-                            experience = (previous_state,
-                                          action, reward_her,
-                                          state_her, done_her)
+                            her_previous_state = previous_state.copy()
+                            her_previous_state[-len(her_goal):] = her_goal
+
+                            her_reward = info["her"]["reward"]
+
+                            her_state = state.copy()
+                            her_state[-len(her_goal):] = her_goal
+
+                            her_done = info["her"]["done"]
+
+                            experience = (her_previous_state,
+                                          action, her_reward,
+                                          her_state, her_done)
                             agent.add_experience([experience])
 
                     if done:
@@ -350,11 +366,12 @@ if __name__ == "__main__":
     training_config = {
         "base_pkg": "stable-baselines",
         "algorithm": "SAC",
-        "test_interval": 1_000_000,
-        "nb_tests": 1_000,
-        "total_timesteps": 50_000_000,
+        "test_interval": 10_000,
+        "nb_tests": 100,
+        "total_timesteps": 25_000_000,
         "save_interval_steps": 1_000_000,
         "results_dir": results_dir,
+        "use_hindsight_experience_replay": True,
         "agent_config": {
             "algorithm": "sac",
             "soft_q_lr": 0.0005,
@@ -365,11 +382,10 @@ if __name__ == "__main__":
             "batch_size": 128,
             "gamma": 0.95,
             "auto_entropy": True,
-            "memory_size": 2500,
+            "memory_size": 100_000,
             "tau": 0.0025,
-            "hidden_dim": 8,
-            "seed": 192,
-            "tensorboard_histogram_interval": 5
+            "hidden_dim": 50,
+            "seed": 192
         },
         "env_config": {
             "nb_envs": cpu_count(),
