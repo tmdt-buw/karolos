@@ -43,7 +43,6 @@ class AgentSAC:
         self.memory_size = config['memory_size']
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
-        self.tb_histogram_interval = config["tensorboard_histogram_interval"]
 
         self.reward_scale = 10.
         self.target_entropy = -1 * action_dim[0]

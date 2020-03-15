@@ -36,17 +36,34 @@ class Environment(gym.Env):
 
         self.action_space = self.robot.action_space
 
-        self.observation_space = spaces.Dict({
-            'task': self.task.observation_space,
-            'robot': self.robot.observation_space
+        self.observation_dict = spaces.Dict({
+            'state': spaces.Dict({
+                'task': self.task.observation_space,
+                'robot': self.robot.observation_space,
+                # 'agent_state': tuple(np.array(self.task.observation_space.shape) +
+                #                      np.array(self.robot.observation_space.shape))
+            }),
+            'goal': spaces.Dict({
+                'task': self.task.observation_space,
+                'achieved_goal': self.task.observation_space,
+                'desired_goal': self.task.observation_space,
+                'reached': spaces.MultiBinary(1)
+            }),
+            'success': spaces.Dict({
+                'robot': spaces.MultiBinary(1),
+                'task': spaces.MultiBinary(1)
+            }),
+            'her': spaces.Dict({
+                "achieved_goal": spaces.MultiBinary(1),
+                "reward": spaces.Box(-1, 1, shape=(1,)),
+                "done": spaces.MultiBinary(1)
+            })
         })
 
-        # shape_observation_space = tuple(
-        #     np.array(self.observation_space['task'].shape) + np.array(
-        #         self.observation_space['robot'].shape))
-        #
-        # self.observation_space = spaces.Box(-1, 1,
-        #                                     shape=shape_observation_space)
+        self.observation_space = tuple(np.array(self.task.observation_space.shape) +
+                                     np.array(self.robot.observation_space.shape))
+        self.observation_space = spaces.Box(-1, 1,
+                                            shape=self.observation_space)
 
     def reset(self):
         """Reset the environment and return new state
@@ -65,14 +82,16 @@ class Environment(gym.Env):
         observation_robot = self.robot.reset()
         observation_task = self.task.reset()
 
-        observation = {
-            'task': observation_robot,
-            'robot': observation_task
+        observation_state = {
+            'state': {
+                'task': observation_task,
+                'robot': observation_robot
+            }
         }
 
-        assert self.observation_space == observation
+        #assert set(self.observation_dict['state']) == set(observation_state)
 
-        return observation
+        return observation_state
 
     def render(self, mode='human'):
         ...
@@ -81,24 +100,26 @@ class Environment(gym.Env):
         success_robot, observation_robot = self.robot.step(action)
         success_task, observation_task = self.task.step()
 
-        info = {
+        observation = {
             "success": {
                 "robot": success_robot,
                 "task": success_task
             }
         }
 
-        success = np.all(info["success"].values())
+        success = np.all(observation["success"].values())
 
         achieved_goal, desired_goal = self.task.get_goals(self.robot, success)
 
-        info["achieved_goal"] = achieved_goal
-        info["desired_goal"] = desired_goal
+        observation["goal"] = {
+            'achieved_goal': achieved_goal,
+            'desired_goal': desired_goal
+        }
 
         reward = self.task.compute_reward(achieved_goal, desired_goal)
         done, goal_reached = self.task.compute_done(achieved_goal, desired_goal)
 
-        info["goal_reached"] = goal_reached
+        observation["goal"]["reached"] = goal_reached
 
         if success:
             # todo make generic by merging task observation and achived goal
@@ -107,18 +128,20 @@ class Environment(gym.Env):
             her_done, _ = self.task.compute_done(achieved_goal,
                                                  achieved_goal)
 
-            info["her"] = {
+            observation["her"] = {
                 "achieved_goal": achieved_goal,
                 "reward": her_reward,
                 "done": her_done
             }
 
-        observation = {
+        observation["state"] = {
             'task': observation_robot,
-            'robot': observation_task
+            'robot': observation_task,
         }
 
-        return observation, reward, done, info
+        #assert self.observation_dict == observation
+
+        return observation, reward, done
 
 
 if __name__ == "__main__":
@@ -147,8 +170,7 @@ if __name__ == "__main__":
 
         while not done:
             action1 = env1.action_space.sample()
-            obs, reward, done, info = env1.step(action1)
+            obs, reward, done = env1.step(action1)
 
             step += 1
 
-        print(info)
