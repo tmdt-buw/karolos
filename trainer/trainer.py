@@ -1,4 +1,8 @@
-from agents.sac import AgentSAC
+import sys
+import os
+
+sys.path.insert(0, os.path.abspath("."))
+
 from collections import defaultdict
 import datetime
 from environments.orchestrator import Orchestrator
@@ -78,14 +82,14 @@ class Trainer:
         except KeyError:
             results_dir = training_config.pop('results_dir')
 
-        results_dir = osp.join("..", results_dir)
+        results_dir = osp.join(".", results_dir)
         load_new_agent = True
 
         if not osp.exists(results_dir):
             os.makedirs(results_dir)
         else:
-            results_dir, training_config, load_new_agent = self.check_experiment(
-                results_dir, training_config)
+            results_dir, training_config, load_new_agent = \
+                self.check_experiment(results_dir, training_config)
             if load_new_agent:
                 os.makedirs(results_dir)
 
@@ -143,6 +147,10 @@ class Trainer:
 
         assert nb_tests >= nb_envs
 
+        from tqdm import tqdm
+
+        pbar = tqdm(total=training_config["total_timesteps"])
+
         while sum(steps.values()) < training_config["total_timesteps"]:
 
             next_save_timestep = (sum(
@@ -185,10 +193,33 @@ class Trainer:
                             episodic_reward[env_id].append(reward)
                             previous_state = states.pop(env_id, None)
                             if previous_state is not None:
+
+                                action = actions.pop(env_id)
+
                                 experience = (previous_state,
-                                              actions.pop(env_id), reward,
+                                              action, reward,
                                               state, done)
                                 agent.add_experience([experience])
+
+                                if training_config["use_hindsight_experience_replay"] and "her" in info:
+                                    her_goal = info["her"]["achieved_goal"]
+
+                                    her_previous_state = previous_state.copy()
+                                    her_previous_state[
+                                    -len(her_goal):] = her_goal
+
+                                    her_reward = info["her"]["reward"]
+
+                                    her_state = state.copy()
+                                    her_state[-len(her_goal):] = her_goal
+
+                                    her_done = info["her"]["done"]
+
+                                    experience = (her_previous_state,
+                                                  action, her_reward,
+                                                  her_state, her_done)
+                                    agent.add_experience([experience])
+
                             if done:
                                 episode_reward = sum(episodic_reward[env_id])
 
@@ -265,9 +296,31 @@ class Trainer:
                     episodic_reward[env_id].append(reward)
                     previous_state = states.pop(env_id, None)
                     if previous_state is not None:
-                        experience = (previous_state, actions.pop(env_id),
-                                      reward, state, done)
+                        action = actions.pop(env_id)
+
+                        experience = (previous_state,
+                                      action, reward,
+                                      state, done)
                         agent.add_experience([experience])
+
+                        if training_config["use_hindsight_experience_replay"] and "her" in info:
+                            her_goal = info["her"]["achieved_goal"]
+
+                            her_previous_state = previous_state.copy()
+                            her_previous_state[-len(her_goal):] = her_goal
+
+                            her_reward = info["her"]["reward"]
+
+                            her_state = state.copy()
+                            her_state[-len(her_goal):] = her_goal
+
+                            her_done = info["her"]["done"]
+
+                            experience = (her_previous_state,
+                                          action, her_reward,
+                                          her_state, her_done)
+                            agent.add_experience([experience])
+
                     if done:
                         episode_reward = sum(episodic_reward[env_id])
 
@@ -304,6 +357,9 @@ class Trainer:
 
             agent.learn()
 
+            pbar.update(sum(steps.values()) - pbar.n)
+            pbar.refresh()
+
 
 if __name__ == "__main__":
     results_dir = osp.join("results",
@@ -312,15 +368,14 @@ if __name__ == "__main__":
     training_config = {
         "base_pkg": "stable-baselines",
         "algorithm": "SAC",
-        "test_interval": 1_000_000,
-        "nb_tests": 1_000,
-        "total_timesteps": 50_000_000,
+        "test_interval": 500_000,
+        "nb_tests": 100,
+        "total_timesteps": 25_000_000,
         "save_interval_steps": 1_000_000,
-        "experiment_name": "123",
         "results_dir": results_dir,
+        "use_hindsight_experience_replay": True,
         "agent_config": {
             "algorithm": "sac",
-
             "soft_q_lr": 0.0005,
             "policy_lr": 0.0005,
             "alpha": 1,
@@ -329,15 +384,14 @@ if __name__ == "__main__":
             "batch_size": 128,
             "gamma": 0.95,
             "auto_entropy": True,
-            "memory_size": 2500,
+            "memory_size": 100_000,
             "tau": 0.0025,
-            "hidden_dim": 8,
+            "hidden_dim": 25,
             "hidden_layers": 4,
-            "seed": 192,
-            "tensorboard_histogram_interval": 5
+            "seed": 192
         },
         "env_config": {
-            "nb_envs": 1,
+            "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
