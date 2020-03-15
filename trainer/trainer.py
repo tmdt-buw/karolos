@@ -14,6 +14,8 @@ import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
 from agents import get_agent
 
+from tqdm import tqdm
+
 
 class Trainer:
 
@@ -143,11 +145,7 @@ class Trainer:
 
         best_success_ratio = 0.5
 
-        agent.save(models_dir)
-
         assert nb_tests >= nb_envs
-
-        from tqdm import tqdm
 
         pbar = tqdm(total=training_config["total_timesteps"])
 
