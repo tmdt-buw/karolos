@@ -9,14 +9,15 @@ import os.path as osp
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.distributions import Normal
 
-from agents.nnfactory.sac import PolicyNet, SoftQNetwork
+from agents.nnfactory.sac import Policy, Critic
 from agents.utils.replay_buffer import ReplayBuffer
 
 # todo make device parameter of Agent
 use_cuda = torch.cuda.is_available()
 device = torch.device('cuda' if use_cuda else 'cpu')
-
+print('\n DEVICE', device, '\n')
 
 class AgentSAC:
     def __init__(self, config, observation_space, action_space):
@@ -31,6 +32,7 @@ class AgentSAC:
         assert len(action_dim) == 1
 
         self.h_dim = config["hidden_dim"]
+        self.h_layers = config['hidden_layers']
         self.action_dim = action_dim
         self.soft_q_lr = config["soft_q_lr"]
         self.pol_lr = config["policy_lr"]
@@ -43,7 +45,6 @@ class AgentSAC:
         self.memory_size = config['memory_size']
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
-        self.tb_histogram_interval = config["tensorboard_histogram_interval"]
 
         self.reward_scale = 10.
         self.target_entropy = -1 * action_dim[0]
@@ -51,16 +52,18 @@ class AgentSAC:
         torch.manual_seed(config['seed'])
 
         # generate networks
-        self.critic_1 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(
+        self.critic_1 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
             device)
-        self.critic_2 = SoftQNetwork(state_dim, action_dim, self.h_dim).to(
+        self.critic_2 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
             device)
-        self.target_critic_1 = SoftQNetwork(state_dim, action_dim,
-                                            self.h_dim).to(device)
-        self.target_critic_2 = SoftQNetwork(state_dim, action_dim,
-                                            self.h_dim).to(device)
-        self.policy = PolicyNet(in_dim=state_dim, action_dim=action_dim,
-                                hidden_dim=self.h_dim).to(device)
+        self.target_critic_1 = Critic(state_dim, action_dim,
+                                      self.h_dim, self.h_layers).to(device)
+        self.target_critic_2 = Critic(state_dim, action_dim,
+                                      self.h_dim, self.h_layers).to(device)
+        self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
+                             hidden_dim=self.h_dim,
+                                num_layers_linear_hidden=self.h_layers).to(
+            device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
                                      requires_grad=True, device=device)
@@ -115,8 +118,22 @@ class AgentSAC:
         predicted_q1 = self.critic_1(states, actions)
         predicted_q2 = self.critic_2(states, actions)
 
-        new_action, log_prob, _, _, log_std = self.policy.evaluate(states)
-        new_next_action, new_log_prob, _, _, _ = self.policy.evaluate(
+        # todo: document and clean up
+        def evaluate(states, eps=1e-06):
+            mean, log_std = self.policy(states)
+            std = log_std.exp()
+
+            normal = Normal(0, 1)
+            z = normal.sample()
+            action = torch.tanh(mean + std * z)
+            log_prob = Normal(mean, std).log_prob(
+                mean + std * z) - torch.log(
+                1. - action.pow(2) + eps)
+            log_prob = log_prob.sum(dim=1, keepdim=True)
+            return action, log_prob, log_std
+
+        new_action, log_prob, log_std = evaluate(states)
+        new_next_action, new_log_prob, _ = evaluate(
             next_states)
 
         # normalize with batch mean std
@@ -133,7 +150,7 @@ class AgentSAC:
         else:
             self.alpha = 1.
 
-        # Train Q function
+        # Train critic
         target_critic_min = torch.min(
             self.target_critic_1(next_states, new_next_action),
             self.target_critic_2(next_states,
@@ -150,7 +167,7 @@ class AgentSAC:
         q_val_loss2.backward()
         self.optimizer_critic_2.step()
 
-        # Training Policy Function
+        # Training policy
         predicted_new_q_val = torch.min(self.critic_1(states, new_action),
                                         self.critic_2(states, new_action))
         loss_policy = (self.alpha * log_prob - predicted_new_q_val).mean()
@@ -159,17 +176,23 @@ class AgentSAC:
         loss_policy.backward()
         self.optimizer_policy.step()
 
-        # Target update
-        for target_p, p in zip(self.target_critic_1.parameters(),
-                               self.critic_1.parameters()):
-            target_p.data.copy_(
-                target_p.data * (1.0 - self.tau) + p.data * self.tau
+        # Update target
+        for target_critic_layer_parameters, critic_layer_parameters in \
+                zip(self.target_critic_1.parameters(),
+                    self.critic_1.parameters()):
+            target_critic_layer_parameters.data.copy_(
+                target_critic_layer_parameters.data * (
+                        1.0 - self.tau) +
+                critic_layer_parameters.data * self.tau
             )
 
-        for target_p, p in zip(self.target_critic_2.parameters(),
-                               self.critic_2.parameters()):
-            target_p.data.copy_(
-                target_p.data * (1.0 - self.tau) + p.data * self.tau
+        for target_critic_layer_parameters, critic_layer_parameters in \
+                zip(self.target_critic_2.parameters(),
+                    self.critic_2.parameters()):
+            target_critic_layer_parameters.data.copy_(
+                target_critic_layer_parameters.data * (
+                        1.0 - self.tau) +
+                critic_layer_parameters.data * self.tau
             )
 
     def add_experience(self, experience):
@@ -285,6 +308,7 @@ if __name__ == '__main__':
         "memory_size": 100000,
         "tau": 0.01,
         "hidden_dim": 512,
+        "hidden_layers": 3,
         "state_dim": 3,
         "action_dim": 1,
         "seed": 192,
