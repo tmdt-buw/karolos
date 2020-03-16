@@ -40,8 +40,8 @@ class Environment(gym.Env):
             'state': spaces.Dict({
                 'task': self.task.observation_space,
                 'robot': self.robot.observation_space,
-                # 'agent_state': tuple(np.array(self.task.observation_space.shape) +
-                #                      np.array(self.robot.observation_space.shape))
+                'agent_state': spaces.Box(-1, 1, shape=tuple(np.array(self.task.observation_space.shape) +
+                                     np.array(self.robot.observation_space.shape)))
             }),
             'goal': spaces.Dict({
                 'task': self.task.observation_space,
@@ -85,7 +85,8 @@ class Environment(gym.Env):
         observation_state = {
             'state': {
                 'task': observation_task,
-                'robot': observation_robot
+                'robot': observation_robot,
+                'agent_state': np.concatenate((observation_robot, observation_task))
             }
         }
 
@@ -137,6 +138,7 @@ class Environment(gym.Env):
         observation["state"] = {
             'task': observation_robot,
             'robot': observation_task,
+            'agent_state': np.concatenate((observation_robot, observation_task))
         }
 
         #assert self.observation_dict == observation

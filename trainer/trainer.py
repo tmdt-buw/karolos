@@ -14,6 +14,8 @@ import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
 from agents import get_agent
 
+from tqdm import tqdm
+
 
 class Trainer:
 
@@ -145,8 +147,6 @@ class Trainer:
 
         assert nb_tests >= nb_envs
 
-        from tqdm import tqdm
-
         pbar = tqdm(total=training_config["total_timesteps"])
 
         while sum(steps.values()) < training_config["total_timesteps"]:
@@ -194,20 +194,22 @@ class Trainer:
 
                                 action = actions.pop(env_id)
 
-                                experience = (previous_state['state'],
+                                experience = (previous_state['state']['agent_state'],
                                               action, reward,
-                                              state['state'], done)
+                                              state['state']['agent_state'],
+                                              done)
                                 agent.add_experience([experience])
 
                                 if training_config["use_hindsight_experience_replay"] and "her" in state:
                                     her_goal = state["her"]["achieved_goal"]
 
-                                    her_previous_state = previous_state.copy()
-                                    her_previous_state[-len(her_goal):] = her_goal
+                                    her_previous_state = previous_state['state']['agent_state'].copy()
+                                    her_previous_state[
+                                    -len(her_goal):] = her_goal
 
                                     her_reward = state["her"]["reward"]
 
-                                    her_state = state.copy()
+                                    her_state = state['state']['agent_state'].copy()
                                     her_state[-len(her_goal):] = her_goal
 
                                     her_done = state["her"]["done"]
@@ -225,7 +227,7 @@ class Trainer:
                                                        sum(steps.values()) + 1
                                                        )
 
-                                results_episodes.append(state["goal_reached"])
+                                results_episodes.append(state["goal"]["reached"])
                                 if tests_launched < nb_tests:
                                     requests.append((env_id, "reset", None))
                                     tests_launched += 1
@@ -241,18 +243,11 @@ class Trainer:
                         set(states.keys()) - set(actions.keys()))
 
                     if required_predictions:
-                        # for eid in required_predictions:
-                        #     print(states[eid])
-                        #     print(type(states[eid]['state']['robot']))
-                        #     print(states[eid]['state']['robot'])
-                        # exit()
-                        observations = [np.concatenate((states[env_id]['state']['robot'],
-                                                       states[env_id]['state']['task']))
+                        observations = [states[env_id]['state']['agent_state']
                                             for env_id in
                                             required_predictions]
 
                         observations = np.stack(observations)
-
 
                         # predictions = agent.random_action(observations)
                         predictions = agent.predict(observations,
@@ -304,20 +299,20 @@ class Trainer:
                     if previous_state is not None:
                         action = actions.pop(env_id)
 
-                        experience = (previous_state['state'],
+                        experience = (previous_state['state']['agent_state'],
                                       action, reward,
-                                      state['state'], done)
+                                      state['state']['agent_state'], done)
                         agent.add_experience([experience])
 
                         if training_config["use_hindsight_experience_replay"] and "her" in state:
                             her_goal = state["her"]["achieved_goal"]
 
-                            her_previous_state = previous_state.copy()
+                            her_previous_state = previous_state['state']['agent_state'].copy()
                             her_previous_state[-len(her_goal):] = her_goal
 
                             her_reward = state["her"]["reward"]
 
-                            her_state = state.copy()
+                            her_state = state['state']['agent_state'].copy()
                             her_state[-len(her_goal):] = her_goal
 
                             her_done = state["her"]["done"]
@@ -347,11 +342,8 @@ class Trainer:
                 set(states.keys()) - set(actions.keys()))
 
             if required_predictions:
-                observations = [np.concatenate(states[env_id]['state']['robot'],
-                                                       states[env_id]['state']['task'])
-                                            for env_id in
-                                            required_predictions]
-
+                observations = [states[env_id]['state']['agent_state'] for env_id in
+                                required_predictions]
                 observations = np.stack(observations)
 
                 predictions = agent.predict(observations, deterministic=False)
@@ -377,7 +369,7 @@ if __name__ == "__main__":
     training_config = {
         "base_pkg": "stable-baselines",
         "algorithm": "SAC",
-        "test_interval": 10_000,
+        "test_interval": 500_000,
         "nb_tests": 100,
         "total_timesteps": 25_000_000,
         "save_interval_steps": 1_000_000,
@@ -395,11 +387,13 @@ if __name__ == "__main__":
             "auto_entropy": True,
             "memory_size": 100_000,
             "tau": 0.0025,
-            "hidden_dim": 50,
+            "hidden_dim": 25,
+            "hidden_layers": 4,
             "seed": 192
         },
         "env_config": {
-            "nb_envs": 2,
+            "nb_envs": 6,
+            #"nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
