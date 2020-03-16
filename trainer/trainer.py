@@ -181,7 +181,7 @@ class Trainer:
                             actions.pop(env_id, None)
                             episodic_reward[env_id] = []
                         elif func == "step":
-                            state, reward, done, info = data
+                            state, reward, done = data
 
                             self.writer.add_scalar('test reward step',
                                                    reward,
@@ -194,24 +194,25 @@ class Trainer:
 
                                 action = actions.pop(env_id)
 
-                                experience = (previous_state,
+                                experience = (previous_state['state']['agent_state'],
                                               action, reward,
-                                              state, done)
+                                              state['state']['agent_state'],
+                                              done)
                                 agent.add_experience([experience])
 
-                                if training_config["use_hindsight_experience_replay"] and "her" in info:
-                                    her_goal = info["her"]["achieved_goal"]
+                                if training_config["use_hindsight_experience_replay"] and "her" in state:
+                                    her_goal = state["her"]["achieved_goal"]
 
-                                    her_previous_state = previous_state.copy()
+                                    her_previous_state = previous_state['state']['agent_state'].copy()
                                     her_previous_state[
                                     -len(her_goal):] = her_goal
 
-                                    her_reward = info["her"]["reward"]
+                                    her_reward = state["her"]["reward"]
 
-                                    her_state = state.copy()
+                                    her_state = state['state']['agent_state'].copy()
                                     her_state[-len(her_goal):] = her_goal
 
-                                    her_done = info["her"]["done"]
+                                    her_done = state["her"]["done"]
 
                                     experience = (her_previous_state,
                                                   action, her_reward,
@@ -226,7 +227,7 @@ class Trainer:
                                                        sum(steps.values()) + 1
                                                        )
 
-                                results_episodes.append(info["goal_reached"])
+                                results_episodes.append(state["goal"]["reached"])
                                 if tests_launched < nb_tests:
                                     requests.append((env_id, "reset", None))
                                     tests_launched += 1
@@ -242,8 +243,10 @@ class Trainer:
                         set(states.keys()) - set(actions.keys()))
 
                     if required_predictions:
-                        observations = [states[env_id] for env_id in
-                                        required_predictions]
+                        observations = [states[env_id]['state']['agent_state']
+                                            for env_id in
+                                            required_predictions]
+
                         observations = np.stack(observations)
 
                         # predictions = agent.random_action(observations)
@@ -284,7 +287,7 @@ class Trainer:
                     actions.pop(env_id, None)
                     episodic_reward[env_id] = []
                 elif func == "step":
-                    state, reward, done, info = data
+                    state, reward, done = data
 
                     self.writer.add_scalar('train reward step',
                                            reward,
@@ -296,23 +299,23 @@ class Trainer:
                     if previous_state is not None:
                         action = actions.pop(env_id)
 
-                        experience = (previous_state,
+                        experience = (previous_state['state']['agent_state'],
                                       action, reward,
-                                      state, done)
+                                      state['state']['agent_state'], done)
                         agent.add_experience([experience])
 
-                        if training_config["use_hindsight_experience_replay"] and "her" in info:
-                            her_goal = info["her"]["achieved_goal"]
+                        if training_config["use_hindsight_experience_replay"] and "her" in state:
+                            her_goal = state["her"]["achieved_goal"]
 
-                            her_previous_state = previous_state.copy()
+                            her_previous_state = previous_state['state']['agent_state'].copy()
                             her_previous_state[-len(her_goal):] = her_goal
 
-                            her_reward = info["her"]["reward"]
+                            her_reward = state["her"]["reward"]
 
-                            her_state = state.copy()
+                            her_state = state['state']['agent_state'].copy()
                             her_state[-len(her_goal):] = her_goal
 
-                            her_done = info["her"]["done"]
+                            her_done = state["her"]["done"]
 
                             experience = (her_previous_state,
                                           action, her_reward,
@@ -339,7 +342,7 @@ class Trainer:
                 set(states.keys()) - set(actions.keys()))
 
             if required_predictions:
-                observations = [states[env_id] for env_id in
+                observations = [states[env_id]['state']['agent_state'] for env_id in
                                 required_predictions]
                 observations = np.stack(observations)
 
@@ -389,7 +392,8 @@ if __name__ == "__main__":
             "seed": 192
         },
         "env_config": {
-            "nb_envs": cpu_count(),
+            "nb_envs": 6,
+            #"nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
