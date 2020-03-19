@@ -72,6 +72,97 @@ class Trainer:
                 'Experiment config matches given config, loading experiment config')
             return osp.join("..", exp_config['results_dir']), exp_config, False
 
+    def process_responses(self, env_responses, nb_steps, nb_episodes):
+
+        requests = []
+        results_episodes = []
+
+        for env_id, response in env_responses:
+            func, data = response
+
+            if func == "reset":
+                self.states[env_id] = data
+                self.actions.pop(env_id, None)
+                self.episodic_reward[env_id] = []
+            elif func == "step":
+                state, reward, done = data
+
+                self.writer.add_scalar('train reward step',
+                                       reward,
+                                       sum(self.steps.values()) + 1
+                                       )
+
+                self.episodic_reward[env_id].append(reward)
+                previous_state = self.states.pop(env_id, None)
+                if previous_state is not None:
+                    action = self.actions.pop(env_id)
+
+                    experience = (previous_state['state']['agent_state'],
+                                  action, reward,
+                                  state['state']['agent_state'], done)
+                    self.agent.add_experience([experience])
+
+                    if training_config[
+                        "use_hindsight_experience_replay"] and "her" in state:
+                        her_goal = state["her"]["achieved_goal"]
+
+                        her_previous_state = previous_state['state'][
+                            'agent_state'].copy()
+                        her_previous_state[-len(her_goal):] = her_goal
+
+                        her_reward = state["her"]["reward"]
+
+                        her_state = state['state']['agent_state'].copy()
+                        her_state[-len(her_goal):] = her_goal
+
+                        her_done = state["her"]["done"]
+
+                        experience = (her_previous_state,
+                                      action, her_reward,
+                                      her_state, her_done)
+                        self.agent.add_experience([experience])
+
+                if done:
+                    episode_reward = sum(self.episodic_reward[env_id])
+
+                    # todo variable tag
+                    self.writer.add_scalar('train reward episode',
+                                           episode_reward,
+                                           sum(self.steps.values()) + 1
+                                           )
+
+                    # todo expand to timestep limit
+                    # todo move reset in outer loop
+                    results_episodes.append(
+                        state["goal"]["reached"])
+                    if tests_launched < nb_tests:
+                        requests.append((env_id, "reset", None))
+                        tests_launched += 1
+                else:
+                    self.states[env_id] = state
+                self.steps[env_id] += 1
+            else:
+                raise NotImplementedError(
+                    f"Undefined behavior for {env_id} | {response}")
+
+        required_predictions = list(
+            set(self.states.keys()) - set(self.actions.keys()))
+
+        if required_predictions:
+            observations = [self.states[env_id]['state']['agent_state'] for
+                            env_id in
+                            required_predictions]
+            observations = np.stack(observations)
+
+            predictions = self.agent.predict(observations, deterministic=False)
+
+            for env_id, prediction in zip(required_predictions,
+                                          predictions):
+                self.actions[env_id] = prediction
+                requests.append((env_id, "step", prediction))
+
+        return requests
+
     def __init__(self, training_config):
 
         assert training_config["base_pkg"] in ["stable-baselines"]
@@ -119,22 +210,22 @@ class Trainer:
         agent_config = training_config.pop("agent_config")
 
         # add action and state spaces to config
-        agent = get_agent(agent_config,
+        self.agent = get_agent(agent_config,
                           env_orchestrator.observation_space,
                           env_orchestrator.action_space)
 
         if not load_new_agent:
             print('\nloading previous agent from', models_dir, '\n')
-            agent.load(models_dir, train_mode=True)
+            self.agent.load(models_dir, train_mode=True)
 
         # reset all
         env_responses = env_orchestrator.reset_all()
 
-        steps = defaultdict(int)
+        self.steps = defaultdict(int)
 
-        states = {}
-        actions = {}
-        episodic_reward = {}
+        self.states = {}
+        self.actions = {}
+        self.episodic_reward = {}
 
         requests = []
 
@@ -149,21 +240,21 @@ class Trainer:
 
         pbar = tqdm(total=training_config["total_timesteps"])
 
-        while sum(steps.values()) < training_config["total_timesteps"]:
+        while sum(self.steps.values()) < training_config["total_timesteps"]:
 
             next_save_timestep = (sum(
-                steps.values()) // save_interval + 1) * save_interval
+                self.steps.values()) // save_interval + 1) * save_interval
 
             # Save
-            if sum(steps.values()) >= next_save_timestep:
-                agent.save(models_dir)
+            if sum(self.steps.values()) >= next_save_timestep:
+                self.agent.save(models_dir)
                 print("\nsaved agent in", models_dir, '\n')
 
             # Test
-            if sum(steps.values()) >= next_test_timestep:
+            if sum(self.steps.values()) >= next_test_timestep:
 
                 next_test_timestep = \
-                    (sum(steps.values()) // test_interval + 1) * test_interval
+                    (sum(self.steps.values()) // test_interval + 1) * test_interval
 
                 # reset all
                 env_responses = env_orchestrator.reset_all()
@@ -194,22 +285,27 @@ class Trainer:
 
                                 action = actions.pop(env_id)
 
-                                experience = (previous_state['state']['agent_state'],
-                                              action, reward,
-                                              state['state']['agent_state'],
-                                              done)
+                                experience = (
+                                previous_state['state']['agent_state'],
+                                action, reward,
+                                state['state']['agent_state'],
+                                done)
                                 agent.add_experience([experience])
 
-                                if training_config["use_hindsight_experience_replay"] and "her" in state:
+                                if training_config[
+                                    "use_hindsight_experience_replay"] and "her" in state:
                                     her_goal = state["her"]["achieved_goal"]
 
-                                    her_previous_state = previous_state['state']['agent_state'].copy()
+                                    her_previous_state = \
+                                    previous_state['state'][
+                                        'agent_state'].copy()
                                     her_previous_state[
                                     -len(her_goal):] = her_goal
 
                                     her_reward = state["her"]["reward"]
 
-                                    her_state = state['state']['agent_state'].copy()
+                                    her_state = state['state'][
+                                        'agent_state'].copy()
                                     her_state[-len(her_goal):] = her_goal
 
                                     her_done = state["her"]["done"]
@@ -227,7 +323,8 @@ class Trainer:
                                                        sum(steps.values()) + 1
                                                        )
 
-                                results_episodes.append(state["goal"]["reached"])
+                                results_episodes.append(
+                                    state["goal"]["reached"])
                                 if tests_launched < nb_tests:
                                     requests.append((env_id, "reset", None))
                                     tests_launched += 1
@@ -244,8 +341,8 @@ class Trainer:
 
                     if required_predictions:
                         observations = [states[env_id]['state']['agent_state']
-                                            for env_id in
-                                            required_predictions]
+                                        for env_id in
+                                        required_predictions]
 
                         observations = np.stack(observations)
 
@@ -258,9 +355,10 @@ class Trainer:
                             actions[env_id] = prediction
                             requests.append((env_id, "step", prediction))
 
+                    requests = self.process_responses(env_responses)
                     env_responses = env_orchestrator.send_receive(requests)
-                    requests = []
 
+                # evaluate test
                 success_ratio = sum(results_episodes) / len(results_episodes)
 
                 self.writer.add_scalar('test success ratio',
@@ -279,86 +377,13 @@ class Trainer:
 
             # Train
 
-            for env_id, response in env_responses:
-                func, data = response
-
-                if func == "reset":
-                    states[env_id] = data
-                    actions.pop(env_id, None)
-                    episodic_reward[env_id] = []
-                elif func == "step":
-                    state, reward, done = data
-
-                    self.writer.add_scalar('train reward step',
-                                           reward,
-                                           sum(steps.values()) + 1
-                                           )
-
-                    episodic_reward[env_id].append(reward)
-                    previous_state = states.pop(env_id, None)
-                    if previous_state is not None:
-                        action = actions.pop(env_id)
-
-                        experience = (previous_state['state']['agent_state'],
-                                      action, reward,
-                                      state['state']['agent_state'], done)
-                        agent.add_experience([experience])
-
-                        if training_config["use_hindsight_experience_replay"] and "her" in state:
-                            her_goal = state["her"]["achieved_goal"]
-
-                            her_previous_state = previous_state['state']['agent_state'].copy()
-                            her_previous_state[-len(her_goal):] = her_goal
-
-                            her_reward = state["her"]["reward"]
-
-                            her_state = state['state']['agent_state'].copy()
-                            her_state[-len(her_goal):] = her_goal
-
-                            her_done = state["her"]["done"]
-
-                            experience = (her_previous_state,
-                                          action, her_reward,
-                                          her_state, her_done)
-                            agent.add_experience([experience])
-
-                    if done:
-                        episode_reward = sum(episodic_reward[env_id])
-
-                        self.writer.add_scalar('train reward episode',
-                                               episode_reward,
-                                               sum(steps.values()) + 1
-                                               )
-
-                        requests.append((env_id, "reset", None))
-                    else:
-                        states[env_id] = state
-                    steps[env_id] += 1
-                else:
-                    raise NotImplementedError(
-                        f"Undefined behavior for {env_id} | {response}")
-
-            required_predictions = list(
-                set(states.keys()) - set(actions.keys()))
-
-            if required_predictions:
-                observations = [states[env_id]['state']['agent_state'] for env_id in
-                                required_predictions]
-                observations = np.stack(observations)
-
-                predictions = agent.predict(observations, deterministic=False)
-
-                for env_id, prediction in zip(required_predictions,
-                                              predictions):
-                    actions[env_id] = prediction
-                    requests.append((env_id, "step", prediction))
+            requests = self.process_responses(env_responses)
 
             env_responses = env_orchestrator.send_receive(requests)
-            requests = []
 
-            agent.learn()
+            self.agent.learn()
 
-            pbar.update(sum(steps.values()) - pbar.n)
+            pbar.update(sum(self.steps.values()) - pbar.n)
             pbar.refresh()
 
 
@@ -375,6 +400,7 @@ if __name__ == "__main__":
         "save_interval_steps": 1_000_000,
         "results_dir": results_dir,
         "use_hindsight_experience_replay": True,
+        "random_steps_before_training": 0,
         "agent_config": {
             "algorithm": "sac",
             "soft_q_lr": 0.0005,
@@ -388,12 +414,12 @@ if __name__ == "__main__":
             "memory_size": 100_000,
             "tau": 0.0025,
             "hidden_dim": 25,
-            "hidden_layers": 4,
+            "hidden_layers": 2,
             "seed": 192
         },
         "env_config": {
-            "nb_envs": 6,
-            #"nb_envs": cpu_count(),
+            # "nb_envs": 6,
+            "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
