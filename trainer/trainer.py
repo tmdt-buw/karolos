@@ -35,11 +35,7 @@ class Trainer:
 
         return env_init
 
-    def check_experiment(self, directory, config):
-        """
-        1. check if config eq config in result dir, if not -> overwrite or rename experiment
-        2. return result dir
-        """
+    def similar_config(self, resdir, conf):
 
         def ordered(obj):
             if isinstance(obj, dict):
@@ -49,53 +45,85 @@ class Trainer:
             else:
                 return obj
 
-        print('Found experiment folder with same name')
-
-        with open(directory + '/config.json', 'r+') as fp:
+        with open(resdir + '/config.json', 'r+') as fp:
             exp_config = json.load(fp)
 
-        if not ordered(exp_config) == ordered(config):
-            print('Experiment config and given config do not match:')
-            print(ordered(exp_config))
-            print(ordered(config))
-            dec = input('Quit <any> or New Experiment <n> ?')
-            if dec == 'n' or dec == 'N':
-                new_exp = osp.join("..", exp_config[
-                    'results_dir']) + datetime.datetime.now().strftime(
-                    "_%Y%m%d-%H%M%S")
-                print('adding datetime to Experiment folder: ', new_exp, '\n')
-                return new_exp, config, True
-            else:
-                exit('quitting')
+        if not ordered(exp_config) == ordered(conf):
+            return False
         else:
-            print(
-                'Experiment config matches given config, loading experiment config')
-            return osp.join("..", exp_config['results_dir']), exp_config, False
+            return True
 
     def __init__(self, training_config):
 
         assert training_config["base_pkg"] in ["stable-baselines"]
 
-        # create results directories
-        try:
-            results_dir = osp.join('results/',
-                                   training_config.pop('experiment_name'))
-            training_config['results_dir'] = results_dir
-        except KeyError:
-            results_dir = training_config.pop('results_dir')
 
-        results_dir = osp.join(".", results_dir)
-        load_new_agent = True
 
-        if not osp.exists(results_dir):
-            os.makedirs(results_dir)
-        else:
-            results_dir, training_config, load_new_agent = \
-                self.check_experiment(results_dir, training_config)
-            if load_new_agent:
-                os.makedirs(results_dir)
+        results_dir = training_config.pop('results_dir')
+        reload_agent = training_config.pop('reload_previous_agent')
+
+        # get environment
+        env_config = training_config["env_config"]
+
+        nb_envs = env_config["nb_envs"]
+        env_orchestrator = Orchestrator(env_config, nb_envs)
+
+        # get agents
+        agent_config = training_config["agent_config"]
+
+        # add action and state spaces to config
+        agent = get_agent(agent_config,
+                          env_orchestrator.observation_space,
+                          env_orchestrator.action_space)
 
         models_dir = osp.join(results_dir, "models")
+
+        if not osp.exists(results_dir):
+            # first run of experiment, keep new agent, save config
+            os.makedirs(results_dir)
+
+            with open(osp.join(results_dir, 'config.json'), 'w') as f:
+                json.dump(training_config, f)
+            agent.save(models_dir)
+        else:
+            # experiment exists, check similar configs, if not similar make new results_dir_MMDDHHMM
+            # if similar, check reload_agent option:
+            # if true->reload previous agent, if false->make new results_dir_MMDDHHMM
+
+            print('\n################################')
+
+            if not self.similar_config(results_dir, training_config):
+                print('Experiment config and given config do not match')
+                results_dir = osp.join(results_dir,
+                                       datetime.datetime.now().strftime("%d-%m-%Y_%H:%M:%S"))
+
+                os.makedirs(results_dir)
+                models_dir = osp.join(results_dir, "models")
+
+                print('New directory for this experiment:', results_dir)
+                print('Loading new Agent')
+
+                with open(osp.join(results_dir, 'config.json'), 'w') as f:
+                    json.dump(training_config, f)
+                agent.save(models_dir)
+            else:
+                if reload_agent:
+                    print('Re-loading previous agent from', models_dir)
+                    agent.load(models_dir, train_mode=True)
+
+                else:
+                    results_dir = osp.join(results_dir,
+                                           datetime.datetime.now().strftime("%d-%m-%Y_%H:%M:%S"))
+
+                    os.makedirs(results_dir)
+                    models_dir = osp.join(results_dir, "models")
+                    print('New directory for this experiment:', results_dir)
+                    print('Loading new Agent')
+                    with open(osp.join(results_dir, 'config.json'), 'w') as f:
+                        json.dump(training_config, f)
+                    agent.save(models_dir)
+            print('################################\n')
+
         log_dir = results_dir
 
         if not osp.exists(models_dir):
@@ -104,28 +132,6 @@ class Trainer:
             os.makedirs(log_dir)
 
         self.writer = SummaryWriter(log_dir)
-
-        if load_new_agent:
-            with open(osp.join(results_dir, 'config.json'), 'w') as f:
-                json.dump(training_config, f)
-
-        # get environment
-        env_config = training_config.pop("env_config")
-
-        nb_envs = env_config.pop("nb_envs", 1)
-        env_orchestrator = Orchestrator(env_config, nb_envs)
-
-        # get agents
-        agent_config = training_config.pop("agent_config")
-
-        # add action and state spaces to config
-        agent = get_agent(agent_config,
-                          env_orchestrator.observation_space,
-                          env_orchestrator.action_space)
-
-        if not load_new_agent:
-            print('\nloading previous agent from', models_dir, '\n')
-            agent.load(models_dir, train_mode=True)
 
         # reset all
         env_responses = env_orchestrator.reset_all()
@@ -363,8 +369,9 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    results_dir = osp.join("results",
-                           datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    res_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),"../results")
+    #res_dir = osp.join(res_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    res_dir = osp.join(res_dir, 'test')
 
     training_config = {
         "base_pkg": "stable-baselines",
@@ -373,11 +380,12 @@ if __name__ == "__main__":
         "nb_tests": 100,
         "total_timesteps": 25_000_000,
         "save_interval_steps": 1_000_000,
-        "results_dir": results_dir,
+        "results_dir": res_dir,
+        "reload_previous_agent": False,
         "use_hindsight_experience_replay": True,
         "agent_config": {
             "algorithm": "sac",
-            "soft_q_lr": 0.0005,
+            "soft_q_lr": 0.005,
             "policy_lr": 0.0005,
             "alpha": 1,
             "alpha_lr": 0.0005,
@@ -392,7 +400,7 @@ if __name__ == "__main__":
             "seed": 192
         },
         "env_config": {
-            "nb_envs": 6,
+            "nb_envs": 1,
             #"nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
