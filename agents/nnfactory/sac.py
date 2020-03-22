@@ -103,8 +103,9 @@ if __name__ == '__main__':
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
     print(device)
-    critic = Critic([4], [3], 512, 3).to(device)
-    print(critic(torch.FloatTensor([[1,1,1,1]]).to(device),
-                    torch.FloatTensor([[1,1,1]]).to(device)))
-    policy = Policy([4], [3], 512, device, 3)
-    print(policy(torch.FloatTensor([1,1,1,1]).to(device)))
+    # critic = Critic([4], [3], 512, 3).to(device)
+    # print(critic(torch.FloatTensor([[1,1,1,1]]).to(device),
+    #                 torch.FloatTensor([[1,1,1]]).to(device)))
+    policy = Policy([4], [3], 512, 3).to(device)
+    print(policy(torch.FloatTensor([[1,1,1,1]]).to(device)))
+    print(policy.operators)

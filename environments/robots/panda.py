@@ -132,7 +132,29 @@ class Panda(gym.Env):
 
         return observation
 
-    def step(self, action):
+    def step(self, action: np.ndarray):
+
+        assert self.action_space.contains(action)
+
+        rel_action_arm, rel_action_hand = np.split(action, [
+            len(self.ids_joints_arm_controllable)])
+
+        target_joints_arm = self.initial_joints_arm.copy()
+        target_joints_hand = self.initial_joints_hand.copy()
+
+        success_target_determination = True
+
+        for id_joint, action in zip(self.ids_joints_arm_controllable,
+                                    rel_action_arm):
+
+            joint_position = \
+                np.argwhere(self.ids_joints_arm == id_joint).ravel()[0]
+
+            limits_joint = self.limits_joints_arm[joint_position]
+
+            action = sel
+
+    def step_deterministic(self, action):
 
         assert self.action_space.contains(action)
 
