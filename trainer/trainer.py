@@ -374,7 +374,7 @@ if __name__ == "__main__":
         "total_timesteps": 25_000_000,
         "save_interval_steps": 1_000_000,
         "results_dir": results_dir,
-        "use_hindsight_experience_replay": True,
+        "use_hindsight_experience_replay": False,
         "agent_config": {
             "algorithm": "sac",
             "soft_q_lr": 0.0005,
@@ -392,8 +392,8 @@ if __name__ == "__main__":
             "seed": 192
         },
         "env_config": {
-            "nb_envs": 6,
-            #"nb_envs": cpu_count(),
+            #"nb_envs": 1,
+            "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
@@ -401,7 +401,7 @@ if __name__ == "__main__":
                             "only_positive": False
                             },
             "robot_config": {
-                "name": "pandas",
+                "name": "pandas_relative",
                 "dof": 3
             }
         }

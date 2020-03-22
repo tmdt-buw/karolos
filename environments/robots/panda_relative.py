@@ -5,12 +5,13 @@ import pybullet as p
 import logging
 import time
 
-class Panda(gym.Env):
+class PandaRelative(gym.Env):
     tolerance_joint_rotation = np.pi / 180
     tolerance_joint_linear = 0.001
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
-                 use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.):
+                 use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.,
+                 sim_time=1, scale=0.5):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -20,6 +21,9 @@ class Panda(gym.Env):
         self.state_mode = state_mode
         self.use_gripper = use_gripper
         self.time_step = time_step
+        self.scale = scale
+
+        self.max_steps = int(sim_time / time_step)
 
         self.offset = offset
 
@@ -46,7 +50,7 @@ class Panda(gym.Env):
         self.torques_arm = np.array([87, 87, 87, 87, 12, 12, 12])
         self.forces_hand = np.array([70, 70])
 
-        self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
+        self.initial_joints_arm = np.array([0.5, 0.5, 0, -0.5, 0, 1., 0.707])
         self.initial_joints_hand = np.array([0.035, 0.035])
 
         self.ids_joints_arm = np.arange(7)
@@ -132,67 +136,48 @@ class Panda(gym.Env):
 
         return observation
 
-    # def step(self, action: np.ndarray):
-    #
-    #     assert self.action_space.contains(action)
-    #
-    #     rel_action_arm, rel_action_hand = np.split(action, [
-    #         len(self.ids_joints_arm_controllable)])
-    #
-    #     target_joints_arm = self.initial_joints_arm.copy()
-    #     target_joints_hand = self.initial_joints_hand.copy()
-    #
-    #     success_target_determination = True
-    #
-    #     for id_joint, action in zip(self.ids_joints_arm_controllable,
-    #                                 rel_action_arm):
-    #
-    #         joint_position = \
-    #             np.argwhere(self.ids_joints_arm == id_joint).ravel()[0]
-    #
-    #         limits_joint = self.limits_joints_arm[joint_position]
-    #
-    #         action = sel
-
-    def step(self, action):
+    def step(self, action: np.ndarray):
 
         assert self.action_space.contains(action)
 
-        action_arm, action_hand = np.split(action, [
+        action = action * self.scale
+
+        rel_action_arm, rel_action_hand = np.split(action, [
             len(self.ids_joints_arm_controllable)])
 
         target_joints_arm = self.initial_joints_arm.copy()
         target_joints_hand = self.initial_joints_hand.copy()
 
-        success_target_determination = True
+        state_arm, _ = self.get_joint_state()
+        positions_arm, _ = state_arm
 
         for id_joint, action in zip(self.ids_joints_arm_controllable,
-                                    action_arm):
+                                    rel_action_arm):
 
-            joint_position = \
+            joint_index = \
                 np.argwhere(self.ids_joints_arm == id_joint).ravel()[0]
 
-            limits_joint = self.limits_joints_arm[joint_position]
+            limits_joint = self.limits_joints_arm[joint_index]
 
-            action = self.convert_intervals(action, [-1, 1], limits_joint)
+            # do we need to use get_observation?
+            diff = limits_joint - positions_arm[joint_index]
+
+            action = self.convert_intervals(action, [-1, 1], diff)
 
             if action < limits_joint[0] or limits_joint[1] < action:
                 action_clipped = np.clip(action, limits_joint[0],
                                          limits_joint[1])
-
                 if not np.allclose(action_clipped, action):
                     success_target_determination = False
 
                 action = action_clipped
 
-            target_joints_arm[joint_position] = action
+            target_joints_arm[joint_index] = action
 
-        success_movement = self.move_joints_to_target(target_joints_arm,
-                                                      target_joints_hand)
+        self.move_joints_to_target(target_joints_arm,
+                                   target_joints_hand)
 
-        success_observation, observation = self.get_observation()
-
-        success = success_movement and success_observation and success_target_determination
+        success, observation = self.get_observation()
 
         return success, observation
 
@@ -281,8 +266,8 @@ class Panda(gym.Env):
         else:
             return True, observation
 
-    def move_joints_to_target(self, target_joints_arm, target_joints_hand,
-                              max_steps=100):
+    def move_joints_to_target(self, target_joints_arm, target_joints_hand):
+
         for id_joint, target_joint, torque in zip(
                 self.ids_joints_arm,
                 target_joints_arm, self.torques_arm):
@@ -296,28 +281,30 @@ class Panda(gym.Env):
                                                      self.bullet_client.POSITION_CONTROL,
                                                      target_joint, force=force)
 
-        for step in range(max_steps):
+        for step in range(self.max_steps):
             self.bullet_client.stepSimulation()
             if self.bullet_client.getConnectionInfo()[
                 "connectionMethod"] == p.GUI:
                 time.sleep(self.time_step)
 
-            state_arm, state_hand = self.get_joint_state()
+        return
 
-            positions_arm, velocities_arm = state_arm
-            positions_hand, velocities_hand = state_hand
+            # state_arm, state_hand = self.get_joint_state()
+            #
+            # positions_arm, velocities_arm = state_arm
+            # positions_hand, velocities_hand = state_hand
 
-            if np.allclose(velocities_arm, 0, atol=1e-1) and np.allclose(
-                    velocities_hand, 0, atol=1e-1):
-
-                deviations_arm = np.abs(positions_arm - target_joints_arm)
-                deviations_hand = np.abs(positions_hand - target_joints_hand)
-
-                if np.all(deviations_arm < self.tolerance_joint_rotation) \
-                        and np.all(deviations_hand < self.tolerance_joint_linear):
-                    return True
-
-        return False
+        #     if np.allclose(velocities_arm, 0, atol=1e-1) and np.allclose(
+        #             velocities_hand, 0, atol=1e-1):
+        #
+        #         deviations_arm = np.abs(positions_arm - target_joints_arm)
+        #         deviations_hand = np.abs(positions_hand - target_joints_hand)
+        #
+        #         if np.all(deviations_arm < self.tolerance_joint_rotation) \
+        #                 and np.all(deviations_hand < self.tolerance_joint_linear):
+        #             return True
+        #
+        # return False
 
     def get_joint_state(self):
 
@@ -382,11 +369,10 @@ if __name__ == "__main__":
         action = robot.action_space.sample()
 
         success, obs = robot.step(action)
-
         if not success:
             print(action)
-            input()
-
+            robot.reset()
+            time.sleep(3)
     # robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step)
     #
     # action = np.array([0.8, .71, -.06])
