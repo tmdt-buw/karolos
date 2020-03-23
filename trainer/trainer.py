@@ -402,7 +402,8 @@ if __name__ == "__main__":
                             },
             "robot_config": {
                 "name": "pandas_relative",
-                "dof": 3
+                "dof": 3,
+                "max_steps": 10
             }
         }
     }
