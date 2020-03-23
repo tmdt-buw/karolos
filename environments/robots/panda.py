@@ -113,9 +113,7 @@ class Panda(gym.Env):
                                                 projection_matrix)
         return img
 
-    def reset(self):
-        """Reset robot to initial pose and return new state."""
-
+    def __reset(self):
         # todo reset to random pose
         for joint_id, initial_state in zip(self.ids_joints_arm,
                                            self.initial_joints_arm):
@@ -127,7 +125,16 @@ class Panda(gym.Env):
             self.bullet_client.resetJointState(self.robot, joint_id,
                                                initial_state)
 
-        observation = self.get_observation()
+    def reset(self):
+        """Reset robot to initial pose and return new state."""
+
+        success = False
+        observation = None
+
+        # reset until state is valid
+        while not success:
+            self.__reset()
+            success, observation = self.get_observation()
 
         return observation
 
@@ -165,9 +172,9 @@ class Panda(gym.Env):
         self.move_joints_to_target(target_joints_arm,
                                    target_joints_hand)
 
-        observation = self.get_observation()
+        success, observation = self.get_observation()
 
-        return observation
+        return success, observation
 
     def convert_intervals(self, value, interval_origin, interval_target):
 
@@ -249,7 +256,7 @@ class Panda(gym.Env):
 
         observation = observation.clip(self.observation_space.low,
                                        self.observation_space.high)
-        return observation
+        return success, observation
 
     def move_joints_to_target(self, target_joints_arm, target_joints_hand):
 
