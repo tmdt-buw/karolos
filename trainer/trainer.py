@@ -374,7 +374,7 @@ if __name__ == "__main__":
         "total_timesteps": 25_000_000,
         "save_interval_steps": 1_000_000,
         "results_dir": results_dir,
-        "use_hindsight_experience_replay": True,
+        "use_hindsight_experience_replay": False,
         "agent_config": {
             "algorithm": "sac",
             "soft_q_lr": 0.0005,
@@ -398,7 +398,8 @@ if __name__ == "__main__":
             "task_config": {"name": "reach",
                             "dof": 3,
                             "only_positive": False,
-                            "sparse_reward": False
+                            "sparse_reward": False,
+                            "max_steps": 10
                             },
             "robot_config": {
                 "name": "pandas",

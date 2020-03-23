@@ -6,7 +6,7 @@ from gym import spaces
 class Push(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0), dof=1,
-                 only_positive=False, sparse_reward=False):
+                 only_positive=False, sparse_reward=False, max_steps=10):
 
         super(Push, self).__init__(bullet_client=bullet_client,
                                    gravity=[0, 0, -9.81],
@@ -48,7 +48,7 @@ class Push(Task):
         # width, height, rgbImg, depthImg, segImg = p.getCameraImage(
         #     **self.camera_config)
 
-        self.max_steps = 5
+        self.max_steps = max_steps
 
     def reset(self, robot=None):
 

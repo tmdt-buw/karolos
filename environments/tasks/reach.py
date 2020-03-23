@@ -6,8 +6,7 @@ from gym import spaces
 class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 dof=1,
-                 only_positive=False, sparse_reward=False):
+                 dof=1, only_positive=False, sparse_reward=False, max_steps=10):
 
         super(Reach, self).__init__(bullet_client=bullet_client,
                                     gravity=[0, 0, 0],
@@ -26,7 +25,7 @@ class Reach(Task):
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf", useFixedBase=True)
 
-        self.max_steps = 5
+        self.max_steps = max_steps
 
     def reset(self, robot=None):
 
