@@ -8,7 +8,7 @@ class Task(object):
                  gravity,
                  offset=(0, 0, 0),
                  dof=1,
-                 only_positive=False):
+                 only_positive=False, sparse_reward=False):
 
         assert dof in [1, 2, 3]
         assert len(gravity) == 3
@@ -17,6 +17,7 @@ class Task(object):
         self.offset = offset
         self.dof = dof
         self.only_positive = only_positive
+        self.sparse_reward = sparse_reward
 
         bullet_client.setGravity(*gravity)
 
