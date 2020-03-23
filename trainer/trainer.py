@@ -400,13 +400,13 @@ if __name__ == "__main__":
             "seed": 192
         },
         "env_config": {
-            "nb_envs": 1,
-            #"nb_envs": cpu_count(),
+            "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
                             "dof": 3,
-                            "only_positive": False
+                            "only_positive": False,
+                            "sparse_reward": False
                             },
             "robot_config": {
                 "name": "pandas",
