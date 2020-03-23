@@ -406,7 +406,8 @@ if __name__ == "__main__":
             "task_config": {"name": "reach",
                             "dof": 3,
                             "only_positive": False,
-                            "sparse_reward": False
+                            "sparse_reward": False,
+                            "max_steps": 10
                             },
             "robot_config": {
                 "name": "pandas",
