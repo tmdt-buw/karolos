@@ -5,13 +5,14 @@ import pybullet as p
 import logging
 import time
 
+
 class PandaRelative(gym.Env):
     tolerance_joint_rotation = np.pi / 180
     tolerance_joint_linear = 0.001
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
                  use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.,
-                 sim_time=1, scale=0.5):
+                 sim_time=1, scale=0.1):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -90,7 +91,8 @@ class PandaRelative(gym.Env):
     def get_camera_image(self):
 
         fov, aspect, nearplane, farplane = 60, 1.0, 0.01, 5
-        projection_matrix = p.computeProjectionMatrixFOV(fov, aspect, nearplane,
+        projection_matrix = p.computeProjectionMatrixFOV(fov, aspect,
+                                                         nearplane,
                                                          farplane)
         com_p, com_o, _, _, _, _ = self.bullet_client.getLinkState(self.robot,
                                                                    8,
@@ -145,11 +147,13 @@ class PandaRelative(gym.Env):
         rel_action_arm, rel_action_hand = np.split(action, [
             len(self.ids_joints_arm_controllable)])
 
-        target_joints_arm = self.initial_joints_arm.copy()
+        # todo extend to gripper movement
         target_joints_hand = self.initial_joints_hand.copy()
 
         state_arm, _ = self.get_joint_state()
         positions_arm, _ = state_arm
+
+        target_joints_arm = positions_arm.copy()
 
         for id_joint, action in zip(self.ids_joints_arm_controllable,
                                     rel_action_arm):
@@ -159,27 +163,19 @@ class PandaRelative(gym.Env):
 
             limits_joint = self.limits_joints_arm[joint_index]
 
-            # do we need to use get_observation?
-            diff = limits_joint - positions_arm[joint_index]
+            joint_range = limits_joint[1] - limits_joint[0]
 
-            action = self.convert_intervals(action, [-1, 1], diff)
-
-            if action < limits_joint[0] or limits_joint[1] < action:
-                action_clipped = np.clip(action, limits_joint[0],
-                                         limits_joint[1])
-                if not np.allclose(action_clipped, action):
-                    success_target_determination = False
-
-                action = action_clipped
-
-            target_joints_arm[joint_index] = action
+            target_joints_arm[joint_index] += action * joint_range
+            target_joints_arm[joint_index] = np.clip(
+                target_joints_arm[joint_index], limits_joint[0],
+                limits_joint[1])
 
         self.move_joints_to_target(target_joints_arm,
                                    target_joints_hand)
 
-        success, observation = self.get_observation()
+        observation = self.get_observation()
 
-        return success, observation
+        return observation
 
     def convert_intervals(self, value, interval_origin, interval_target):
 
@@ -259,12 +255,9 @@ class PandaRelative(gym.Env):
 
         observation = np.concatenate((observation_arm, observation_hand))
 
-        if not self.observation_space.contains(observation):
-            observation = observation.clip(self.observation_space.low,
+        observation = observation.clip(self.observation_space.low,
                                            self.observation_space.high)
-            return False, observation
-        else:
-            return True, observation
+        return observation
 
     def move_joints_to_target(self, target_joints_arm, target_joints_hand):
 
@@ -273,7 +266,8 @@ class PandaRelative(gym.Env):
                 target_joints_arm, self.torques_arm):
             self.bullet_client.setJointMotorControl2(self.robot, id_joint,
                                                      self.bullet_client.POSITION_CONTROL,
-                                                     target_joint, force=torque)
+                                                     target_joint,
+                                                     force=torque)
         for id_joint, target_joint, force in zip(
                 self.ids_joints_hand,
                 target_joints_hand, self.forces_hand):
@@ -288,23 +282,6 @@ class PandaRelative(gym.Env):
                 time.sleep(self.time_step)
 
         return
-
-            # state_arm, state_hand = self.get_joint_state()
-            #
-            # positions_arm, velocities_arm = state_arm
-            # positions_hand, velocities_hand = state_hand
-
-        #     if np.allclose(velocities_arm, 0, atol=1e-1) and np.allclose(
-        #             velocities_hand, 0, atol=1e-1):
-        #
-        #         deviations_arm = np.abs(positions_arm - target_joints_arm)
-        #         deviations_hand = np.abs(positions_hand - target_joints_hand)
-        #
-        #         if np.all(deviations_arm < self.tolerance_joint_rotation) \
-        #                 and np.all(deviations_hand < self.tolerance_joint_linear):
-        #             return True
-        #
-        # return False
 
     def get_joint_state(self):
 
@@ -355,41 +332,21 @@ if __name__ == "__main__":
     import time
 
     p.connect(p.GUI)
-    # p.connect(p.DIRECT)
     p.setAdditionalSearchPath(pd.getDataPath())
 
     time_step = 1. / 60.
     p.setTimeStep(time_step)
     p.setRealTimeSimulation(0)
 
-    robot = Panda(p, dof=3, state_mode='reduced', time_step=time_step)
+    robot = PandaRelative(p, dof=3, time_step=time_step, state_mode='reduced', sim_time=1.)
 
     while True:
 
-        action = robot.action_space.sample()
+        # action = robot.action_space.sample()
 
-        success, obs = robot.step(action)
-        if not success:
-            print(action)
-            robot.reset()
-            time.sleep(3)
-    # robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step)
-    #
-    # action = np.array([0.8, .71, -.06])
-    # success, obs = robot.step(action)
-    #
-    # from environments.tasks.reach import Reach
-    #
-    # task = Reach(p)
-    # task.reset()
-    #
-    # for ii in np.linspace(-1, 1, 5):
-    #     for jj in np.linspace(-1, 1, 5):
-    #         for kk in np.linspace(-1, 1, 5):
-    #             print(ii, jj, kk)
-    #
-    #             success = True
-    #
-    #             action = np.array([ii, jj, kk])
-    #
-    #             success, obs = robot.step(action)
+        robot.reset()
+
+        action = np.ones(robot.action_space.shape)
+        # action[0] = np.random.choice([-1,1])
+
+        obs = robot.step(action)
