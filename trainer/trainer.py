@@ -74,8 +74,6 @@ class Trainer:
 
     def __init__(self, training_config):
 
-        assert training_config["base_pkg"] in ["stable-baselines"]
-
         # create results directories
         try:
             results_dir = osp.join('results/',
@@ -367,7 +365,6 @@ if __name__ == "__main__":
                            datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
     training_config = {
-        "base_pkg": "stable-baselines",
         "algorithm": "SAC",
         "test_interval": 500_000,
         "nb_tests": 100,
@@ -399,11 +396,13 @@ if __name__ == "__main__":
                             "dof": 3,
                             "only_positive": False,
                             "sparse_reward": False,
-                            "max_steps": 10
+                            "max_steps": 100
                             },
             "robot_config": {
                 "name": "pandas",
-                "dof": 3
+                "dof": 3,
+                "sim_time": .1,
+                "scale": .1
             }
         }
     }

@@ -136,8 +136,8 @@ class Environment(gym.Env):
             }
 
         observation["state"] = {
-            'task': observation_robot,
-            'robot': observation_task,
+            'task': observation_task,
+            'robot': observation_robot,
             'agent_state': np.concatenate((observation_robot, observation_task))
         }
 

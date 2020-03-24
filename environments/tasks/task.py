@@ -41,7 +41,7 @@ class Task(object):
                 if not self.only_positive:
                     new_target_position[dd] *= np.random.choice([1, -1])
 
-            if np.linalg.norm(new_target_position) < 1:
+            if np.linalg.norm(new_target_position) < 0.8:
 
                 new_target_position += self.offset
                 self.bullet_client.resetBasePositionAndOrientation(
