@@ -220,23 +220,27 @@ class AgentSAC:
                    osp.join(path, "optimizer_critic_2.pt"))
 
     def load(self, path, train_mode=True):
+        try:
+            self.policy.load_state_dict(torch.load(osp.join(path, "policy.pt")))
+            self.critic_1.load_state_dict(
+                torch.load(osp.join(path, "critic_1.pt")))
+            self.critic_2.load_state_dict(
+                torch.load(osp.join(path, "critic_2.pt")))
+            self.target_critic_1.load_state_dict(
+                torch.load(osp.join(path, "target_critic_1.pt")))
+            self.target_critic_2.load_state_dict(
+                torch.load(osp.join(path, "target_critic_2.pt")))
 
-        self.policy.load_state_dict(torch.load(osp.join(path, "policy.pt")))
-        self.critic_1.load_state_dict(
-            torch.load(osp.join(path, "critic_1.pt")))
-        self.critic_2.load_state_dict(
-            torch.load(osp.join(path, "critic_2.pt")))
-        self.target_critic_1.load_state_dict(
-            torch.load(osp.join(path, "target_critic_1.pt")))
-        self.target_critic_2.load_state_dict(
-            torch.load(osp.join(path, "target_critic_2.pt")))
-
-        self.optimizer_policy.load_state_dict(
-            torch.load(osp.join(path, "optimizer_policy.pt")))
-        self.optimizer_critic_1.load_state_dict(
-            torch.load(osp.join(path, "optimizer_critic_1.pt")))
-        self.optimizer_critic_2.load_state_dict(
-            torch.load(osp.join(path, "optimizer_critic_2.pt")))
+            self.optimizer_policy.load_state_dict(
+                torch.load(osp.join(path, "optimizer_policy.pt")))
+            self.optimizer_critic_1.load_state_dict(
+                torch.load(osp.join(path, "optimizer_critic_1.pt")))
+            self.optimizer_critic_2.load_state_dict(
+                torch.load(osp.join(path, "optimizer_critic_2.pt")))
+        except FileNotFoundError:
+            print('###################')
+            print('Could not load agent, missing files in', path)
+            print('###################')
 
         if train_mode:
             self.policy.train()
@@ -250,6 +254,7 @@ class AgentSAC:
             self.critic_2.eval()
             self.target_critic_1.eval()
             self.target_critic_2.eval()
+
 
     def predict(self, states, deterministic=True):
 
