@@ -157,7 +157,7 @@ class Trainer:
         agent_config = training_config["agent_config"]
 
         # add action and state spaces to config
-        agent = get_agent(agent_config,
+        self.agent = get_agent(agent_config,
                           env_orchestrator.observation_space,
                           env_orchestrator.action_space)
 
@@ -169,7 +169,7 @@ class Trainer:
 
             with open(osp.join(results_dir, 'config.json'), 'w') as f:
                 json.dump(training_config, f)
-            agent.save(models_dir)
+            self.agent.save(models_dir)
         else:
             # experiment exists, check similar configs, if not similar make new results_dir_MMDDHHMM
             # if similar, check reload_agent option:
@@ -190,15 +190,15 @@ class Trainer:
 
                 with open(osp.join(results_dir, 'config.json'), 'w') as f:
                     json.dump(training_config, f)
-                agent.save(models_dir)
+                self.agent.save(models_dir)
             else:
                 if reload_agent:
                     print('Re-loading previous agent from', models_dir)
-                    agent.load(models_dir, train_mode=True)
+                    self.agent.load(models_dir, train_mode=True)
 
                 else:
                     results_dir = osp.join(results_dir,
-                                           datetime.datetime.now().strftime("%d-%m-%Y_%H:%M:%S"))
+                                           datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
                     os.makedirs(results_dir)
                     models_dir = osp.join(results_dir, "models")
@@ -206,7 +206,7 @@ class Trainer:
                     print('Loading new Agent')
                     with open(osp.join(results_dir, 'config.json'), 'w') as f:
                         json.dump(training_config, f)
-                    agent.save(models_dir)
+                    self.agent.save(models_dir)
             print('################################\n')
 
         log_dir = results_dir
