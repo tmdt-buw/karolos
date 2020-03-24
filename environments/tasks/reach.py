@@ -6,14 +6,14 @@ from gym import spaces
 class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 dof=1,
-                 only_positive=False):
+                 dof=1, only_positive=False, sparse_reward=False, max_steps=10):
 
         super(Reach, self).__init__(bullet_client=bullet_client,
                                     gravity=[0, 0, 0],
                                     offset=offset,
                                     dof=dof,
-                                    only_positive=only_positive)
+                                    only_positive=only_positive,
+                                    sparse_reward=sparse_reward)
 
         self.limits = np.array([
             (-1., 1.),
@@ -25,7 +25,7 @@ class Reach(Task):
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf", useFixedBase=True)
 
-        self.max_steps = 5
+        self.max_steps = max_steps
 
     def reset(self, robot=None):
 
@@ -87,8 +87,11 @@ class Reach(Task):
             if distance_tcp_object < 0.05:
                 reward = 1.
             else:
-                reward = np.exp(-distance_tcp_object * 3.5) * 2 - 1
-                reward /= self.max_steps
+                if self.sparse_reward:
+                    reward = -1
+                else:
+                    reward = np.exp(-distance_tcp_object * 3.5) * 2 - 1
+                    reward /= self.max_steps
         else:
             reward = -1.
 

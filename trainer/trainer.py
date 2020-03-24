@@ -163,8 +163,6 @@ class Trainer:
 
     def __init__(self, training_config):
 
-        assert training_config["base_pkg"] in ["stable-baselines"]
-
         # create results directories
         try:
             results_dir = osp.join('results/',
@@ -308,15 +306,13 @@ if __name__ == "__main__":
                            datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
     training_config = {
-        "base_pkg": "stable-baselines",
         "algorithm": "SAC",
         "test_interval": 500_000,
         "nb_tests": 100,
         "total_timesteps": 25_000_000,
         "save_interval_steps": 1_000_000,
         "results_dir": results_dir,
-        "use_hindsight_experience_replay": True,
-        "random_steps_before_training": 0,
+        "use_hindsight_experience_replay": False,
         "agent_config": {
             "algorithm": "sac",
             "soft_q_lr": 0.0005,
@@ -330,21 +326,24 @@ if __name__ == "__main__":
             "memory_size": 100_000,
             "tau": 0.0025,
             "hidden_dim": 25,
-            "hidden_layers": 2,
+            "hidden_layers": 4,
             "seed": 192
         },
         "env_config": {
-            # "nb_envs": 6,
             "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
                             "dof": 3,
-                            "only_positive": False
+                            "only_positive": False,
+                            "sparse_reward": False,
+                            "max_steps": 100
                             },
             "robot_config": {
                 "name": "pandas",
-                "dof": 3
+                "dof": 3,
+                "sim_time": .1,
+                "scale": .1
             }
         }
     }
