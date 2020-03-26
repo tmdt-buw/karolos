@@ -156,7 +156,10 @@ if __name__ == "__main__":
                         },
         "robot_config": {
             "name": "pandas",
-            "dof": 3
+            "dof": 3,
+            "sim_time": .1,
+            "scale": .3,
+            "random_start": False
         }
     }
 

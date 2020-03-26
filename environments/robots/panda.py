@@ -12,7 +12,7 @@ class Panda(gym.Env):
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
                  use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.,
-                 sim_time=1, scale=0.1):
+                 sim_time=1, scale=0.1, random_start=False):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -23,6 +23,7 @@ class Panda(gym.Env):
         self.use_gripper = use_gripper
         self.time_step = time_step
         self.scale = scale
+        self.random_start_pos = random_start
 
         self.max_steps = int(sim_time / time_step)
 
@@ -51,8 +52,11 @@ class Panda(gym.Env):
         self.torques_arm = np.array([87, 87, 87, 87, 12, 12, 12])
         self.forces_hand = np.array([70, 70])
 
-        self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
-        self.initial_joints_hand = np.array([0.035, 0.035])
+        if self.random_start_pos:
+            self.initial_joints_arm, self.initial_joints_hand = self.get_random_start()
+        else:
+            self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
+            self.initial_joints_hand = np.array([0.035, 0.035])
 
         self.ids_joints_arm = np.arange(7)
         self.ids_joints_hand = np.array([9, 10])
@@ -85,6 +89,13 @@ class Panda(gym.Env):
         # reset to initial position
         self.reset()
 
+    def get_random_start(self):
+        arm = np.hstack([self.convert_intervals(np.random.random(1), [0, 1], [x,y])
+               for x,y in self.limits_joints_arm])
+        hand = np.hstack([self.convert_intervals(np.random.random(1), [0, 1], [x, y])
+               for x, y in self.limits_joints_hand])
+        return arm, hand
+
     def get_id(self):
         return self.robot
 
@@ -114,7 +125,10 @@ class Panda(gym.Env):
         return img
 
     def __reset(self):
-        # todo reset to random pose
+
+        if self.random_start_pos:
+            self.initial_joints_arm, self.initial_joints_hand = self.get_random_start()
+
         for joint_id, initial_state in zip(self.ids_joints_arm,
                                            self.initial_joints_arm):
             self.bullet_client.resetJointState(self.robot, joint_id,
