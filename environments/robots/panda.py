@@ -52,11 +52,11 @@ class Panda(gym.Env):
         self.torques_arm = np.array([87, 87, 87, 87, 12, 12, 12])
         self.forces_hand = np.array([70, 70])
 
-        if self.random_start_pos:
-            self.initial_joints_arm, self.initial_joints_hand = self.get_random_start()
-        else:
-            self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
-            self.initial_joints_hand = np.array([0.035, 0.035])
+        self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
+        self.initial_joints_hand = np.array([0.035, 0.035])
+
+        self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
+        self.initial_joints_hand = np.array([0.035, 0.035])
 
         self.ids_joints_arm = np.arange(7)
         self.ids_joints_hand = np.array([9, 10])
@@ -90,10 +90,21 @@ class Panda(gym.Env):
         self.reset()
 
     def get_random_start(self):
-        arm = np.hstack([self.convert_intervals(np.random.random(1), [0, 1], [x,y])
-               for x,y in self.limits_joints_arm])
-        hand = np.hstack([self.convert_intervals(np.random.random(1), [0, 1], [x, y])
-               for x, y in self.limits_joints_hand])
+
+        arm = self.initial_joints_arm.copy()
+        hand = self.initial_joints_hand.copy()
+
+        for i in self.ids_joints_arm:
+            if i in self.ids_joints_arm_controllable:
+                arm[i] = self.convert_intervals(np.random.random(1), [0, 1],
+                                                [self.limits_joints_arm[i][0],
+                                                 self.limits_joints_arm[i][1]])
+        for i in self.ids_joints_hand:
+            if i in self.ids_joints_hand_controllable:
+                hand[i] = self.convert_intervals(np.random.random(1), [0, 1],
+                                                [self.limits_joints_hand[i][0],
+                                                 self.limits_joints_hand[i][1]])
+
         return arm, hand
 
     def get_id(self):
@@ -127,15 +138,18 @@ class Panda(gym.Env):
     def __reset(self):
 
         if self.random_start_pos:
-            self.initial_joints_arm, self.initial_joints_hand = self.get_random_start()
+            initial_joints_arm, initial_joints_hand = self.get_random_start()
+        else:
+            initial_joints_arm = self.initial_joints_arm
+            initial_joints_hand = self.initial_joints_hand
 
         for joint_id, initial_state in zip(self.ids_joints_arm,
-                                           self.initial_joints_arm):
+                                           initial_joints_arm):
             self.bullet_client.resetJointState(self.robot, joint_id,
                                                initial_state)
 
         for joint_id, initial_state in zip(self.ids_joints_hand,
-                                           self.initial_joints_hand):
+                                           initial_joints_hand):
             self.bullet_client.resetJointState(self.robot, joint_id,
                                                initial_state)
 
@@ -349,8 +363,8 @@ if __name__ == "__main__":
     p.setTimeStep(time_step)
     p.setRealTimeSimulation(0)
 
-    robot = Panda(p, dof=3, state_mode='reduced', time_step=time_step,
-                  sim_time=1.)
+    robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step,
+                  sim_time=1., random_start=True)
 
     while True:
         # action = robot.action_space.sample()
