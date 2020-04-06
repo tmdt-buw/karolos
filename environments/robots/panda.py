@@ -35,7 +35,7 @@ class Panda(gym.Env):
         self.robot = bullet_client.loadURDF("robots/panda/panda.urdf",
                                             np.array([0, 0, 0]) + self.offset,
                                             useFixedBase=True,
-                                            flags=p.URDF_USE_SELF_COLLISION)
+                                            flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
         for joint_id in range(self.bullet_client.getNumJoints(self.robot)):
             self.bullet_client.changeDynamics(self.robot, joint_id,
@@ -96,14 +96,16 @@ class Panda(gym.Env):
 
         for i in self.ids_joints_arm:
             if i in self.ids_joints_arm_controllable:
-                arm[i] = self.convert_intervals(np.random.random(1), [0, 1],
+                arm[i] = self.convert_intervals(np.random.random(), [0, 1],
                                                 [self.limits_joints_arm[i][0],
                                                  self.limits_joints_arm[i][1]])
         for i in self.ids_joints_hand:
             if i in self.ids_joints_hand_controllable:
-                hand[i] = self.convert_intervals(np.random.random(1), [0, 1],
-                                                [self.limits_joints_hand[i][0],
-                                                 self.limits_joints_hand[i][1]])
+                hand[i] = self.convert_intervals(np.random.random(), [0, 1],
+                                                 [self.limits_joints_hand[i][
+                                                      0],
+                                                  self.limits_joints_hand[i][
+                                                      1]])
 
         return arm, hand
 
@@ -135,7 +137,7 @@ class Panda(gym.Env):
                                                 projection_matrix)
         return img
 
-    def __reset(self):
+    def reset_robot(self):
 
         if self.random_start_pos:
             initial_joints_arm, initial_joints_hand = self.get_random_start()
@@ -153,6 +155,12 @@ class Panda(gym.Env):
             self.bullet_client.resetJointState(self.robot, joint_id,
                                                initial_state)
 
+        self.bullet_client.stepSimulation()
+        contact_points = self.bullet_client.getContactPoints(self.robot,
+                                                             self.robot)
+
+        return not contact_points
+
     def reset(self):
         """Reset robot to initial pose and return new state."""
 
@@ -161,8 +169,10 @@ class Panda(gym.Env):
 
         # reset until state is valid
         while not success:
-            self.__reset()
-            success, observation = self.get_observation()
+            success_reset_robot = self.reset_robot()
+            success_observation, observation = self.get_observation()
+
+            success = success_reset_robot and success_observation
 
         return observation
 
