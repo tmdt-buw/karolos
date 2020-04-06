@@ -349,7 +349,8 @@ if __name__ == "__main__":
                 "name": "pandas",
                 "dof": 3,
                 "sim_time": .1,
-                "scale": .1
+                "scale": .1,
+                "random_start": True
             }
         }
     }

@@ -12,7 +12,7 @@ class Panda(gym.Env):
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
                  use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.,
-                 sim_time=1, scale=0.1):
+                 sim_time=1, scale=0.1, random_start=False):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -23,6 +23,7 @@ class Panda(gym.Env):
         self.use_gripper = use_gripper
         self.time_step = time_step
         self.scale = scale
+        self.random_start_pos = random_start
 
         self.max_steps = int(sim_time / time_step)
 
@@ -34,7 +35,7 @@ class Panda(gym.Env):
         self.robot = bullet_client.loadURDF("robots/panda/panda.urdf",
                                             np.array([0, 0, 0]) + self.offset,
                                             useFixedBase=True,
-                                            flags=p.URDF_USE_SELF_COLLISION)
+                                            flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
         for joint_id in range(self.bullet_client.getNumJoints(self.robot)):
             self.bullet_client.changeDynamics(self.robot, joint_id,
@@ -50,6 +51,9 @@ class Panda(gym.Env):
 
         self.torques_arm = np.array([87, 87, 87, 87, 12, 12, 12])
         self.forces_hand = np.array([70, 70])
+
+        self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
+        self.initial_joints_hand = np.array([0.035, 0.035])
 
         self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
         self.initial_joints_hand = np.array([0.035, 0.035])
@@ -85,6 +89,26 @@ class Panda(gym.Env):
         # reset to initial position
         self.reset()
 
+    def get_random_start(self):
+
+        arm = self.initial_joints_arm.copy()
+        hand = self.initial_joints_hand.copy()
+
+        for i in self.ids_joints_arm:
+            if i in self.ids_joints_arm_controllable:
+                arm[i] = self.convert_intervals(np.random.random(), [0, 1],
+                                                [self.limits_joints_arm[i][0],
+                                                 self.limits_joints_arm[i][1]])
+        for i in self.ids_joints_hand:
+            if i in self.ids_joints_hand_controllable:
+                hand[i] = self.convert_intervals(np.random.random(), [0, 1],
+                                                 [self.limits_joints_hand[i][
+                                                      0],
+                                                  self.limits_joints_hand[i][
+                                                      1]])
+
+        return arm, hand
+
     def get_id(self):
         return self.robot
 
@@ -113,17 +137,29 @@ class Panda(gym.Env):
                                                 projection_matrix)
         return img
 
-    def __reset(self):
-        # todo reset to random pose
+    def reset_robot(self):
+
+        if self.random_start_pos:
+            initial_joints_arm, initial_joints_hand = self.get_random_start()
+        else:
+            initial_joints_arm = self.initial_joints_arm
+            initial_joints_hand = self.initial_joints_hand
+
         for joint_id, initial_state in zip(self.ids_joints_arm,
-                                           self.initial_joints_arm):
+                                           initial_joints_arm):
             self.bullet_client.resetJointState(self.robot, joint_id,
                                                initial_state)
 
         for joint_id, initial_state in zip(self.ids_joints_hand,
-                                           self.initial_joints_hand):
+                                           initial_joints_hand):
             self.bullet_client.resetJointState(self.robot, joint_id,
                                                initial_state)
+
+        self.bullet_client.stepSimulation()
+        contact_points = self.bullet_client.getContactPoints(self.robot,
+                                                             self.robot)
+
+        return not contact_points
 
     def reset(self):
         """Reset robot to initial pose and return new state."""
@@ -133,8 +169,10 @@ class Panda(gym.Env):
 
         # reset until state is valid
         while not success:
-            self.__reset()
-            success, observation = self.get_observation()
+            success_reset_robot = self.reset_robot()
+            success_observation, observation = self.get_observation()
+
+            success = success_reset_robot and success_observation
 
         return observation
 
@@ -335,8 +373,8 @@ if __name__ == "__main__":
     p.setTimeStep(time_step)
     p.setRealTimeSimulation(0)
 
-    robot = Panda(p, dof=3, state_mode='reduced', time_step=time_step,
-                  sim_time=1.)
+    robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step,
+                  sim_time=1., random_start=True)
 
     while True:
         # action = robot.action_space.sample()
