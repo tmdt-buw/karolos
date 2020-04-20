@@ -1,9 +1,12 @@
 import gym
 from gym import spaces
+import logging
 import numpy as np
 import pybullet as p
-import logging
+import pybullet_data as pd
 import time
+
+from .utils.joint import Joint
 
 
 class Panda(gym.Env):
@@ -12,7 +15,7 @@ class Panda(gym.Env):
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
                  use_gripper=False, offset=(0, 0, 0), time_step=1. / 240.,
-                 sim_time=1, scale=0.1, random_start=False):
+                 sim_time=.1, scale=0.1):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -23,7 +26,6 @@ class Panda(gym.Env):
         self.use_gripper = use_gripper
         self.time_step = time_step
         self.scale = scale
-        self.random_start_pos = random_start
 
         self.max_steps = int(sim_time / time_step)
 
@@ -37,280 +39,119 @@ class Panda(gym.Env):
                                             useFixedBase=True,
                                             flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
-        for joint_id in range(self.bullet_client.getNumJoints(self.robot)):
+        self.joints = {
+            0: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
+            1: Joint(0.5, (-1.7628, 1.7628), 2.1750, 87),
+            2: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
+            3: Joint(-0.5, (-3.0718, -0.0698), 2.1750, 87),
+            4: Joint(0, (-2.8973, 2.8973), 2.6100, 12),
+            5: Joint(1., (-0.0175, 3.7525), 2.6100, 12),
+            6: Joint(0.707, (-2.8973, 2.8973), 2.6100, 12),
+
+            # hand
+            9: Joint(0.035, (0, 0.04), 0.05, 70),
+            10: Joint(0.035, (0, 0.04), 0.05, 70),
+        }
+
+        for joint_id, joint in self.joints.items():
             self.bullet_client.changeDynamics(self.robot, joint_id,
                                               linearDamping=0,
                                               angularDamping=0)
 
-        # define robot parameters
-        self.limits_joints_arm = np.array(
-            [(-2.8973, 2.8973), (-1.7628, 1.7628), (-2.8973, 2.8973),
-             (-3.0718, -0.0698), (-2.8973, 2.8973), (-0.0175, 3.7525),
-             (-2.8973, 2.8973)])
-        self.limits_joints_hand = np.array([(0, 0.04), (0, 0.04)])
-
-        self.torques_arm = np.array([87, 87, 87, 87, 12, 12, 12])
-        self.forces_hand = np.array([70, 70])
-
-        self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
-        self.initial_joints_hand = np.array([0.035, 0.035])
-
-        self.initial_joints_arm = np.array([0, 0.5, 0, -0.5, 0, 1., 0.707])
-        self.initial_joints_hand = np.array([0.035, 0.035])
-
-        self.ids_joints_arm = np.arange(7)
-        self.ids_joints_hand = np.array([9, 10])
-
         # define controllable parameters
         if self.dof == 2:
-            self.ids_joints_arm_controllable = np.array([1, 3, 5])
+            self.ids_controllable = np.array([1, 3, 5])
         else:
-            self.ids_joints_arm_controllable = self.ids_joints_arm
+            self.ids_controllable = np.arange(7)
 
         if use_gripper:
-            self.ids_joints_hand_controllable = self.ids_joints_hand
-        else:
-            self.ids_joints_hand_controllable = []
+            self.ids_controllable = np.concatenate(
+                (self.ids_controllable, [9, 10]))
+
+        for id_controllable in self.ids_controllable:
+            self.joints[id_controllable].controllable = True
 
         # define spaces
-        self.action_space = spaces.Box(-1., 1., shape=(
-            len(self.ids_joints_arm_controllable) + self.use_gripper,))
+        self.action_space = spaces.Box(-1., 1., shape=
+        self.ids_controllable.shape)
 
         if state_mode == 'full':
             self.observation_space = spaces.Box(-1., 1., shape=(
-                len(self.ids_joints_arm) + len(self.ids_joints_hand),))
+                2 * len(self.joints),))
         elif state_mode == 'reduced':
             self.observation_space = spaces.Box(-1., 1., shape=(
-                len(self.ids_joints_arm_controllable) + len(
-                    self.ids_joints_hand_controllable),))
-        elif state_mode == 'tcp':
-            self.observation_space = spaces.Box(-1., 1., shape=(3,))
+                2 * len(self.ids_controllable),))
 
         # reset to initial position
         self.reset()
 
-    def get_random_start(self):
-
-        arm = self.initial_joints_arm.copy()
-        hand = self.initial_joints_hand.copy()
-
-        for i in self.ids_joints_arm:
-            if i in self.ids_joints_arm_controllable:
-                arm[i] = self.convert_intervals(np.random.random(), [0, 1],
-                                                [self.limits_joints_arm[i][0],
-                                                 self.limits_joints_arm[i][1]])
-        for i in self.ids_joints_hand:
-            if i in self.ids_joints_hand_controllable:
-                hand[i] = self.convert_intervals(np.random.random(), [0, 1],
-                                                 [self.limits_joints_hand[i][
-                                                      0],
-                                                  self.limits_joints_hand[i][
-                                                      1]])
-
-        return arm, hand
-
-    def get_id(self):
-        return self.robot
-
-    def get_camera_image(self):
-
-        fov, aspect, nearplane, farplane = 60, 1.0, 0.01, 5
-        projection_matrix = p.computeProjectionMatrixFOV(fov, aspect,
-                                                         nearplane,
-                                                         farplane)
-        com_p, com_o, _, _, _, _ = self.bullet_client.getLinkState(self.robot,
-                                                                   8,
-                                                                   computeForwardKinematics=True)
-        com_p = np.array(com_p) + np.array([0.1, 0, 0])
-        rot_matrix = self.bullet_client.getMatrixFromQuaternion(com_o)
-        rot_matrix = np.array(rot_matrix).reshape(3, 3)
-        # Initial vectors
-        init_camera_vector = (-.5, 0, 1)
-        init_up_vector = (1, 0, 0)
-        # Rotated vectors
-        camera_vector = rot_matrix.dot(init_camera_vector)
-        up_vector = rot_matrix.dot(init_up_vector)
-        view_matrix = self.bullet_client.computeViewMatrix(com_p,
-                                                           com_p + 0.1 * camera_vector,
-                                                           up_vector)
-        img = self.bullet_client.getCameraImage(200, 200, view_matrix,
-                                                projection_matrix)
-        return img
-
-    def reset_robot(self):
-
-        if self.random_start_pos:
-            initial_joints_arm, initial_joints_hand = self.get_random_start()
-        else:
-            initial_joints_arm = self.initial_joints_arm
-            initial_joints_hand = self.initial_joints_hand
-
-        for joint_id, initial_state in zip(self.ids_joints_arm,
-                                           initial_joints_arm):
-            self.bullet_client.resetJointState(self.robot, joint_id,
-                                               initial_state)
-
-        for joint_id, initial_state in zip(self.ids_joints_hand,
-                                           initial_joints_hand):
-            self.bullet_client.resetJointState(self.robot, joint_id,
-                                               initial_state)
-
-        self.bullet_client.stepSimulation()
-        contact_points = self.bullet_client.getContactPoints(self.robot,
-                                                             self.robot)
-
-        return not contact_points
-
-    def reset(self):
+    def reset(self, desired_state=None):
         """Reset robot to initial pose and return new state."""
 
-        success = False
-        observation = None
+        contact_points = True
+
+        if desired_state:
+            for joint_id, joint in self.joints.items():
+                if joint_id in self.ids_controllable:
+                    joint_position = desired_state.pop(0)
+                else:
+                    joint_position = joint.initial_position
+
+                self.bullet_client.resetJointState(self.robot, joint_id,
+                                                   joint_position)
+
+            self.bullet_client.stepSimulation()
+            contact_points = self.bullet_client.getContactPoints(self.robot,
+                                                                 self.robot)
 
         # reset until state is valid
-        while not success:
-            success_reset_robot = self.reset_robot()
-            success_observation, observation = self.get_observation()
+        while contact_points:
 
-            success = success_reset_robot and success_observation
+            for joint_id, joint in self.joints.items():
+
+                if joint_id in self.ids_controllable:
+                    joint_position = joint.get_random_position()
+                else:
+                    joint_position = joint.initial_position
+
+                self.bullet_client.resetJointState(self.robot, joint_id,
+                                                   joint_position)
+
+            self.bullet_client.stepSimulation()
+            contact_points = self.bullet_client.getContactPoints(self.robot,
+                                                                 self.robot)
+
+        observation = self.get_observation()
 
         return observation
 
     def step(self, action: np.ndarray):
-
         assert self.action_space.contains(action)
 
-        action = action * self.scale
+        action = list(action * self.scale)
 
-        rel_action_arm, rel_action_hand = np.split(action, [
-            len(self.ids_joints_arm_controllable)])
+        for joint_id, joint in self.joints.items():
 
-        # todo extend to gripper movement
-        target_joints_hand = self.initial_joints_hand.copy()
+            if joint_id in self.ids_controllable:
+                position, _, _, _ = self.bullet_client.getJointState(
+                    self.robot, joint_id)
 
-        state_arm, _ = self.get_joint_state()
-        positions_arm, _ = state_arm
+                action_joint = action.pop(0)
 
-        target_joints_arm = positions_arm.copy()
+                normalized_joint_position = joint.normalize_position(position)
+                normalized_target_joint_position = normalized_joint_position + action_joint
+                normalized_target_joint_position = np.clip(
+                    normalized_target_joint_position, -1, 1)
+                target_joint_position = joint.denormalize_position(
+                    normalized_target_joint_position)
 
-        for id_joint, action in zip(self.ids_joints_arm_controllable,
-                                    rel_action_arm):
-            joint_index = \
-                np.argwhere(self.ids_joints_arm == id_joint).ravel()[0]
+            else:
+                target_joint_position = joint.initial_position
 
-            limits_joint = self.limits_joints_arm[joint_index]
-
-            joint_range = limits_joint[1] - limits_joint[0]
-
-            target_joints_arm[joint_index] += action * joint_range
-            target_joints_arm[joint_index] = np.clip(
-                target_joints_arm[joint_index], limits_joint[0],
-                limits_joint[1])
-
-        self.move_joints_to_target(target_joints_arm,
-                                   target_joints_hand)
-
-        success, observation = self.get_observation()
-
-        return success, observation
-
-    def convert_intervals(self, value, interval_origin, interval_target):
-
-        value_mapped = value - interval_origin[0]
-        value_mapped = value_mapped / (interval_origin[1] - interval_origin[0])
-        value_mapped = value_mapped * (interval_target[1] - interval_target[0])
-        value_mapped = value_mapped + interval_target[0]
-
-        return value_mapped
-
-    def joint_included_in_state(self, id_joint):
-
-        if self.state_mode == 'full':
-            return True
-        elif self.state_mode == 'reduced':
-            return id_joint in self.ids_joints_arm_controllable or \
-                   id_joint in self.ids_joints_hand_controllable
-
-    def get_observation(self):
-
-        # self.get_camera_image()
-
-        state_arm, state_hand = self.get_joint_state()
-
-        positions_arm, velocities_arm = state_arm
-        positions_hand, velocities_hand = state_hand
-
-        success = True
-
-        observation_arm = []
-
-        for id_joint, position_arm, limits_joint in zip(self.ids_joints_arm,
-                                                        positions_arm,
-                                                        self.limits_joints_arm):
-
-            position_inside_limits = limits_joint[0] <= position_arm <= \
-                                     limits_joint[1]
-
-            # position_inside_limits = position_inside_limits or np.any(
-            #     np.isclose(position_arm, limits_joint, atol=0, rtol=0.01))
-
-            if not position_inside_limits:
-                self.logger.debug(
-                    f"Arm joint {id_joint} outside limits {position_arm} {limits_joint}")
-
-            success = success and position_inside_limits
-
-            if self.joint_included_in_state(id_joint):
-                observation_joint = self.convert_intervals(position_arm,
-                                                           limits_joint,
-                                                           [-1, 1])
-                observation_arm.append(observation_joint)
-
-        observation_hand = []
-
-        for id_joint, position_hand, limits_joint in zip(self.ids_joints_hand,
-                                                         positions_hand,
-                                                         self.limits_joints_hand):
-
-            position_inside_limits = limits_joint[0] <= position_hand <= \
-                                     limits_joint[1]
-
-            # position_inside_limits = position_inside_limits or np.any(
-            #     np.isclose(position_hand, limits_joint, atol=0, rtol=0.01))
-
-            if not position_inside_limits:
-                self.logger.debug(
-                    f"Hand outside limits {position_hand} {limits_joint}")
-
-            success = success and position_inside_limits
-
-            if self.joint_included_in_state(id_joint):
-                observation_joint = self.convert_intervals(position_hand,
-                                                           limits_joint,
-                                                           [-1, 1])
-                observation_hand.append(observation_joint)
-
-        observation = np.concatenate((observation_arm, observation_hand))
-
-        observation = observation.clip(self.observation_space.low,
-                                       self.observation_space.high)
-        return success, observation
-
-    def move_joints_to_target(self, target_joints_arm, target_joints_hand):
-
-        for id_joint, target_joint, torque in zip(
-                self.ids_joints_arm,
-                target_joints_arm, self.torques_arm):
-            self.bullet_client.setJointMotorControl2(self.robot, id_joint,
+            self.bullet_client.setJointMotorControl2(self.robot, joint_id,
                                                      self.bullet_client.POSITION_CONTROL,
-                                                     target_joint,
-                                                     force=torque)
-        for id_joint, target_joint, force in zip(
-                self.ids_joints_hand,
-                target_joints_hand, self.forces_hand):
-            self.bullet_client.setJointMotorControl2(self.robot, id_joint,
-                                                     self.bullet_client.POSITION_CONTROL,
-                                                     target_joint, force=force)
+                                                     target_joint_position,
+                                                     force=joint.torque)
 
         for step in range(self.max_steps):
             self.bullet_client.stepSimulation()
@@ -318,54 +159,44 @@ class Panda(gym.Env):
                 "connectionMethod"] == p.GUI:
                 time.sleep(self.time_step)
 
-    def get_joint_state(self):
+        observation = self.get_observation()
 
-        positions_arm, velocities_arm = [], []
+        return observation
 
-        for j in self.ids_joints_arm:
+    def get_observation(self):
+        positions, velocities = [], []
+
+        for joint_id, joint in self.joints.items():
+            if self.state_mode == 'reduced' and joint_id not in self.ids_controllable:
+                continue
+
             position, velocity, _, _ = self.bullet_client.getJointState(
-                self.robot, j)
-            positions_arm.append(position)
-            velocities_arm.append(velocity)
+                self.robot, joint_id)
 
-        positions_hand, velocities_hand = [], []
+            positions.append(joint.normalize_position(position))
+            velocities.append(joint.normalize_velocity(velocity))
 
-        for j in self.ids_joints_hand:
-            position, velocity, _, _ = self.bullet_client.getJointState(
-                self.robot, j)
-            positions_hand.append(position)
-            velocities_hand.append(velocity)
+        positions = np.array(positions)
+        velocities = np.array(velocities)
 
-        positions_arm = np.array(positions_arm)
-        velocities_arm = np.array(velocities_arm)
-        positions_hand = np.array(positions_hand)
-        velocities_hand = np.array(velocities_hand)
+        observation = np.concatenate((positions, velocities))
 
-        state_arm = (positions_arm, velocities_arm)
-        state_hand = (positions_hand, velocities_hand)
-
-        return state_arm, state_hand
+        observation = observation.clip(self.observation_space.low,
+                                       self.observation_space.high)
+        return observation
 
     def get_position_tcp(self):
 
-        positions_links = []
+        state_fingers = self.bullet_client.getLinkStates(self.robot, [9, 10])
 
-        for joint_id in self.ids_joints_hand:
-            state_link = self.bullet_client.getLinkState(self.robot, joint_id)
+        positions_fingers = [state_finger[0] for state_finger in state_fingers]
 
-            position_link = state_link[0]
-
-            positions_links.append(position_link)
-
-        position_tcp = np.mean(positions_links, axis=0)
+        position_tcp = np.mean(positions_fingers, axis=0)
 
         return position_tcp
 
 
 if __name__ == "__main__":
-    import pybullet_data as pd
-    import time
-
     p.connect(p.GUI)
     p.setAdditionalSearchPath(pd.getDataPath())
 
@@ -373,14 +204,18 @@ if __name__ == "__main__":
     p.setTimeStep(time_step)
     p.setRealTimeSimulation(0)
 
-    robot = Panda(p, dof=2, state_mode='reduced', time_step=time_step,
-                  sim_time=1., random_start=True)
+    robot = Panda(p, dof=3, time_step=time_step, sim_time=.1, scale=.1)
+
+    initial_pose = [0, 0.5, 0, -0.5, 0, 1., 0.707]
 
     while True:
         # action = robot.action_space.sample()
 
-        robot.reset()
+        robot.reset([0, 0.5, 0, -0.5, 0, 1., 0.707])
 
-        action = np.ones(robot.action_space.shape) * np.random.choice([-1,1])
+        for i in range(20):
+            action = np.ones_like(robot.action_space.sample())
 
-        obs = robot.step(action)
+            obs = robot.step(action)
+
+            # print(min(obs[9:]), max(obs[9:]))

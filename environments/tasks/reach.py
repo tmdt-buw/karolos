@@ -6,7 +6,7 @@ from gym import spaces
 class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 dof=1, only_positive=False, sparse_reward=False, max_steps=10):
+                 dof=1, only_positive=False, sparse_reward=False, max_steps=100):
 
         super(Reach, self).__init__(bullet_client=bullet_client,
                                     gravity=[0, 0, 0],
@@ -27,18 +27,46 @@ class Reach(Task):
 
         self.max_steps = max_steps
 
-    def reset(self, robot=None):
+    def reset(self, robot=None, desired_state=None):
 
         super(Reach, self).reset()
 
-        observation = None
-        success = False
+        contact_points = True
 
-        while not success:
-            self.reset_object(self.target, robot)
-            success, observation = self.get_observation()
+        if desired_state:
+            self.bullet_client.resetBasePositionAndOrientation(
+                self.target, desired_state, [0, 0, 0, 1])
 
-        return observation
+            self.bullet_client.stepSimulation()
+
+            if robot:
+                contact_points = self.bullet_client.getContactPoints(
+                    robot, self.target)
+            else:
+                contact_points = False
+
+        while contact_points:
+
+            target_position = np.random.uniform(size=3)
+
+            if not self.only_positive:
+                target_position *= np.random.choice([1, -1], 3)
+
+            if np.linalg.norm(target_position) < 0.8:
+                target_position += self.offset
+                self.bullet_client.resetBasePositionAndOrientation(
+                    self.target, target_position, [0, 0, 0, 1])
+                self.bullet_client.stepSimulation()
+            else:
+                continue
+
+            if robot:
+                contact_points = self.bullet_client.getContactPoints(
+                    robot, self.target)
+            else:
+                contact_points = False
+
+        return self.get_observation()
 
     def get_target(self):
 
@@ -63,14 +91,11 @@ class Reach(Task):
 
         observation = np.array(observation)
 
-        if not self.observation_space.contains(observation):
-            observation = observation.clip(self.observation_space.low,
-                                           self.observation_space.high)
-            return False, observation
-        else:
-            return True, observation
+        observation = observation.clip(self.observation_space.low,
+                                       self.observation_space.high)
+        return observation
 
-    def get_goals(self, robot, success):
+    def get_goals(self, robot, success=True):
         if success:
             achieved_goal = robot.get_position_tcp()
         else:
@@ -88,7 +113,7 @@ class Reach(Task):
                 reward = 1.
             else:
                 if self.sparse_reward:
-                    reward = -1
+                    reward = -1.
                 else:
                     reward = np.exp(-distance_tcp_object * 3.5) * 2 - 1
                     reward /= self.max_steps
