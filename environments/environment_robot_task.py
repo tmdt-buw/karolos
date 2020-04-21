@@ -40,8 +40,9 @@ class Environment(gym.Env):
             'state': spaces.Dict({
                 'task': self.task.observation_space,
                 'robot': self.robot.observation_space,
-                'agent_state': spaces.Box(-1, 1, shape=tuple(np.array(self.task.observation_space.shape) +
-                                     np.array(self.robot.observation_space.shape)))
+                'agent_state': spaces.Box(-1, 1, shape=tuple(
+                    np.array(self.task.observation_space.shape) +
+                    np.array(self.robot.observation_space.shape)))
             }),
             'goal': spaces.Dict({
                 'task': self.task.observation_space,
@@ -60,8 +61,9 @@ class Environment(gym.Env):
             })
         })
 
-        self.observation_space = tuple(np.array(self.task.observation_space.shape) +
-                                     np.array(self.robot.observation_space.shape))
+        self.observation_space = tuple(
+            np.array(self.task.observation_space.shape) +
+            np.array(self.robot.observation_space.shape))
         self.observation_space = spaces.Box(-1, 1,
                                             shape=self.observation_space)
 
@@ -81,7 +83,8 @@ class Environment(gym.Env):
             'state': {
                 'task': observation_task,
                 'robot': observation_robot,
-                'agent_state': np.concatenate((observation_robot, observation_task))
+                'agent_state': np.concatenate(
+                    (observation_robot, observation_task))
             }
         }
 
@@ -103,27 +106,31 @@ class Environment(gym.Env):
             'desired_goal': desired_goal
         }
 
-        reward = self.task.compute_reward(achieved_goal, desired_goal)
-        done, goal_reached = self.task.compute_done(achieved_goal, desired_goal)
+        reward, done, goal_reached = self.task.compute_reward(achieved_goal,
+                                                              desired_goal)
+        # done, goal_reached = self.task.compute_done(achieved_goal,
+        #                                             desired_goal)
 
         observation["goal"]["reached"] = goal_reached
 
         # todo make generic by merging task observation and achived goal
-        her_reward = self.task.compute_reward(achieved_goal,
-                                              achieved_goal)
-        her_done, _ = self.task.compute_done(achieved_goal,
-                                             achieved_goal)
+        her_reward, her_done, her_goal_reached = self.task.compute_reward(
+            achieved_goal,
+            achieved_goal)
+        # her_done, _ = self.task.compute_done(achieved_goal,
+        #                                      achieved_goal)
 
-            observation["her"] = {
-                "achieved_goal": achieved_goal,
-                "reward": her_reward,
-                "done": her_done
-            }
+        observation["her"] = {
+            "achieved_goal": achieved_goal,
+            "reward": her_reward,
+            "done": her_done
+        }
 
         observation["state"] = {
             'task': observation_task,
             'robot': observation_robot,
-            'agent_state': np.concatenate((observation_robot, observation_task))
+            'agent_state': np.concatenate(
+                (observation_robot, observation_task))
         }
 
         return observation, reward, done
@@ -132,10 +139,11 @@ class Environment(gym.Env):
 if __name__ == "__main__":
 
     env_kwargs1 = {
-        "render": False,
-        "task_config": {"name": "push",
+        "render": True,
+        "task_config": {"name": "reach",
                         "dof": 3,
-                        "only_positive": False
+                        "only_positive": False,
+                        "max_steps": 50
                         },
         "robot_config": {
             "name": "panda",

@@ -131,7 +131,10 @@ class Reach(Task):
         if achieved_goal is not None:
             distance_tcp_object = np.linalg.norm(achieved_goal - desired_goal)
 
-            if distance_tcp_object < 0.05:
+            goal_reached = distance_tcp_object < 0.05
+            done = goal_reached or self.step_counter >= self.max_steps
+
+            if goal_reached:
                 reward = 1.
             else:
                 if self.sparse_reward:
@@ -141,25 +144,12 @@ class Reach(Task):
                     reward /= self.max_steps
         else:
             reward = -1.
+            goal_reached = False
+            done = True
 
         reward = np.clip(reward, -1, 1)
 
-        return reward
-
-    def compute_done(self, achieved_goal, desired_goal):
-
-        if achieved_goal is not None:
-            distance_tcp_object = np.linalg.norm(achieved_goal - desired_goal)
-
-            goal_reached = distance_tcp_object < 0.05
-
-            done = goal_reached or self.step_counter >= self.max_steps
-
-        else:
-            done = True
-            goal_reached = False
-
-        return done, goal_reached
+        return reward, done, goal_reached
 
 
 if __name__ == "__main__":
