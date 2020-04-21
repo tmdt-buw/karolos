@@ -307,14 +307,13 @@ class Trainer:
 
 if __name__ == "__main__":
     results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),"../results")
-    #res_dir = osp.join(res_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-    results_dir = osp.join(results_dir, 'test')
+    results_dir = osp.join(results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    # results_dir = osp.join(results_dir, 'test')
 
     training_config = {
-        "algorithm": "SAC",
         "test_interval": 500_000,
         "nb_tests": 100,
-        "total_timesteps": 25_000_000,
+        "total_timesteps": 50_000_000,
         "save_interval_steps": 1_000_000,
         "results_dir": results_dir,
         "reload_previous_agent": False,
@@ -331,8 +330,8 @@ if __name__ == "__main__":
             "auto_entropy": True,
             "memory_size": 100_000,
             "tau": 0.0025,
-            "hidden_dim": 25,
-            "hidden_layers": 4,
+            "hidden_dim": 32,
+            "hidden_layers": 8,
             "seed": 192
         },
         "env_config": {
@@ -343,14 +342,13 @@ if __name__ == "__main__":
                             "dof": 3,
                             "only_positive": False,
                             "sparse_reward": False,
-                            "max_steps": 100
+                            "max_steps": 25
                             },
             "robot_config": {
-                "name": "pandas",
+                "name": "panda",
                 "dof": 3,
                 "sim_time": .1,
-                "scale": .1,
-                "random_start": True
+                "scale": .1
             }
         }
     }
