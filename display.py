@@ -24,9 +24,10 @@ agent_config = config.pop("agent_config")
 
 env_config["bullet_client"] = p
 
-env_config["robot_config"]["sim_time"] = 0.1
-env_config["task_config"]["max_steps"] = 100
+# env_config["robot_config"]["sim_time"] = 0.1
+# env_config["task_config"]["max_steps"] = 100
 print(env_config)
+print(agent_config)
 
 env = get_env(env_config)()
 agent = get_agent(agent_config, env.observation_space,
@@ -34,16 +35,21 @@ agent = get_agent(agent_config, env.observation_space,
 
 models_folder = osp.join(experiment_folder, "models")
 
-agent.load(osp.join(models_folder, max(os.listdir(models_folder))))
+# models_folder = osp.join(models_folder, "37003283_0.500")
+
+models_folder = osp.join(models_folder, max(os.listdir(models_folder)))
+
+agent.load(models_folder)
 
 while True:
 
-    observation = env.reset()
+    desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, 1], "task": None}
+
+    observation = env.reset(desired_state)
 
     done = False
 
     while not done:
-
 
         observation = [observation['state']['agent_state']]
 
@@ -53,6 +59,3 @@ while True:
         action = action[0]
 
         observation, rewards, done = env.step(action)
-
-        # print(np.linalg.norm(observation['state']['task']), rewards)
-

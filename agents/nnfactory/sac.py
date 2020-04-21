@@ -42,12 +42,13 @@ class Critic(nn.Module):
 
         self.operators = nn.ModuleList([
             Flatten(),
-            nn.Linear(in_dim + action_dim, hidden_dim)
+            nn.Linear(in_dim + action_dim, hidden_dim),
+            nn.ReLU()
         ])
 
-        for l in range(num_layers_linear_hidden):
-            self.operators.append(nn.ReLU())
+        for l in range(num_layers_linear_hidden - 1):
             self.operators.append(nn.Linear(hidden_dim, hidden_dim))
+            self.operators.append(nn.ReLU())
 
         self.operators.append(nn.Linear(hidden_dim, 1))
 
@@ -62,7 +63,7 @@ class Critic(nn.Module):
 
 class Policy(nn.Module):
     def __init__(self, in_dim, action_dim, hidden_dim, num_layers_linear_hidden, log_std_min=-20,
-                 log_std_max=2, init_w=3e-3):
+                 log_std_max=2):
         super(Policy, self).__init__()
 
         assert len(in_dim) == 1
@@ -75,11 +76,13 @@ class Policy(nn.Module):
         self.operators = nn.ModuleList([
             Flatten(),
             nn.Linear(in_dim, hidden_dim),
+            nn.ReLU()
         ])
 
-        for l in range(num_layers_linear_hidden):
-            self.operators.append(nn.ReLU())
+        for l in range(num_layers_linear_hidden - 1):
             self.operators.append(nn.Linear(hidden_dim, hidden_dim))
+            self.operators.append(nn.ReLU())
+            # self.operators.append(nn.Dropout(0.2))
 
         self.operators.append(nn.Linear(hidden_dim, 2 * action_dim))
 

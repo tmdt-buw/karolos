@@ -59,9 +59,9 @@ class Task(object):
     def step(self):
         self.step_counter += 1
 
-        success, observation = self.get_observation()
+        observation = self.get_observation()
 
-        return success, observation
+        return observation
 
     def convert_intervals(self, value, interval_origin, interval_target):
 

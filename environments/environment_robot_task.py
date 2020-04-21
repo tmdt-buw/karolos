@@ -40,8 +40,9 @@ class Environment(gym.Env):
             'state': spaces.Dict({
                 'task': self.task.observation_space,
                 'robot': self.robot.observation_space,
-                'agent_state': spaces.Box(-1, 1, shape=tuple(np.array(self.task.observation_space.shape) +
-                                     np.array(self.robot.observation_space.shape)))
+                'agent_state': spaces.Box(-1, 1, shape=tuple(
+                    np.array(self.task.observation_space.shape) +
+                    np.array(self.robot.observation_space.shape)))
             }),
             'goal': spaces.Dict({
                 'task': self.task.observation_space,
@@ -60,37 +61,32 @@ class Environment(gym.Env):
             })
         })
 
-        self.observation_space = tuple(np.array(self.task.observation_space.shape) +
-                                     np.array(self.robot.observation_space.shape))
+        self.observation_space = tuple(
+            np.array(self.task.observation_space.shape) +
+            np.array(self.robot.observation_space.shape))
         self.observation_space = spaces.Box(-1, 1,
                                             shape=self.observation_space)
 
-    def reset(self):
+    def reset(self, desired_state=None):
         """Reset the environment and return new state
         """
 
-        # print("env reset", self.bullet_client.getConnectionInfo())
-        #
-        # if not self.bullet_client.getConnectionInfo()["isConnected"]:
-        #     self.reset_pybullet()
-        #
-        #     print("env reset pybullet", self.bullet_client.getConnectionInfo())
-
-        # if not self.bullet_client.getConnectionInfo()["isConnected"]:
-        #     self.bullet_client = bc.BulletClient(p.DIRECT)
-
-        observation_robot = self.robot.reset()
-        observation_task = self.task.reset()
+        if desired_state is not None:
+            observation_robot = self.robot.reset(desired_state["robot"])
+            observation_task = self.task.reset(self.robot.robot,
+                                               desired_state["task"])
+        else:
+            observation_robot = self.robot.reset()
+            observation_task = self.task.reset(self.robot.robot)
 
         observation_state = {
             'state': {
                 'task': observation_task,
                 'robot': observation_robot,
-                'agent_state': np.concatenate((observation_robot, observation_task))
+                'agent_state': np.concatenate(
+                    (observation_robot, observation_task))
             }
         }
-
-        #assert set(self.observation_dict['state']) == set(observation_state)
 
         return observation_state
 
@@ -98,50 +94,44 @@ class Environment(gym.Env):
         ...
 
     def step(self, action):
-        success_robot, observation_robot = self.robot.step(action)
-        success_task, observation_task = self.task.step()
+        observation_robot = self.robot.step(action)
+        observation_task = self.task.step()
 
-        observation = {
-            "success": {
-                "robot": success_robot,
-                "task": success_task
-            }
-        }
+        observation = {}
 
-        success = np.all(observation["success"].values())
-
-        achieved_goal, desired_goal = self.task.get_goals(self.robot, success)
+        achieved_goal, desired_goal = self.task.get_goals(self.robot)
 
         observation["goal"] = {
             'achieved_goal': achieved_goal,
             'desired_goal': desired_goal
         }
 
-        reward = self.task.compute_reward(achieved_goal, desired_goal)
-        done, goal_reached = self.task.compute_done(achieved_goal, desired_goal)
+        reward, done, goal_reached = self.task.compute_reward(achieved_goal,
+                                                              desired_goal)
+        # done, goal_reached = self.task.compute_done(achieved_goal,
+        #                                             desired_goal)
 
         observation["goal"]["reached"] = goal_reached
 
-        if success:
-            # todo make generic by merging task observation and achived goal
-            her_reward = self.task.compute_reward(achieved_goal,
-                                                   achieved_goal)
-            her_done, _ = self.task.compute_done(achieved_goal,
-                                                 achieved_goal)
+        # todo make generic by merging task observation and achived goal
+        her_reward, her_done, her_goal_reached = self.task.compute_reward(
+            achieved_goal,
+            achieved_goal)
+        # her_done, _ = self.task.compute_done(achieved_goal,
+        #                                      achieved_goal)
 
-            observation["her"] = {
-                "achieved_goal": achieved_goal,
-                "reward": her_reward,
-                "done": her_done
-            }
+        observation["her"] = {
+            "achieved_goal": achieved_goal,
+            "reward": her_reward,
+            "done": her_done
+        }
 
         observation["state"] = {
             'task': observation_task,
             'robot': observation_robot,
-            'agent_state': np.concatenate((observation_robot, observation_task))
+            'agent_state': np.concatenate(
+                (observation_robot, observation_task))
         }
-
-        #assert self.observation_dict == observation
 
         return observation, reward, done
 
@@ -149,17 +139,17 @@ class Environment(gym.Env):
 if __name__ == "__main__":
 
     env_kwargs1 = {
-        "render": False,
-        "task_config": {"name": "push",
+        "render": True,
+        "task_config": {"name": "reach",
                         "dof": 3,
-                        "only_positive": False
+                        "only_positive": False,
+                        "max_steps": 50
                         },
         "robot_config": {
-            "name": "pandas",
+            "name": "panda",
             "dof": 3,
             "sim_time": .1,
-            "scale": .3,
-            "random_start": False
+            "scale": .1
         }
     }
 
@@ -169,13 +159,16 @@ if __name__ == "__main__":
 
         done = False
 
-        obs = env1.reset()
+        desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, 1],
+                         "task": [.5, 0.2, -1.]}
 
-        step = 0
+        obs = env1.reset(desired_state)
 
-        while not done:
-            action1 = env1.action_space.sample()
+        action1 = np.zeros_like(env1.action_space.sample())
+        action1[0] = 1
+        for i in range(25):
             obs, reward, done = env1.step(action1)
 
-            step += 1
-
+        action1[0] = -1
+        for i in range(25):
+            obs, reward, done = env1.step(action1)
