@@ -6,7 +6,8 @@ from gym import spaces
 class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 dof=1, only_positive=False, sparse_reward=False, max_steps=100):
+                 dof=1, only_positive=False, sparse_reward=False,
+                 max_steps=100):
 
         super(Reach, self).__init__(bullet_client=bullet_client,
                                     gravity=[0, 0, 0],
@@ -16,26 +17,41 @@ class Reach(Task):
                                     sparse_reward=sparse_reward)
 
         self.limits = np.array([
-            (-1., 1.),
-            (-1., 1.),
-            (-0.2, 1.)
+            (-.8, .8),
+            (-.8, .8),
+            (0., .8)
         ])
 
         self.observation_space = spaces.Box(-1, 1, shape=(3,))
 
-        self.target = self.bullet_client.loadURDF("objects/sphere.urdf", useFixedBase=True)
+        self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
+                                                  useFixedBase=True)
 
         self.max_steps = max_steps
 
     def reset(self, robot=None, desired_state=None):
+        """"""
 
         super(Reach, self).reset()
 
         contact_points = True
 
         if desired_state:
+            denormalized_desired_state = []
+
+            for desired_value, limits in zip(desired_state, self.limits):
+                denormalized_desired_value = desired_value + 1.
+                denormalized_desired_value /= 2.
+                denormalized_desired_value *= limits[1] - limits[0]
+                denormalized_desired_value += limits[0]
+
+                denormalized_desired_state.append(denormalized_desired_value)
+
+            assert np.linalg.norm(
+                denormalized_desired_state) < 0.8, "desired_state puts target out of reach."
+
             self.bullet_client.resetBasePositionAndOrientation(
-                self.target, desired_state, [0, 0, 0, 1])
+                self.target, denormalized_desired_state, [0, 0, 0, 1])
 
             self.bullet_client.stepSimulation()
 
@@ -47,10 +63,16 @@ class Reach(Task):
 
         while contact_points:
 
-            target_position = np.random.uniform(size=3)
+            target_position = np.zeros(3)
 
-            if not self.only_positive:
-                target_position *= np.random.choice([1, -1], 3)
+            for dimension in range(self.dof):
+                if self.only_positive:
+                    target_position[dimension] = np.random.uniform(0,
+                                                                   self.limits[
+                                                                       dimension, 1])
+                else:
+                    target_position[dimension] = np.random.uniform(
+                        *self.limits[dimension])
 
             if np.linalg.norm(target_position) < 0.8:
                 target_position += self.offset
@@ -84,7 +106,7 @@ class Reach(Task):
         observation = []
 
         for position_dimension_target, limits in zip(position_target,
-                                                            self.limits):
+                                                     self.limits):
             observation_target = self.convert_intervals(
                 position_dimension_target, limits, [-1, 1])
             observation.append(observation_target)
@@ -162,8 +184,5 @@ if __name__ == "__main__":
         success = True
 
         obs = task.reset()
-
-        print()
-        print(obs)
 
         p.stepSimulation()

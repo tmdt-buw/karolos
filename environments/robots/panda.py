@@ -6,7 +6,10 @@ import pybullet as p
 import pybullet_data as pd
 import time
 
-from .utils.joint import Joint
+if __name__ == "__main__":
+    from utils.joint import Joint
+else:
+    from .utils.joint import Joint
 
 
 class Panda(gym.Env):
@@ -90,10 +93,13 @@ class Panda(gym.Env):
 
         contact_points = True
 
-        if desired_state:
+        if desired_state is not None:
+
+            desired_state = list(desired_state)
+
             for joint_id, joint in self.joints.items():
                 if joint_id in self.ids_controllable:
-                    joint_position = desired_state.pop(0)
+                    joint_position = joint.denormalize_position(desired_state.pop(0))
                 else:
                     joint_position = joint.initial_position
 
@@ -206,15 +212,15 @@ if __name__ == "__main__":
 
     robot = Panda(p, dof=3, time_step=time_step, sim_time=.1, scale=.1)
 
-    initial_pose = [0, 0.5, 0, -0.5, 0, 1., 0.707]
+    initial_pose = np.ones(8)
 
     while True:
         # action = robot.action_space.sample()
 
-        robot.reset([0, 0.5, 0, -0.5, 0, 1., 0.707])
+        robot.reset(initial_pose)
 
-        for i in range(20):
-            action = np.ones_like(robot.action_space.sample())
+        for i in range(50):
+            action = -np.ones_like(robot.action_space.sample())
 
             obs = robot.step(action)
 

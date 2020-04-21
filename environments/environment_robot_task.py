@@ -71,7 +71,8 @@ class Environment(gym.Env):
 
         if desired_state is not None:
             observation_robot = self.robot.reset(desired_state["robot"])
-            observation_task = self.task.reset(desired_state["task"])
+            observation_task = self.task.reset(self.robot.robot,
+                                               desired_state["task"])
         else:
             observation_robot = self.robot.reset()
             observation_task = self.task.reset(self.robot.robot)
@@ -150,13 +151,16 @@ if __name__ == "__main__":
 
         done = False
 
-        obs = env1.reset()
+        desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, 1],
+                         "task": [.5, 0.2, -1.]}
 
-        step = 0
+        obs = env1.reset(desired_state)
 
-        while not done:
-            action1 = env1.action_space.sample()
+        action1 = np.zeros_like(env1.action_space.sample())
+        action1[0] = 1
+        for i in range(25):
             obs, reward, done = env1.step(action1)
 
-            step += 1
-
+        action1[0] = -1
+        for i in range(25):
+            obs, reward, done = env1.step(action1)
