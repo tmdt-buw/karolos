@@ -30,28 +30,21 @@ class Reach(Task):
         self.max_steps = max_steps
 
     def reset(self, robot=None, desired_state=None):
-        """"""
 
         super(Reach, self).reset()
 
         contact_points = True
 
         if desired_state:
-            denormalized_desired_state = []
-
-            for desired_value, limits in zip(desired_state, self.limits):
-                denormalized_desired_value = desired_value + 1.
-                denormalized_desired_value /= 2.
-                denormalized_desired_value *= limits[1] - limits[0]
-                denormalized_desired_value += limits[0]
-
-                denormalized_desired_state.append(denormalized_desired_value)
+            desired_state = [np.interp(value, [-1, 1], limits)
+                             for value, limits in
+                             zip(desired_state, self.limits)]
 
             assert np.linalg.norm(
-                denormalized_desired_state) < 0.8, "desired_state puts target out of reach."
+                desired_state) < 0.8, "desired_state puts target out of reach."
 
             self.bullet_client.resetBasePositionAndOrientation(
-                self.target, denormalized_desired_state, [0, 0, 0, 1])
+                self.target, desired_state, [0, 0, 0, 1])
 
             self.bullet_client.stepSimulation()
 
@@ -103,13 +96,9 @@ class Reach(Task):
 
         position_target = self.get_target()
 
-        observation = []
-
-        for position_dimension_target, limits in zip(position_target,
-                                                     self.limits):
-            observation_target = self.convert_intervals(
-                position_dimension_target, limits, [-1, 1])
-            observation.append(observation_target)
+        observation = [np.interp(position, limits, [-1, 1])
+                       for position, limits in
+                       zip(position_target, self.limits)]
 
         observation = np.array(observation)
 

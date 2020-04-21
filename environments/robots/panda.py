@@ -1,3 +1,4 @@
+from collections import namedtuple
 import gym
 from gym import spaces
 import logging
@@ -5,11 +6,6 @@ import numpy as np
 import pybullet as p
 import pybullet_data as pd
 import time
-
-if __name__ == "__main__":
-    from utils.joint import Joint
-else:
-    from .utils.joint import Joint
 
 
 class Panda(gym.Env):
@@ -42,6 +38,10 @@ class Panda(gym.Env):
                                             useFixedBase=True,
                                             flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
+        Joint = namedtuple("Point",
+                           ["initial_position", "limits", "max_velocity",
+                            "torque"])
+
         self.joints = {
             0: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
             1: Joint(0.5, (-1.7628, 1.7628), 2.1750, 87),
@@ -71,9 +71,6 @@ class Panda(gym.Env):
             self.ids_controllable = np.concatenate(
                 (self.ids_controllable, [9, 10]))
 
-        for id_controllable in self.ids_controllable:
-            self.joints[id_controllable].controllable = True
-
         # define spaces
         self.action_space = spaces.Box(-1., 1., shape=
         self.ids_controllable.shape)
@@ -99,7 +96,8 @@ class Panda(gym.Env):
 
             for joint_id, joint in self.joints.items():
                 if joint_id in self.ids_controllable:
-                    joint_position = joint.denormalize_position(desired_state.pop(0))
+                    joint_position = np.interp(desired_state.pop(0), [-1, 1],
+                                               joint.limits)
                 else:
                     joint_position = joint.initial_position
 
@@ -116,7 +114,7 @@ class Panda(gym.Env):
             for joint_id, joint in self.joints.items():
 
                 if joint_id in self.ids_controllable:
-                    joint_position = joint.get_random_position()
+                    joint_position = np.random.uniform(*joint.limits)
                 else:
                     joint_position = joint.initial_position
 
@@ -144,12 +142,13 @@ class Panda(gym.Env):
 
                 action_joint = action.pop(0)
 
-                normalized_joint_position = joint.normalize_position(position)
+                normalized_joint_position = np.interp(position, joint.limits,
+                                                      [-1, 1])
                 normalized_target_joint_position = normalized_joint_position + action_joint
                 normalized_target_joint_position = np.clip(
                     normalized_target_joint_position, -1, 1)
-                target_joint_position = joint.denormalize_position(
-                    normalized_target_joint_position)
+                target_joint_position = np.interp(
+                    normalized_target_joint_position, [-1, 1], joint.limits)
 
             else:
                 target_joint_position = joint.initial_position
@@ -179,8 +178,10 @@ class Panda(gym.Env):
             position, velocity, _, _ = self.bullet_client.getJointState(
                 self.robot, joint_id)
 
-            positions.append(joint.normalize_position(position))
-            velocities.append(joint.normalize_velocity(velocity))
+            positions.append(np.interp(position, joint.limits, [-1, 1]))
+            velocities.append(
+                np.interp(velocity, [-joint.max_velocity, joint.max_velocity],
+                          [-1, 1]))
 
         positions = np.array(positions)
         velocities = np.array(velocities)
