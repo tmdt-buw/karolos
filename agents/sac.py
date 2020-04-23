@@ -121,17 +121,8 @@ class AgentSAC:
         predicted_q1 = self.critic_1(states, actions)
         predicted_q2 = self.critic_2(states, actions)
 
-        # todo: document and clean up
-        def evaluate(states, eps=1e-06):
-            mean, std = self.policy(states, deterministic=False)
-
-            log_prob = Normal(mean, std).log_prob(
-                mean + std * z) - torch.log(1. - action.pow(2) + eps)
-            log_prob = log_prob.sum(dim=1, keepdim=True)
-            return action, log_prob
-
-        new_action, log_prob = evaluate(states)
-        new_next_action, new_log_prob = evaluate(next_states)
+        predicted_action, log_prob = self.policy(states, deterministic=False)
+        predicted_next_action, new_log_prob = self.policy(next_states, deterministic=False)
 
         # normalize with batch mean std
         # rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
@@ -149,9 +140,9 @@ class AgentSAC:
 
         # Train critic
         target_critic_min = torch.min(
-            self.target_critic_1(next_states, new_next_action),
-            self.target_critic_2(next_states,
-                                 new_next_action)) - self.alpha * new_log_prob
+            self.target_critic_1(next_states, predicted_next_action),
+            self.target_critic_2(next_states, predicted_next_action))
+        target_critic_min -= self.alpha * new_log_prob
         target_q_value = rewards + (1 - dones) * self.gamma * target_critic_min
         q_val_loss1 = self.criterion_critic_1(predicted_q1,
                                               target_q_value.detach())
@@ -165,8 +156,8 @@ class AgentSAC:
         self.optimizer_critic_2.step()
 
         # Training policy
-        predicted_new_q_val = torch.min(self.critic_1(states, new_action),
-                                        self.critic_2(states, new_action))
+        predicted_new_q_val = torch.min(self.critic_1(states, predicted_action),
+                                        self.critic_2(states, predicted_action))
         loss_policy = (self.alpha * log_prob - predicted_new_q_val).mean()
 
         self.optimizer_policy.zero_grad()

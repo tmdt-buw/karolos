@@ -71,8 +71,9 @@ class Policy(nn.Module):
         assert len(in_dim) == 1
         assert len(action_dim) == 1
 
-        in_dim = np.product(in_dim)
-        action_dim = np.product(action_dim)
+        self.in_dim = np.product(in_dim)
+        self.hidden_dim = np.product(hidden_dim)
+        self.action_dim = np.product(action_dim)
 
         # device is initialized by agents Class
         self.operators = nn.ModuleList([
@@ -86,7 +87,7 @@ class Policy(nn.Module):
             self.operators.append(nn.ReLU())
             # self.operators.append(nn.Dropout(0.2))
 
-        self.operators.append(nn.Linear(hidden_dim, 2 * action_dim))
+        self.operators.append(nn.Linear(self.hidden_dim, 2 * self.action_dim))
 
         self.operators.apply(init_xavier_uniform)
 
@@ -100,19 +101,26 @@ class Policy(nn.Module):
         mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
 
         if deterministic:
-            action = mean
-            std = torch.zeros_like(log_std)
+            action = mean.tanh()
+            log_prob = torch.zeros_like(log_std)
         else:
             # todo: is clamp really necessary?
             log_std = self.std_clamp(log_std)
             std = log_std.exp()
-            m = MultivariateNormal(mean.reshape(-1), torch.diag(std.reshape(-1)))
-            action = m.sample()
-            action = action.reshape(mean.shape)
+            covariance = torch.diag_embed(std)
+            m = MultivariateNormal(mean, covariance)
+            action_base = m.sample()
+            log_prob = m.log_prob(action_base)
+            log_prob.unsqueeze_(-1)
 
-        action = action.tanh()
+            action = action_base.tanh()
 
-        return action, std
+            # According to "Soft Actor-Critic" (Haarnoja et. al) Appendix C
+            action_bound_compensation = torch.log(1. - action.tanh().pow(2) + 1e-6)
+            action_bound_compensation = action_bound_compensation.sum(dim=-1, keepdim=True)
+            log_prob.sub_(action_bound_compensation)
+
+        return action, log_prob
 
 
 if __name__ == '__main__':
