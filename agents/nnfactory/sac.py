@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-
+from torch.distributions.multivariate_normal import MultivariateNormal
 
 class Flatten(torch.nn.Module):
 
@@ -31,7 +31,8 @@ def init_xavier_uniform(m):
 
 
 class Critic(nn.Module):
-    def __init__(self, in_dim, action_dim, hidden_dim, num_layers_linear_hidden):
+    def __init__(self, in_dim, action_dim, hidden_dim,
+                 num_layers_linear_hidden):
         super(Critic, self).__init__()
 
         assert len(in_dim) == 1
@@ -62,7 +63,8 @@ class Critic(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, in_dim, action_dim, hidden_dim, num_layers_linear_hidden, log_std_min=-20,
+    def __init__(self, in_dim, action_dim, hidden_dim,
+                 num_layers_linear_hidden, log_std_min=-20,
                  log_std_max=2):
         super(Policy, self).__init__()
 
@@ -75,7 +77,7 @@ class Policy(nn.Module):
         # device is initialized by agents Class
         self.operators = nn.ModuleList([
             Flatten(),
-            nn.Linear(in_dim, hidden_dim),
+            nn.Linear(self.in_dim, self.hidden_dim),
             nn.ReLU()
         ])
 
@@ -90,16 +92,27 @@ class Policy(nn.Module):
 
         self.std_clamp = Clamp(log_std_min, log_std_max)
 
-    def forward(self, state):
+    def forward(self, state, deterministic=True):
         x = state
         for operator in self.operators:
             x = operator(x)
 
         mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
 
-        log_std = self.std_clamp(log_std)
+        if deterministic:
+            action = mean
+            std = torch.zeros_like(log_std)
+        else:
+            # todo: is clamp really necessary?
+            log_std = self.std_clamp(log_std)
+            std = log_std.exp()
+            m = MultivariateNormal(mean.reshape(-1), torch.diag(std.reshape(-1)))
+            action = m.sample()
+            action = action.reshape(mean.shape)
 
-        return mean, log_std
+        action = action.tanh()
+
+        return action, std
 
 
 if __name__ == '__main__':
@@ -110,5 +123,5 @@ if __name__ == '__main__':
     # print(critic(torch.FloatTensor([[1,1,1,1]]).to(device),
     #                 torch.FloatTensor([[1,1,1]]).to(device)))
     policy = Policy([4], [3], 512, 3).to(device)
-    print(policy(torch.FloatTensor([[1,1,1,1]]).to(device)))
+    print(policy(torch.FloatTensor([[1, 1, 1, 1]]).to(device)))
     print(policy.operators)

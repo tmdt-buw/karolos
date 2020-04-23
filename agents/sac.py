@@ -19,6 +19,7 @@ use_cuda = torch.cuda.is_available()
 device = torch.device('cuda' if use_cuda else 'cpu')
 print('\n DEVICE', device, '\n')
 
+
 class AgentSAC:
     def __init__(self, config, observation_space, action_space):
 
@@ -52,9 +53,11 @@ class AgentSAC:
         torch.manual_seed(config['seed'])
 
         # generate networks
-        self.critic_1 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
+        self.critic_1 = Critic(state_dim, action_dim, self.h_dim,
+                               self.h_layers).to(
             device)
-        self.critic_2 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
+        self.critic_2 = Critic(state_dim, action_dim, self.h_dim,
+                               self.h_layers).to(
             device)
         self.target_critic_1 = Critic(state_dim, action_dim,
                                       self.h_dim, self.h_layers).to(device)
@@ -62,7 +65,7 @@ class AgentSAC:
                                       self.h_dim, self.h_layers).to(device)
         self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
                              hidden_dim=self.h_dim,
-                                num_layers_linear_hidden=self.h_layers).to(
+                             num_layers_linear_hidden=self.h_layers).to(
             device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
@@ -120,21 +123,15 @@ class AgentSAC:
 
         # todo: document and clean up
         def evaluate(states, eps=1e-06):
-            mean, log_std = self.policy(states)
-            std = log_std.exp()
+            mean, std = self.policy(states, deterministic=False)
 
-            normal = Normal(0, 1)
-            z = normal.sample()
-            action = torch.tanh(mean + std * z)
             log_prob = Normal(mean, std).log_prob(
-                mean + std * z) - torch.log(
-                1. - action.pow(2) + eps)
+                mean + std * z) - torch.log(1. - action.pow(2) + eps)
             log_prob = log_prob.sum(dim=1, keepdim=True)
-            return action, log_prob, log_std
+            return action, log_prob
 
-        new_action, log_prob, log_std = evaluate(states)
-        new_next_action, new_log_prob, _ = evaluate(
-            next_states)
+        new_action, log_prob = evaluate(states)
+        new_next_action, new_log_prob = evaluate(next_states)
 
         # normalize with batch mean std
         # rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
@@ -221,7 +218,8 @@ class AgentSAC:
 
     def load(self, path, train_mode=True):
         try:
-            self.policy.load_state_dict(torch.load(osp.join(path, "policy.pt")))
+            self.policy.load_state_dict(
+                torch.load(osp.join(path, "policy.pt")))
             self.critic_1.load_state_dict(
                 torch.load(osp.join(path, "critic_1.pt")))
             self.critic_2.load_state_dict(
@@ -255,33 +253,15 @@ class AgentSAC:
             self.target_critic_1.eval()
             self.target_critic_2.eval()
 
-
     def predict(self, states, deterministic=True):
 
         self.policy.eval()
 
         states = torch.FloatTensor(states).to(device)
 
-        mean, log_std = self.policy(states)
+        action, _ = self.policy(states, deterministic)
 
-        mean = mean.detach().cpu().numpy()
-
-        if deterministic:
-            action = mean
-        else:
-            std = log_std.exp()
-            std = std.detach().cpu().numpy()
-
-            action = []
-
-            for mean_, std_ in zip(mean, std):
-                action_ = np.random.multivariate_normal(mean_, np.diag(std_))
-                # action_ = np.tanh(action_)
-                action.append(action_)
-
-            action = np.stack(action)
-
-        action = np.tanh(action)
+        action = action.detach().cpu().numpy()
 
         return action
 
