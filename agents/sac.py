@@ -122,7 +122,7 @@ class AgentSAC:
         predicted_q2 = self.critic_2(states, actions)
 
         predicted_action, log_prob = self.policy(states, deterministic=False)
-        predicted_next_action, new_log_prob = self.policy(next_states, deterministic=False)
+        predicted_next_action, next_log_prob = self.policy(next_states, deterministic=False)
 
         # normalize with batch mean std
         # rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
@@ -142,7 +142,7 @@ class AgentSAC:
         target_critic_min = torch.min(
             self.target_critic_1(next_states, predicted_next_action),
             self.target_critic_2(next_states, predicted_next_action))
-        target_critic_min -= self.alpha * new_log_prob
+        target_critic_min.sub_(self.alpha * next_log_prob)
         target_q_value = rewards + (1 - dones) * self.gamma * target_critic_min
         q_val_loss1 = self.criterion_critic_1(predicted_q1,
                                               target_q_value.detach())

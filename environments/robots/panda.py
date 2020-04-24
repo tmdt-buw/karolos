@@ -38,7 +38,7 @@ class Panda(gym.Env):
                                             useFixedBase=True,
                                             flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
-        Joint = namedtuple("Point",
+        Joint = namedtuple("Joint",
                            ["initial_position", "limits", "max_velocity",
                             "torque"])
 

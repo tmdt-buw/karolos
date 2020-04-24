@@ -44,12 +44,14 @@ class Critic(nn.Module):
         self.operators = nn.ModuleList([
             Flatten(),
             nn.Linear(in_dim + action_dim, hidden_dim),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Dropout(.2)
         ])
 
         for l in range(num_layers_linear_hidden - 1):
             self.operators.append(nn.Linear(hidden_dim, hidden_dim))
-            self.operators.append(nn.ReLU())
+            self.operators.append(nn.ReLU()),
+            self.operators.append(nn.Dropout(.2))
 
         self.operators.append(nn.Linear(hidden_dim, 1))
 
@@ -72,20 +74,21 @@ class Policy(nn.Module):
         assert len(action_dim) == 1
 
         self.in_dim = np.product(in_dim)
-        self.hidden_dim = np.product(hidden_dim)
         self.action_dim = np.product(action_dim)
+        self.hidden_dim = hidden_dim
 
         # device is initialized by agents Class
         self.operators = nn.ModuleList([
             Flatten(),
             nn.Linear(self.in_dim, self.hidden_dim),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Dropout(.2)
         ])
 
         for l in range(num_layers_linear_hidden - 1):
             self.operators.append(nn.Linear(hidden_dim, hidden_dim))
             self.operators.append(nn.ReLU())
-            # self.operators.append(nn.Dropout(0.2))
+            self.operators.append(nn.Dropout(0.2))
 
         self.operators.append(nn.Linear(self.hidden_dim, 2 * self.action_dim))
 
@@ -110,17 +113,30 @@ class Policy(nn.Module):
             covariance = torch.diag_embed(std)
             m = MultivariateNormal(mean, covariance)
             action_base = m.sample()
+            action = action_base.tanh()
+
             log_prob = m.log_prob(action_base)
             log_prob.unsqueeze_(-1)
 
-            action = action_base.tanh()
-
             # According to "Soft Actor-Critic" (Haarnoja et. al) Appendix C
-            action_bound_compensation = torch.log(1. - action.tanh().pow(2) + 1e-6)
+            action_bound_compensation = torch.log(1. - action.pow(2) + 1e-6)
             action_bound_compensation = action_bound_compensation.sum(dim=-1, keepdim=True)
             log_prob.sub_(action_bound_compensation)
 
         return action, log_prob
+
+    def get_activations(self, state):
+        x = state
+
+        activations = []
+
+        for operator in self.operators:
+            x = operator(x)
+
+            if type(operator) == nn.ReLU:
+                activations.append(x)
+
+        return activations
 
 
 if __name__ == '__main__':
