@@ -254,6 +254,8 @@ class AgentSAC:
 
         action = action.detach().cpu().numpy()
 
+        action = action.clip(self.action_space.low, self.action_space.high)
+
         return action
 
     def random_action(self, states):

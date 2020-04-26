@@ -130,7 +130,7 @@ class Panda(gym.Env):
         return observation
 
     def step(self, action: np.ndarray):
-        assert self.action_space.contains(action)
+        assert self.action_space.contains(action), f"{action}"
 
         action = list(action * self.scale)
 

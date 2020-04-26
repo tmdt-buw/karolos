@@ -3,6 +3,7 @@ import torch.nn as nn
 import numpy as np
 from torch.distributions.multivariate_normal import MultivariateNormal
 
+
 class Flatten(torch.nn.Module):
 
     def __init__(self):
@@ -45,13 +46,13 @@ class Critic(nn.Module):
             Flatten(),
             nn.Linear(in_dim + action_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(.2)
+            nn.Dropout(.1)
         ])
 
         for l in range(num_layers_linear_hidden - 1):
             self.operators.append(nn.Linear(hidden_dim, hidden_dim))
             self.operators.append(nn.ReLU()),
-            self.operators.append(nn.Dropout(.2))
+            self.operators.append(nn.Dropout(.1))
 
         self.operators.append(nn.Linear(hidden_dim, 1))
 
@@ -82,13 +83,13 @@ class Policy(nn.Module):
             Flatten(),
             nn.Linear(self.in_dim, self.hidden_dim),
             nn.ReLU(),
-            nn.Dropout(.2)
+            nn.Dropout(.1)
         ])
 
         for l in range(num_layers_linear_hidden - 1):
             self.operators.append(nn.Linear(hidden_dim, hidden_dim))
             self.operators.append(nn.ReLU())
-            self.operators.append(nn.Dropout(0.2))
+            self.operators.append(nn.Dropout(.1))
 
         self.operators.append(nn.Linear(self.hidden_dim, 2 * self.action_dim))
 
@@ -107,10 +108,9 @@ class Policy(nn.Module):
             action = mean.tanh()
             log_prob = torch.zeros_like(log_std)
         else:
-            # todo: is clamp really necessary?
             log_std = self.std_clamp(log_std)
             std = log_std.exp()
-            covariance = torch.diag_embed(std)
+            covariance = torch.diag_embed(std.pow(2))
             m = MultivariateNormal(mean, covariance)
             action_base = m.sample()
             action = action_base.tanh()
@@ -120,7 +120,8 @@ class Policy(nn.Module):
 
             # According to "Soft Actor-Critic" (Haarnoja et. al) Appendix C
             action_bound_compensation = torch.log(1. - action.pow(2) + 1e-6)
-            action_bound_compensation = action_bound_compensation.sum(dim=-1, keepdim=True)
+            action_bound_compensation = action_bound_compensation.sum(dim=-1,
+                                                                      keepdim=True)
             log_prob.sub_(action_bound_compensation)
 
         return action, log_prob
@@ -140,12 +141,43 @@ class Policy(nn.Module):
 
 
 if __name__ == '__main__':
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from scipy.stats import gaussian_kde
+
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
-    print(device)
+    # print(device)
     # critic = Critic([4], [3], 512, 3).to(device)
     # print(critic(torch.FloatTensor([[1,1,1,1]]).to(device),
     #                 torch.FloatTensor([[1,1,1]]).to(device)))
-    policy = Policy([4], [3], 512, 3).to(device)
-    print(policy(torch.FloatTensor([[1, 1, 1, 1]]).to(device)))
-    print(policy.operators)
+    policy = Policy([4], [2], 32, 8).to(device)
+    # print(policy(torch.FloatTensor([[1, 1, 1, 1]]).to(device)))
+    # print(policy.operators)
+
+    actions = []
+    log_probs = []
+
+    for ii in range(1_000):
+        action, log_prob = policy(torch.FloatTensor([[1, 1, 1, 1]]).to(device), False)
+
+        # print(action.shape, log_prob)
+        actions.append(action[0].cpu().detach().numpy())
+        log_probs.append(log_prob[0].exp().cpu().detach().numpy())
+
+    actions = np.array(actions)
+    log_probs = np.array(log_probs)
+
+    plt.figure()
+    plt.hist(actions[:, 0], alpha=0.5)
+
+    plt.figure()
+    plt.hist(log_probs[:, 0], alpha=0.5)
+
+    xy = np.vstack([actions[:, 0], actions[:, 1]])
+    z = gaussian_kde(xy)(xy)
+
+    plt.figure()
+    plt.scatter(actions[:, 0], actions[:, 1], c=z, s=100, edgecolor=None)
+    plt.show()

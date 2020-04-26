@@ -124,19 +124,23 @@ class Reach(Task):
             done = goal_reached or self.step_counter >= self.max_steps
 
             if goal_reached:
-                reward = 1.
+                reward = 10.
             else:
-                if self.sparse_reward:
-                    reward = -1.
-                else:
-                    reward = np.exp(-distance_tcp_object * 3.5) * 2 - 1
-                    reward /= self.max_steps
+                reward = np.exp(-3 * distance_tcp_object) * 2 - 1 #- .1 * distance_tcp_object
+            # if goal_reached:
+            #     reward = 1.
+            # else:
+            #     if self.sparse_reward:
+            #         reward = -1.
+            #     else:
+            #         reward = np.exp(-3 * distance_tcp_object) * 2 - 1 - .1 * distance_tcp_object
+            #         # reward /= self.max_steps
         else:
-            reward = -1.
+            reward = -10.
             goal_reached = False
             done = True
 
-        reward = np.clip(reward, -1, 1)
+        # reward = np.clip(reward, -1, 1)
 
         return reward, done, goal_reached
 
