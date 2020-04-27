@@ -122,7 +122,8 @@ class AgentSAC:
         predicted_q2 = self.critic_2(states, actions)
 
         predicted_action, log_prob = self.policy(states, deterministic=False)
-        predicted_next_action, next_log_prob = self.policy(next_states, deterministic=False)
+        predicted_next_action, next_log_prob = self.policy(next_states,
+                                                           deterministic=False)
 
         # normalize with batch mean std
         # rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
@@ -156,8 +157,9 @@ class AgentSAC:
         self.optimizer_critic_2.step()
 
         # Training policy
-        predicted_new_q_val = torch.min(self.critic_1(states, predicted_action),
-                                        self.critic_2(states, predicted_action))
+        predicted_new_q_val = torch.min(
+            self.critic_1(states, predicted_action),
+            self.critic_2(states, predicted_action))
         loss_policy = (self.alpha * log_prob - predicted_new_q_val).mean()
 
         self.optimizer_policy.zero_grad()
@@ -255,14 +257,6 @@ class AgentSAC:
         action = action.detach().cpu().numpy()
 
         action = action.clip(self.action_space.low, self.action_space.high)
-
-        return action
-
-    def random_action(self, states):
-
-        action_dim = (len(states),) + tuple(self.action_dim)
-
-        action = np.random.rand(*action_dim) * 2 - 1
 
         return action
 

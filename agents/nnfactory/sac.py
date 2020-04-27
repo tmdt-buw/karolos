@@ -110,18 +110,22 @@ class Policy(nn.Module):
         else:
             log_std = self.std_clamp(log_std)
             std = log_std.exp()
-            covariance = torch.diag_embed(std.pow(2))
-            m = MultivariateNormal(mean, covariance)
-            action_base = m.sample()
-            action = action_base.tanh()
 
-            log_prob = m.log_prob(action_base)
+            # Draw from Normal so that log_prob is normalized
+            normal = MultivariateNormal(torch.zeros_like(mean),
+                                        torch.diag_embed(torch.ones_like(std)))
+            z = normal.sample()
+
+            log_prob = normal.log_prob(z)
             log_prob.unsqueeze_(-1)
 
-            # According to "Soft Actor-Critic" (Haarnoja et. al) Appendix C
-            action_bound_compensation = torch.log(1. - action.pow(2) + 1e-6)
-            action_bound_compensation = action_bound_compensation.sum(dim=-1,
-                                                                      keepdim=True)
+            action_base = mean + std * z
+            action = torch.tanh(action_base)
+
+            action_bound_compensation = torch.log(
+                1. - action.pow(2) + np.finfo(float).eps).sum(dim=1,
+                                                              keepdim=True)
+
             log_prob.sub_(action_bound_compensation)
 
         return action, log_prob
@@ -160,7 +164,8 @@ if __name__ == '__main__':
     log_probs = []
 
     for ii in range(1_000):
-        action, log_prob = policy(torch.FloatTensor([[1, 1, 1, 1]]).to(device), False)
+        action, log_prob = policy(torch.FloatTensor([[1, 1, 1, 1]]).to(device),
+                                  False)
 
         # print(action.shape, log_prob)
         actions.append(action[0].cpu().detach().numpy())
