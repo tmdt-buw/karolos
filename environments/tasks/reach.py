@@ -35,13 +35,13 @@ class Reach(Task):
 
         contact_points = True
 
-        if desired_state:
+        if desired_state is not None:
             desired_state = [np.interp(value, [-1, 1], limits)
                              for value, limits in
                              zip(desired_state, self.limits)]
 
-            assert np.linalg.norm(
-                desired_state) < 0.8, "desired_state puts target out of reach."
+            while np.linalg.norm(desired_state) > 0.8:
+                desired_state = [np.sign(a) * (np.abs(a) - 0.05) for a in desired_state]
 
             self.bullet_client.resetBasePositionAndOrientation(
                 self.target, desired_state, [0, 0, 0, 1])
