@@ -25,9 +25,7 @@ class Clamp(torch.nn.Module):
 
 
 def init_xavier_uniform(m):
-    if type(m) == nn.Linear:
-        torch.nn.init.xavier_uniform_(m.weight)
-    if type(m) == nn.Conv2d:
+    if type(m) in [nn.Linear, nn.Conv2d]:
         torch.nn.init.xavier_uniform_(m.weight)
 
 
@@ -114,10 +112,10 @@ class Policy(nn.Module):
             z = normal.sample()
             action = torch.tanh(mean + std * z)
 
-            action_bound_compensation = torch.log(
-                1. - action.pow(2) + 1e-6).sum(dim=1, keepdim=True)
+            action_bound_compensation = torch.log(1. - action.pow(2) + 1e-6)
             log_prob = Normal(mean, std).log_prob(mean + std * z)
             log_prob.sub_(action_bound_compensation)
+            log_prob = log_prob.sum(dim=1, keepdim=True)
 
         return action, log_prob
 
