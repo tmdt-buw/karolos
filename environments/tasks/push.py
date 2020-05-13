@@ -41,16 +41,9 @@ class Push(Task):
 
         contact_points = True
 
-        if desired_state:
-            desired_state_object, desired_state_target = desired_state.split(2)
-
-            desired_state_object = [np.interp(value, [-1, 1], limits)
-                                    for value, limits in
-                                    zip(desired_state_object, self.limits)]
-
-            desired_state_target = [np.interp(value, [-1, 1], limits)
-                                    for value, limits in
-                                    zip(desired_state_target, self.limits)]
+        if desired_state is not None:
+            desired_state_object, desired_state_target = np.split(
+                desired_state, 2)
 
             assert np.linalg.norm(
                 desired_state_object) < 0.8, "desired_state puts object out of reach."

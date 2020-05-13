@@ -35,7 +35,7 @@ class Reach(Task):
 
         contact_points = True
 
-        if desired_state:
+        if desired_state is not None:
             desired_state = [np.interp(value, [-1, 1], limits)
                              for value, limits in
                              zip(desired_state, self.limits)]
