@@ -158,8 +158,8 @@ class Trainer:
 
         # add action and state spaces to config
         self.agent = get_agent(agent_config,
-                          env_orchestrator.observation_space,
-                          env_orchestrator.action_space)
+                               env_orchestrator.observation_space,
+                               env_orchestrator.action_space)
 
         models_dir = osp.join(results_dir, "models")
 
@@ -180,7 +180,8 @@ class Trainer:
             if not self.similar_config(results_dir, training_config):
                 print('Experiment config and given config do not match')
                 results_dir = osp.join(results_dir,
-                                       datetime.datetime.now().strftime("%d-%m-%Y_%H:%M:%S"))
+                                       datetime.datetime.now().strftime(
+                                           "%d-%m-%Y_%H:%M:%S"))
 
                 os.makedirs(results_dir)
                 models_dir = osp.join(results_dir, "models")
@@ -198,7 +199,8 @@ class Trainer:
 
                 else:
                     results_dir = osp.join(results_dir,
-                                           datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+                                           datetime.datetime.now().strftime(
+                                               "%Y%m%d-%H%M%S"))
 
                     os.makedirs(results_dir)
                     models_dir = osp.join(results_dir, "models")
@@ -306,8 +308,10 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),"../results")
-    results_dir = osp.join(results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
+                           "../results")
+    results_dir = osp.join(results_dir,
+                           datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
     # results_dir = osp.join(results_dir, 'test')
 
     training_config = {
@@ -338,7 +342,6 @@ if __name__ == "__main__":
             "nb_envs": cpu_count(),
             "base_pkg": "robot-task-rl",
             "render": False,
-            "random_start": True,
             "task_config": {"name": "push",
                             "dof": 3,
                             "only_positive": False,

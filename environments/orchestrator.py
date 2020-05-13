@@ -5,6 +5,7 @@ from environments import get_env
 from gym import spaces
 import numpy as np
 
+
 class Orchestrator(object):
 
     def __init__(self, env_config, nb_envs):
@@ -13,7 +14,6 @@ class Orchestrator(object):
         self.action_space_ = None
         self.observation_space_ = None
         self.observation_dict_ = None
-        self.random_start = env_config['random_start']
 
         for ee in range(nb_envs):
             pipe_orchestrator, pipe_env = mp.Pipe()
@@ -54,7 +54,6 @@ class Orchestrator(object):
         self.send(actions)
         return self.receive()
 
-
     def send(self, actions=()):
 
         for env_id, func, params in actions:
@@ -81,22 +80,20 @@ class Orchestrator(object):
 
         return responses
 
-    def reset_all(self):
+    def reset_all(self, desired_states=None):
         """Resets all environment. Blocks until all environments are reset."""
 
-        token = random.getrandbits(10)
-
-        if self.random_start:
-            start = {'robot': self.observation_dict['state']['robot'].sample(),
-                     'task': self.observation_dict['state']['task'].sample()}
-        else:
-            start = None
-
         # send ping with token to flush the pipes
+        token = random.getrandbits(10)
         self.send([(env_id, "ping", token) for env_id in self.pipes.keys()])
-        self.send([(env_id, "reset", start) for env_id in self.pipes.keys()])
 
-        #required_env_ids = self.pipes.keys()
+        if desired_states is None:
+            desired_states = [None] * len(self.pipes)
+
+        assert len(desired_states) == len(self.pipes)
+
+        self.send([(env_id, "reset", desired_state) for env_id, desired_state
+                   in zip(self.pipes.keys(), desired_states)])
 
         responses = []
 
@@ -120,19 +117,6 @@ class Orchestrator(object):
 
         return responses
 
-    def reset(self, env_id):
-        """Reset the environment and return new state
-            deprecated? (not used in trainer.py)
-        """
-
-        self.pipes[env_id].send(["reset", None])
-
-        func, state = self.pipes[env_id].recv()
-
-        assert func == "reset"
-
-        return state
-
     @property
     def action_space(self):
 
@@ -152,7 +136,7 @@ class Orchestrator(object):
                 np.array(self.observation_dict['state']['task'].shape)
             )
             self.observation_space_ = spaces.Box(-1, 1,
-                                            shape=self.observation_space)
+                                                 shape=self.observation_space)
 
         return self.observation_space_
 
@@ -163,9 +147,10 @@ class Orchestrator(object):
             func, self.observation_dict_ = self.pipes[0].recv()
 
             assert func == "observation dict", f"'{func}' instead of " \
-                                                f"'observation dict'"
+                                               f"'observation dict'"
 
         return self.observation_dict_
+
 
 if __name__ == "__main__":
     import os.path as osp
@@ -176,7 +161,6 @@ if __name__ == "__main__":
 
         "base_pkg": "robot-task-rl",
         "render": False,
-        "random_start": True,
         "task_config": {"name": "reach",
                         "dof": 3,
                         "only_positive": False
@@ -195,12 +179,15 @@ if __name__ == "__main__":
 
     orchestrator = Orchestrator(env_config, nb_envs)
     print()
-    print(orchestrator.observation_space.high, len(orchestrator.observation_space.high))
+    print(orchestrator.observation_space.high,
+          len(orchestrator.observation_space.high))
     print(orchestrator.observation_space.low)
-    print(orchestrator.observation_space.sample(), len(orchestrator.observation_space.sample()))
+    print(orchestrator.observation_space.sample(),
+          len(orchestrator.observation_space.sample()))
     exit()
     while True:
-        result = orchestrator.send_receive([(ee, "reset", None) for ee in range(nb_envs)])
+        result = orchestrator.send_receive(
+            [(ee, "reset", None) for ee in range(nb_envs)])
 
         print(len(result))
         # time.sleep(3)
