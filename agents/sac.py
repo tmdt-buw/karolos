@@ -3,13 +3,11 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 
 """
 
+import numpy as np
 import os
 import os.path as osp
-
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import Normal
 
 from agents.nnfactory.sac import Policy, Critic
 from agents.utils.replay_buffer import ReplayBuffer
@@ -32,61 +30,50 @@ class AgentSAC:
         assert len(state_dim) == 1
         assert len(action_dim) == 1
 
-        self.h_dim = config["hidden_dim"]
-        self.h_layers = config['hidden_layers']
-        self.action_dim = action_dim
-        self.soft_q_lr = config["soft_q_lr"]
-        self.pol_lr = config["policy_lr"]
-        self.alpha_lr = config["alpha_lr"]
-        # tradeoff between exploration and exploitation
+        self.hidden_dim = config["hidden_dim"]
+        self.hidden_layers = config['hidden_layers']
+        self.learning_rate_critic = config["learning_rate_critic"]
+        self.learning_rate_policy = config["learning_rate_policy"]
+        self.learning_rate_alpha = config["learning_rate_alpha"]
         self.alpha = config["alpha"]
         self.weight_decay = config["weight_decay"]
         self.batch_size = config['batch_size']
-        self.gamma = config['gamma']
+        self.reward_discount = config['reward_discount']
         self.memory_size = config['memory_size']
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
 
-        self.reward_scale = 10.
         self.target_entropy = -1 * action_dim[0]
 
-        torch.manual_seed(config['seed'])
-
         # generate networks
-        self.critic_1 = Critic(state_dim, action_dim, self.h_dim,
-                               self.h_layers).to(
-            device)
-        self.critic_2 = Critic(state_dim, action_dim, self.h_dim,
-                               self.h_layers).to(
-            device)
-        self.target_critic_1 = Critic(state_dim, action_dim,
-                                      self.h_dim, self.h_layers).to(device)
-        self.target_critic_2 = Critic(state_dim, action_dim,
-                                      self.h_dim, self.h_layers).to(device)
+        self.critic_1 = Critic(state_dim, action_dim, self.hidden_dim,
+                               self.hidden_layers).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, self.hidden_dim,
+                               self.hidden_layers).to(device)
+        self.target_critic_1 = Critic(state_dim, action_dim, self.hidden_dim,
+                                      self.hidden_layers).to(device)
+        self.target_critic_2 = Critic(state_dim, action_dim, self.hidden_dim,
+                                      self.hidden_layers).to(device)
         self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
-                             hidden_dim=self.h_dim,
-                             num_layers_linear_hidden=self.h_layers).to(
+                             hidden_dim=self.hidden_dim,
+                             num_layers_linear_hidden=self.hidden_layers).to(
             device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
                                      requires_grad=True, device=device)
 
-        # print("SAC Trainer target entropy:", self.target_entropy)
-        # print('Soft Q Network (1,2): ', self.critic_1)
-        # print('Policy Network: ', self.policy)
-
         # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
         self.optimizer_critic_1 = torch.optim.AdamW(self.critic_1.parameters(),
-                                                    lr=self.soft_q_lr,
+                                                    lr=self.learning_rate_critic,
                                                     weight_decay=self.weight_decay)
         self.optimizer_critic_2 = torch.optim.AdamW(self.critic_2.parameters(),
-                                                    lr=self.soft_q_lr,
+                                                    lr=self.learning_rate_critic,
                                                     weight_decay=self.weight_decay)
         self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(),
-                                                  lr=self.pol_lr,
+                                                  lr=self.learning_rate_policy,
                                                   weight_decay=self.weight_decay)
         self.alpha_optim = torch.optim.AdamW([self.log_alpha],
-                                             lr=self.alpha_lr,
+                                             lr=self.learning_rate_alpha,
                                              weight_decay=self.weight_decay)
 
         for target_param, param in zip(self.target_critic_1.parameters(),
@@ -125,10 +112,6 @@ class AgentSAC:
         predicted_next_action, next_log_prob = self.policy(next_states,
                                                            deterministic=False)
 
-        # normalize with batch mean std
-        # rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
-        #        rewards.std(dim=0) + 1e-6)
-
         if self.auto_entropy is True:
             alpha_loss = -(self.log_alpha * (
                     log_prob + self.target_entropy).detach()).mean()
@@ -144,7 +127,8 @@ class AgentSAC:
             self.target_critic_1(next_states, predicted_next_action),
             self.target_critic_2(next_states, predicted_next_action))
         target_critic_min.sub_(self.alpha * next_log_prob)
-        target_q_value = rewards + (1 - dones) * self.gamma * target_critic_min
+        target_q_value = rewards + (
+                1 - dones) * self.reward_discount * target_critic_min
         q_val_loss1 = self.criterion_critic_1(predicted_q1,
                                               target_q_value.detach())
         self.optimizer_critic_2.zero_grad()
@@ -232,6 +216,7 @@ class AgentSAC:
             print('###################')
             print('Could not load agent, missing files in', path)
             print('###################')
+            raise
 
         if train_mode:
             self.policy.train()
