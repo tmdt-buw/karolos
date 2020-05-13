@@ -41,7 +41,9 @@ class Reach(Task):
                              zip(desired_state, self.limits)]
 
             assert np.linalg.norm(
-                desired_state) < 0.85, f"desired_state puts target out of reach. {np.linalg.norm(desired_state)}"
+                desired_state) < 0.85, \
+                f"desired_state puts target out of reach. " \
+                f"{np.linalg.norm(desired_state)}"
 
             self.bullet_client.resetBasePositionAndOrientation(
                 self.target, desired_state, [0, 0, 0, 1])
@@ -126,7 +128,8 @@ class Reach(Task):
             if goal_reached:
                 reward = 10.
             else:
-                reward = np.exp(-3 * distance_tcp_object) * 2 - 1 #- .1 * distance_tcp_object
+                reward = np.exp(
+                    -3 * distance_tcp_object) * 2 - 1  # - .1 * distance_tcp_object
             # if goal_reached:
             #     reward = 1.
             # else:
