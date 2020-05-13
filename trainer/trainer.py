@@ -3,6 +3,7 @@ import os
 
 sys.path.insert(0, os.path.abspath("."))
 
+from agents import get_agent
 from collections import defaultdict
 import datetime
 from environments.orchestrator import Orchestrator
@@ -12,30 +13,15 @@ import numpy as np
 import os
 import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
-from agents import get_agent
-
 from tqdm import tqdm
+
+log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "../results")
 
 
 class Trainer:
 
-    def get_env(self, env_config):
-        base_pkg = env_config.pop("base_pkg")
-
-        assert base_pkg in ["robot-task-rl"]
-
-        if base_pkg == "robot-task-rl":
-            from environments.environment_wrapper import Environment
-
-            def env_init():
-                env = Environment(**env_config)
-                return env
-        else:
-            raise NotImplementedError(f"Unknown base package: {base_pkg}")
-
-        return env_init
-
-    def similar_config(self, resdir, conf):
+    def similar_config(self, configA, configB):
 
         def ordered(obj):
             if isinstance(obj, dict):
@@ -45,10 +31,7 @@ class Trainer:
             else:
                 return obj
 
-        with open(resdir + '/config.json', 'r+') as fp:
-            exp_config = json.load(fp)
-
-        if not ordered(exp_config) == ordered(conf):
+        if not ordered(configA) == ordered(configB):
             return False
         else:
             return True
@@ -84,8 +67,8 @@ class Trainer:
                                   state['state']['agent_state'], done)
                     self.agent.add_experience([experience])
 
-                    if training_config[
-                        "use_hindsight_experience_replay"] and "her" in state:
+                    if training_config.get("use_hindsight_experience_replay",
+                                           False) and "her" in state:
                         her_goal = state["her"]["achieved_goal"]
 
                         her_previous_state = previous_state['state'][
@@ -142,81 +125,61 @@ class Trainer:
 
         return requests, results_episodes
 
-    def __init__(self, training_config):
+    def __init__(self, training_config, experiment_name):
 
-        results_dir = training_config.pop('results_dir')
-        reload_agent = training_config.pop('reload_previous_agent')
+        global log_dir
+
+        experiment_dir = osp.join(log_dir, experiment_name)
+        models_dir = osp.join(experiment_dir, "models")
+
+        os.makedirs(experiment_dir)
+        os.makedirs(models_dir)
+
+        with open(osp.join(experiment_dir, 'config.json'), 'w') as f:
+            json.dump(training_config, f)
 
         # get environment
+        number_envs = training_config["number_envs"]
         env_config = training_config["env_config"]
 
-        nb_envs = env_config["nb_envs"]
-        env_orchestrator = Orchestrator(env_config, nb_envs)
+        env_orchestrator = Orchestrator(env_config, number_envs)
 
         # get agents
         agent_config = training_config["agent_config"]
 
-        # add action and state spaces to config
-        self.agent = get_agent(agent_config,
-                          env_orchestrator.observation_space,
-                          env_orchestrator.action_space)
+        algorithm = training_config["algorithm"]
+        self.agent = get_agent(algorithm, agent_config,
+                               env_orchestrator.observation_space,
+                               env_orchestrator.action_space)
 
-        models_dir = osp.join(results_dir, "models")
+        models_dir = osp.join(experiment_dir, "models")
 
-        if not osp.exists(results_dir):
-            # first run of experiment, keep new agent, save config
-            os.makedirs(results_dir)
+        base_experiment = training_config.pop('base_experiment', None)
 
-            with open(osp.join(results_dir, 'config.json'), 'w') as f:
-                json.dump(training_config, f)
-            self.agent.save(models_dir)
-        else:
-            # experiment exists, check similar configs, if not similar make new results_dir_MMDDHHMM
-            # if similar, check reload_agent option:
-            # if true->reload previous agent, if false->make new results_dir_MMDDHHMM
+        if base_experiment is not None:
 
-            print('\n################################')
+            base_experiment_dir = osp.join(log_dir,
+                                           base_experiment["experiment"])
 
-            if not self.similar_config(results_dir, training_config):
-                print('Experiment config and given config do not match')
-                results_dir = osp.join(results_dir,
-                                       datetime.datetime.now().strftime("%d-%m-%Y_%H:%M:%S"))
+            with open(osp.join(base_experiment_dir, 'config.json'), 'r') as f:
+                base_experiment_config = json.load(f)
 
-                os.makedirs(results_dir)
-                models_dir = osp.join(results_dir, "models")
+            if self.similar_config(env_config, base_experiment_config[
+                "env_config"]) and self.similar_config(agent_config,
+                                                       base_experiment_config[
+                                                           "agent_config"]):
 
-                print('New directory for this experiment:', results_dir)
-                print('Loading new Agent')
+                base_experiment_models_dir = osp.join(base_experiment_dir,
+                                                      "models")
 
-                with open(osp.join(results_dir, 'config.json'), 'w') as f:
-                    json.dump(training_config, f)
-                self.agent.save(models_dir)
+                agent_id = base_experiment.get("agent", max(
+                    os.listdir(base_experiment_models_dir)))
+
+                self.agent.load(osp.join(base_experiment_models_dir, agent_id))
             else:
-                if reload_agent:
-                    print('Re-loading previous agent from', models_dir)
-                    self.agent.load(models_dir, train_mode=True)
+                raise ValueError("Configurations do not match!")
 
-                else:
-                    results_dir = osp.join(results_dir,
-                                           datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-
-                    os.makedirs(results_dir)
-                    models_dir = osp.join(results_dir, "models")
-                    print('New directory for this experiment:', results_dir)
-                    print('Loading new Agent')
-                    with open(osp.join(results_dir, 'config.json'), 'w') as f:
-                        json.dump(training_config, f)
-                    self.agent.save(models_dir)
-            print('################################\n')
-
-        log_dir = results_dir
-
-        if not osp.exists(models_dir):
-            os.makedirs(models_dir)
-        if not osp.exists(log_dir):
-            os.makedirs(log_dir)
-
-        self.writer = SummaryWriter(log_dir)
+        self.writer = SummaryWriter(experiment_dir)
 
         # reset all
         env_responses = env_orchestrator.reset_all()
@@ -227,42 +190,32 @@ class Trainer:
         self.actions = {}
         self.episodic_reward = {}
 
-        nb_tests = training_config["nb_tests"]
+        number_tests = training_config["number_tests"]
         test_interval = training_config["test_interval"]
-        save_interval = training_config["save_interval_steps"]
         next_test_timestep = 0
 
         best_success_ratio = 0.5
 
-        assert nb_tests >= nb_envs
+        assert number_tests >= number_envs
 
         pbar = tqdm(total=training_config["total_timesteps"])
 
         while sum(self.steps.values()) < training_config["total_timesteps"]:
 
-            next_save_timestep = (sum(
-                self.steps.values()) // save_interval + 1) * save_interval
-
-            # Save
-            if sum(self.steps.values()) >= next_save_timestep:
-                self.agent.save(models_dir)
-                print("\nsaved agent in", models_dir, '\n')
-
             # Test
             if sum(self.steps.values()) >= next_test_timestep:
 
-                next_test_timestep = \
-                    (sum(
-                        self.steps.values()) // test_interval + 1) * test_interval
+                next_test_timestep = (sum(self.steps.values()) //
+                                      test_interval + 1) * test_interval
 
                 # reset all
                 env_responses = env_orchestrator.reset_all()
 
                 # subtract tests already launched in each environment
-                tests_to_run = nb_tests - nb_envs
+                tests_to_run = number_tests - number_envs
                 concluded_tests = []
 
-                while len(concluded_tests) < nb_tests:
+                while len(concluded_tests) < number_tests:
 
                     requests, results_episodes = self.process_responses(
                         env_responses, train=False)
@@ -306,37 +259,33 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),"../results")
-    results_dir = osp.join(results_dir, datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-    # results_dir = osp.join(results_dir, 'test')
+    experiment_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     training_config = {
-        "test_interval": 500_000,
-        "nb_tests": 100,
         "total_timesteps": 50_000_000,
-        "save_interval_steps": 1_000_000,
-        "results_dir": results_dir,
-        "reload_previous_agent": False,
-        "use_hindsight_experience_replay": False,
+        "test_interval": 500_000,
+        "number_tests": 100,
+        # "base_experiment": {
+        #     "experiment": "20200513-145010",
+        #     "agent": 0,
+        # },
+        "algorithm": "sac",
         "agent_config": {
-            "algorithm": "sac",
-            "soft_q_lr": 0.0005,
-            "policy_lr": 0.0005,
+            "learning_rate_critic": 0.0005,
+            "learning_rate_policy": 0.0005,
             "alpha": 1,
-            "alpha_lr": 0.0005,
+            "learning_rate_alpha": 0.0005,
             "weight_decay": 1e-4,
             "batch_size": 128,
-            "gamma": 0.95,
+            "reward_discount": 0.95,
             "auto_entropy": True,
             "memory_size": 100_000,
             "tau": 0.0025,
             "hidden_dim": 32,
             "hidden_layers": 8,
-            "seed": 192
         },
+        "number_envs": 1,  # cpu_count(),
         "env_config": {
-            "nb_envs": cpu_count(),
-            "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",
                             "dof": 3,
@@ -353,4 +302,4 @@ if __name__ == "__main__":
         }
     }
 
-    trainer = Trainer(training_config)
+    trainer = Trainer(training_config, experiment_name)

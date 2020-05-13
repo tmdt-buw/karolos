@@ -4,13 +4,13 @@ from environments import get_env
 
 class Orchestrator(object):
 
-    def __init__(self, env_config, nb_envs):
+    def __init__(self, env_config, number_envs):
 
         self.pipes = {}
         self.action_space_ = None
         self.observation_space_ = None
 
-        for ee in range(nb_envs):
+        for ee in range(number_envs):
             pipe_orchestrator, pipe_env = mp.Pipe()
 
             self.pipes[ee] = pipe_orchestrator
@@ -144,9 +144,6 @@ class Orchestrator(object):
         return self.observation_space_
 
 if __name__ == "__main__":
-    import os.path as osp
-    import os
-    import datetime
 
     env_config = {
         "base_pkg": "robot-task-rl",
@@ -162,9 +159,6 @@ if __name__ == "__main__":
 
     }
 
-    import numpy as np
-    import time
-
     nb_envs = 3
 
     orchestrator = Orchestrator(env_config, nb_envs)
@@ -173,4 +167,3 @@ if __name__ == "__main__":
         result = orchestrator.send_receive([(ee, "reset", None) for ee in range(nb_envs)])
 
         print(len(result))
-        # time.sleep(3)
