@@ -332,10 +332,12 @@ if __name__ == "__main__":
             "tau": 0.0025,
             "hidden_dim": 32,
             "hidden_layers": 8,
-            "seed": 192
+            "seed": 192,
+            "policy_structure": [('linear', 32), ('relu', None), ('dropout', 0.2), ('linear', 32)],
+            "critic_structure": [('linear', 32), ('relu', None), ('dropout', 0.2), ('linear', 32)]
         },
         "env_config": {
-            "nb_envs": cpu_count(),
+            "nb_envs": 1,
             "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "reach",

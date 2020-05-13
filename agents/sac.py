@@ -5,6 +5,7 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 
 import os
 import os.path as osp
+from copy import copy
 
 import numpy as np
 import torch
@@ -46,24 +47,28 @@ class AgentSAC:
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
 
+        self.policy_structure = config['policy_structure']
+        self.critic_structure = config['critic_structure']
+
         self.reward_scale = 10.
         self.target_entropy = -1 * action_dim[0]
 
         torch.manual_seed(config['seed'])
 
         # generate networks
-        self.critic_1 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
+        self.critic_1 = Critic(state_dim, action_dim, copy(self.critic_structure)).to(
             device)
-        self.critic_2 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
+        self.critic_2 = Critic(state_dim, action_dim, copy(self.critic_structure)).to(
             device)
         self.target_critic_1 = Critic(state_dim, action_dim,
-                                      self.h_dim, self.h_layers).to(device)
+                                      copy(self.critic_structure)).to(device)
         self.target_critic_2 = Critic(state_dim, action_dim,
-                                      self.h_dim, self.h_layers).to(device)
-        self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
-                             hidden_dim=self.h_dim,
-                                num_layers_linear_hidden=self.h_layers).to(
+                                      copy(self.critic_structure)).to(device)
+        self.policy = Policy(in_dim=state_dim, action_dim=action_dim, policy_structure=copy(self.policy_structure)).to(
             device)
+
+        print(self.policy.operators)
+        print(self.critic_1.operators)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
                                      requires_grad=True, device=device)

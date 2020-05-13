@@ -31,7 +31,7 @@ def init_xavier_uniform(m):
 
 
 class Critic(nn.Module):
-    def __init__(self, in_dim, action_dim, hidden_dim, num_layers_linear_hidden):
+    def __init__(self, in_dim, action_dim, value_structure):
         super(Critic, self).__init__()
 
         assert len(in_dim) == 1
@@ -40,17 +40,29 @@ class Critic(nn.Module):
         in_dim = np.product(in_dim)
         action_dim = np.product(action_dim)
 
+        # first position should be a layer, linear layer for now
+
+        assert value_structure[0][1] is not None
+        prev_object = value_structure.pop(0)
+
         self.operators = nn.ModuleList([
             Flatten(),
-            nn.Linear(in_dim + action_dim, hidden_dim),
-            nn.ReLU()
+            nn.Linear(in_dim + action_dim, prev_object[1]),
         ])
 
-        for l in range(num_layers_linear_hidden - 1):
-            self.operators.append(nn.Linear(hidden_dim, hidden_dim))
-            self.operators.append(nn.ReLU())
+        for layer, argument in value_structure[:-1]:
+            if layer == 'linear':
+                self.operators.append(nn.Linear(prev_object[1], argument))
+                prev_object = (layer, argument)
+            elif layer == 'relu':
+                assert argument is None, 'No argument for ReLU please'
+                self.operators.append(nn.ReLU())
+            elif layer == 'dropout':
+                self.operators.append(nn.Dropout(argument))
+            else:
+                raise NotImplementedError(f'{layer} not known')
 
-        self.operators.append(nn.Linear(hidden_dim, 1))
+        self.operators.append(nn.Linear(prev_object[1], 1))
 
         self.operators.apply(init_xavier_uniform)
 
@@ -62,7 +74,7 @@ class Critic(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, in_dim, action_dim, hidden_dim, num_layers_linear_hidden, log_std_min=-20,
+    def __init__(self, in_dim, action_dim, policy_structure, log_std_min=-20,
                  log_std_max=2):
         super(Policy, self).__init__()
 
@@ -72,19 +84,28 @@ class Policy(nn.Module):
         in_dim = np.product(in_dim)
         action_dim = np.product(action_dim)
 
-        # device is initialized by agents Class
+        # first position should be a layer, linear layer for now
+        assert policy_structure[0][1] is not None
+        prev_object = policy_structure.pop(0)
+
         self.operators = nn.ModuleList([
             Flatten(),
-            nn.Linear(in_dim, hidden_dim),
-            nn.ReLU()
+            nn.Linear(in_dim, prev_object[1]),
         ])
 
-        for l in range(num_layers_linear_hidden - 1):
-            self.operators.append(nn.Linear(hidden_dim, hidden_dim))
-            self.operators.append(nn.ReLU())
-            # self.operators.append(nn.Dropout(0.2))
+        for layer, argument in policy_structure[:-1]:
+            if layer == 'linear':
+                self.operators.append(nn.Linear(prev_object[1], argument))
+                prev_object = (layer, argument)
+            elif layer == 'relu':
+                assert argument is None, 'No argument for ReLU please'
+                self.operators.append(nn.ReLU())
+            elif layer == 'dropout':
+                self.operators.append(nn.Dropout(argument))
+            else:
+                raise NotImplementedError(f'{layer} not known')
 
-        self.operators.append(nn.Linear(hidden_dim, 2 * action_dim))
+        self.operators.append(nn.Linear(prev_object[1], 2 * action_dim))
 
         self.operators.apply(init_xavier_uniform)
 
@@ -105,10 +126,15 @@ class Policy(nn.Module):
 if __name__ == '__main__':
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
-    print(device)
-    # critic = Critic([4], [3], 512, 3).to(device)
-    # print(critic(torch.FloatTensor([[1,1,1,1]]).to(device),
-    #                 torch.FloatTensor([[1,1,1]]).to(device)))
-    policy = Policy([4], [3], 512, 3).to(device)
-    print(policy(torch.FloatTensor([[1,1,1,1]]).to(device)))
+
+    pol_struct = [('linear', 64), ('relu', None), ('dropout', 0.2), ('linear', 32)]
+
+    policy = Policy([21], [7], pol_struct).to(device)
+
     print(policy.operators)
+
+    val_struct = [('linear', 32), ('relu', None), ('dropout', 0.2), ('linear', 32)]
+
+    val = Critic([21], [7], val_struct).to(device)
+
+    print(val.operators)
