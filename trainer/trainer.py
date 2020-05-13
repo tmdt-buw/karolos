@@ -287,7 +287,7 @@ if __name__ == "__main__":
         "number_envs": 1,  # cpu_count(),
         "env_config": {
             "render": False,
-            "task_config": {"name": "reach",
+            "task_config": {"name": "push",
                             "dof": 3,
                             "only_positive": False,
                             "sparse_reward": False,
