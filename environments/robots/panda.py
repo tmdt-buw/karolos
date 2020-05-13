@@ -38,7 +38,7 @@ class Panda(gym.Env):
                                             useFixedBase=True,
                                             flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
-        Joint = namedtuple("Point",
+        Joint = namedtuple("Joint",
                            ["initial_position", "limits", "max_velocity",
                             "torque"])
 
@@ -130,7 +130,7 @@ class Panda(gym.Env):
         return observation
 
     def step(self, action: np.ndarray):
-        assert self.action_space.contains(action)
+        assert self.action_space.contains(action), f"{action}"
 
         action = list(action * self.scale)
 

@@ -41,21 +41,27 @@ models_folder = osp.join(models_folder, max(os.listdir(models_folder)))
 
 agent.load(models_folder)
 
-while True:
+desired_states = [
+    {"robot": [0, 0, 0, 0, 0, 0, 0, 0], "task": [.5, .5, 0]},
+    {"robot": [0, 0, 0, 0, 0, 0, 0, 0], "task": [.5, -.5, 0]},
+    {"robot": [0.5, 0, 0, 0, 0, 0, 0, 0], "task": [.5, .5, 0]}
+]
 
-    desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, 1], "task": None}
+replay = 10
 
-    observation = env.reset(desired_state)
+for desired_state in desired_states:
 
-    done = False
+    for _ in range(replay):
+        observation = env.reset(desired_state)
 
-    while not done:
+        done = False
 
-        observation = [observation['state']['agent_state']]
+        while not done:
+            observation = [observation['state']['agent_state']]
 
-        # print(observation)
-        action = agent.predict(observation, deterministic=True)
-        
-        action = action[0]
+            # print(observation)
+            action = agent.predict(observation, deterministic=True)
 
-        observation, rewards, done = env.step(action)
+            action = action[0]
+
+            observation, rewards, done = env.step(action)

@@ -8,14 +8,14 @@ import numpy as np
 
 class Orchestrator(object):
 
-    def __init__(self, env_config, nb_envs):
+    def __init__(self, env_config, number_envs):
 
         self.pipes = {}
         self.action_space_ = None
         self.observation_space_ = None
         self.observation_dict_ = None
 
-        for ee in range(nb_envs):
+        for ee in range(number_envs):
             pipe_orchestrator, pipe_env = mp.Pipe()
 
             self.pipes[ee] = pipe_orchestrator
@@ -153,9 +153,6 @@ class Orchestrator(object):
 
 
 if __name__ == "__main__":
-    import os.path as osp
-    import os
-    import datetime
 
     env_config = {
 
@@ -172,10 +169,7 @@ if __name__ == "__main__":
 
     }
 
-    import numpy as np
-    import time
-
-    nb_envs = 1
+    nb_envs = 3
 
     orchestrator = Orchestrator(env_config, nb_envs)
     print()
@@ -190,4 +184,3 @@ if __name__ == "__main__":
             [(ee, "reset", None) for ee in range(nb_envs)])
 
         print(len(result))
-        # time.sleep(3)

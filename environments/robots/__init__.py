@@ -6,6 +6,6 @@ def get_robot(robot_config, bullet_client):
     if robot_name == 'panda':
         robot = Panda(bullet_client, **robot_config)
     else:
-        raise ValueError()
+        raise ValueError(f"Unknown robot: {robot_name}")
 
     return robot

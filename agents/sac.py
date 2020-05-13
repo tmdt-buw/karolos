@@ -3,13 +3,11 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 
 """
 
+import numpy as np
 import os
 import os.path as osp
-
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import Normal
 
 from agents.nnfactory.sac import Policy, Critic
 from agents.utils.replay_buffer import ReplayBuffer
@@ -18,6 +16,7 @@ from agents.utils.replay_buffer import ReplayBuffer
 use_cuda = torch.cuda.is_available()
 device = torch.device('cuda' if use_cuda else 'cpu')
 print('\n DEVICE', device, '\n')
+
 
 class AgentSAC:
     def __init__(self, config, observation_space, action_space):
@@ -31,59 +30,50 @@ class AgentSAC:
         assert len(state_dim) == 1
         assert len(action_dim) == 1
 
-        self.h_dim = config["hidden_dim"]
-        self.h_layers = config['hidden_layers']
-        self.action_dim = action_dim
-        self.soft_q_lr = config["soft_q_lr"]
-        self.pol_lr = config["policy_lr"]
-        self.alpha_lr = config["alpha_lr"]
-        # tradeoff between exploration and exploitation
+        self.hidden_dim = config["hidden_dim"]
+        self.hidden_layers = config['hidden_layers']
+        self.learning_rate_critic = config["learning_rate_critic"]
+        self.learning_rate_policy = config["learning_rate_policy"]
+        self.learning_rate_alpha = config["learning_rate_alpha"]
         self.alpha = config["alpha"]
         self.weight_decay = config["weight_decay"]
         self.batch_size = config['batch_size']
-        self.gamma = config['gamma']
+        self.reward_discount = config['reward_discount']
         self.memory_size = config['memory_size']
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
 
-        self.reward_scale = 10.
         self.target_entropy = -1 * action_dim[0]
 
-        torch.manual_seed(config['seed'])
-
         # generate networks
-        self.critic_1 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
-            device)
-        self.critic_2 = Critic(state_dim, action_dim, self.h_dim, self.h_layers).to(
-            device)
-        self.target_critic_1 = Critic(state_dim, action_dim,
-                                      self.h_dim, self.h_layers).to(device)
-        self.target_critic_2 = Critic(state_dim, action_dim,
-                                      self.h_dim, self.h_layers).to(device)
+        self.critic_1 = Critic(state_dim, action_dim, self.hidden_dim,
+                               self.hidden_layers).to(device)
+        self.critic_2 = Critic(state_dim, action_dim, self.hidden_dim,
+                               self.hidden_layers).to(device)
+        self.target_critic_1 = Critic(state_dim, action_dim, self.hidden_dim,
+                                      self.hidden_layers).to(device)
+        self.target_critic_2 = Critic(state_dim, action_dim, self.hidden_dim,
+                                      self.hidden_layers).to(device)
         self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
-                             hidden_dim=self.h_dim,
-                                num_layers_linear_hidden=self.h_layers).to(
+                             hidden_dim=self.hidden_dim,
+                             num_layers_linear_hidden=self.hidden_layers).to(
             device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
                                      requires_grad=True, device=device)
 
-        # print("SAC Trainer target entropy:", self.target_entropy)
-        # print('Soft Q Network (1,2): ', self.critic_1)
-        # print('Policy Network: ', self.policy)
-
         # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
         self.optimizer_critic_1 = torch.optim.AdamW(self.critic_1.parameters(),
-                                                    lr=self.soft_q_lr,
+                                                    lr=self.learning_rate_critic,
                                                     weight_decay=self.weight_decay)
         self.optimizer_critic_2 = torch.optim.AdamW(self.critic_2.parameters(),
-                                                    lr=self.soft_q_lr,
+                                                    lr=self.learning_rate_critic,
                                                     weight_decay=self.weight_decay)
         self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(),
-                                                  lr=self.pol_lr,
+                                                  lr=self.learning_rate_policy,
                                                   weight_decay=self.weight_decay)
         self.alpha_optim = torch.optim.AdamW([self.log_alpha],
-                                             lr=self.alpha_lr,
+                                             lr=self.learning_rate_alpha,
                                              weight_decay=self.weight_decay)
 
         for target_param, param in zip(self.target_critic_1.parameters(),
@@ -118,27 +108,9 @@ class AgentSAC:
         predicted_q1 = self.critic_1(states, actions)
         predicted_q2 = self.critic_2(states, actions)
 
-        # todo: document and clean up
-        def evaluate(states, eps=1e-06):
-            mean, log_std = self.policy(states)
-            std = log_std.exp()
-
-            normal = Normal(0, 1)
-            z = normal.sample()
-            action = torch.tanh(mean + std * z)
-            log_prob = Normal(mean, std).log_prob(
-                mean + std * z) - torch.log(
-                1. - action.pow(2) + eps)
-            log_prob = log_prob.sum(dim=1, keepdim=True)
-            return action, log_prob, log_std
-
-        new_action, log_prob, log_std = evaluate(states)
-        new_next_action, new_log_prob, _ = evaluate(
-            next_states)
-
-        # normalize with batch mean std
-        # rewards = self.reward_scale * (rewards - rewards.mean(dim=0)) / (
-        #        rewards.std(dim=0) + 1e-6)
+        predicted_action, log_prob = self.policy(states, deterministic=False)
+        predicted_next_action, next_log_prob = self.policy(next_states,
+                                                           deterministic=False)
 
         if self.auto_entropy is True:
             alpha_loss = -(self.log_alpha * (
@@ -152,10 +124,11 @@ class AgentSAC:
 
         # Train critic
         target_critic_min = torch.min(
-            self.target_critic_1(next_states, new_next_action),
-            self.target_critic_2(next_states,
-                                 new_next_action)) - self.alpha * new_log_prob
-        target_q_value = rewards + (1 - dones) * self.gamma * target_critic_min
+            self.target_critic_1(next_states, predicted_next_action),
+            self.target_critic_2(next_states, predicted_next_action))
+        target_critic_min.sub_(self.alpha * next_log_prob)
+        target_q_value = rewards + (
+                1 - dones) * self.reward_discount * target_critic_min
         q_val_loss1 = self.criterion_critic_1(predicted_q1,
                                               target_q_value.detach())
         self.optimizer_critic_2.zero_grad()
@@ -168,8 +141,9 @@ class AgentSAC:
         self.optimizer_critic_2.step()
 
         # Training policy
-        predicted_new_q_val = torch.min(self.critic_1(states, new_action),
-                                        self.critic_2(states, new_action))
+        predicted_new_q_val = torch.min(
+            self.critic_1(states, predicted_action),
+            self.critic_2(states, predicted_action))
         loss_policy = (self.alpha * log_prob - predicted_new_q_val).mean()
 
         self.optimizer_policy.zero_grad()
@@ -221,7 +195,8 @@ class AgentSAC:
 
     def load(self, path, train_mode=True):
         try:
-            self.policy.load_state_dict(torch.load(osp.join(path, "policy.pt")))
+            self.policy.load_state_dict(
+                torch.load(osp.join(path, "policy.pt")))
             self.critic_1.load_state_dict(
                 torch.load(osp.join(path, "critic_1.pt")))
             self.critic_2.load_state_dict(
@@ -241,6 +216,7 @@ class AgentSAC:
             print('###################')
             print('Could not load agent, missing files in', path)
             print('###################')
+            raise
 
         if train_mode:
             self.policy.train()
@@ -255,41 +231,17 @@ class AgentSAC:
             self.target_critic_1.eval()
             self.target_critic_2.eval()
 
-
     def predict(self, states, deterministic=True):
 
         self.policy.eval()
 
         states = torch.FloatTensor(states).to(device)
 
-        mean, log_std = self.policy(states)
+        action, _ = self.policy(states, deterministic)
 
-        mean = mean.detach().cpu().numpy()
+        action = action.detach().cpu().numpy()
 
-        if deterministic:
-            action = mean
-        else:
-            std = log_std.exp()
-            std = std.detach().cpu().numpy()
-
-            action = []
-
-            for mean_, std_ in zip(mean, std):
-                action_ = np.random.multivariate_normal(mean_, np.diag(std_))
-                # action_ = np.tanh(action_)
-                action.append(action_)
-
-            action = np.stack(action)
-
-        action = np.tanh(action)
-
-        return action
-
-    def random_action(self, states):
-
-        action_dim = (len(states),) + tuple(self.action_dim)
-
-        action = np.random.rand(*action_dim) * 2 - 1
+        action = action.clip(self.action_space.low, self.action_space.high)
 
         return action
 
