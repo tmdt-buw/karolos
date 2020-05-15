@@ -3,9 +3,10 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 
 """
 
-import numpy as np
 import os
 import os.path as osp
+
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -43,20 +44,25 @@ class AgentSAC:
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
 
+        self.policy_structure = config['policy_structure']
+        self.critic_structure = config['critic_structure']
+
+        self.reward_scale = 10.
         self.target_entropy = -1 * action_dim[0]
 
         # generate networks
-        self.critic_1 = Critic(state_dim, action_dim, self.hidden_dim,
-                               self.hidden_layers).to(device)
-        self.critic_2 = Critic(state_dim, action_dim, self.hidden_dim,
-                               self.hidden_layers).to(device)
-        self.target_critic_1 = Critic(state_dim, action_dim, self.hidden_dim,
-                                      self.hidden_layers).to(device)
-        self.target_critic_2 = Critic(state_dim, action_dim, self.hidden_dim,
-                                      self.hidden_layers).to(device)
+        self.critic_1 = Critic(state_dim, action_dim,
+                               self.critic_structure).to(
+            device)
+        self.critic_2 = Critic(state_dim, action_dim,
+                               self.critic_structure).to(
+            device)
+        self.target_critic_1 = Critic(state_dim, action_dim,
+                                      self.critic_structure).to(device)
+        self.target_critic_2 = Critic(state_dim, action_dim,
+                                      self.critic_structure).to(device)
         self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
-                             hidden_dim=self.hidden_dim,
-                             num_layers_linear_hidden=self.hidden_layers).to(
+                             network_structure=self.policy_structure).to(
             device)
 
         self.log_alpha = torch.zeros(1, dtype=torch.float32,
@@ -296,7 +302,6 @@ if __name__ == '__main__':
     def test_agent():
         import gym
         import numpy as np
-        import random
 
         from IPython.display import clear_output
         import matplotlib.pyplot as plt

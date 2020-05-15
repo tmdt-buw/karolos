@@ -283,6 +283,9 @@ if __name__ == "__main__":
             "tau": 0.0025,
             "hidden_dim": 32,
             "hidden_layers": 8,
+            "seed": 192,
+            "policy_structure": [('linear', 32), ('relu', None), ('dropout', 0.2)] * 8,
+            "critic_structure": [('linear', 32), ('relu', None), ('dropout', 0.2)] * 8
         },
         "number_envs": 1,  # cpu_count(),
         "env_config": {
