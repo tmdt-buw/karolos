@@ -284,13 +284,11 @@ if __name__ == "__main__":
             "hidden_dim": 32,
             "hidden_layers": 8,
             "seed": 192,
-            "policy_structure": [('linear', 32), ('relu', None), ('dropout', 0.2), ('linear', 32)],
-            "critic_structure": [('linear', 32), ('relu', None), ('dropout', 0.2), ('linear', 32)]
+            "policy_structure": [('linear', 32), ('relu', None), ('dropout', 0.2)] * 8,
+            "critic_structure": [('linear', 32), ('relu', None), ('dropout', 0.2)] * 8
         },
         "number_envs": 1,  # cpu_count(),
         "env_config": {
-            "nb_envs": 1,
-            "base_pkg": "robot-task-rl",
             "render": False,
             "task_config": {"name": "push",
                             "dof": 3,

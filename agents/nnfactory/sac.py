@@ -30,7 +30,7 @@ def init_xavier_uniform(m):
 
 
 class Critic(nn.Module):
-    def __init__(self, in_dim, action_dim, value_structure):
+    def __init__(self, in_dim, action_dim, network_structure):
         super(Critic, self).__init__()
 
         assert len(in_dim) == 1
@@ -39,29 +39,25 @@ class Critic(nn.Module):
         in_dim = np.product(in_dim)
         action_dim = np.product(action_dim)
 
-        # first position should be a layer, linear layer for now
-
-        assert value_structure[0][1] is not None
-        prev_object = value_structure.pop(0)
-
         self.operators = nn.ModuleList([
-            Flatten(),
-            nn.Linear(in_dim + action_dim, prev_object[1]),
+            Flatten()
         ])
 
-        for layer, argument in value_structure[:-1]:
+        current_layer_size = in_dim + action_dim
+
+        for layer, params in network_structure:
             if layer == 'linear':
-                self.operators.append(nn.Linear(prev_object[1], argument))
-                prev_object = (layer, argument)
+                self.operators.append(nn.Linear(current_layer_size, params))
+                current_layer_size = params
             elif layer == 'relu':
-                assert argument is None, 'No argument for ReLU please'
+                assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
             elif layer == 'dropout':
-                self.operators.append(nn.Dropout(argument))
+                self.operators.append(nn.Dropout(params))
             else:
                 raise NotImplementedError(f'{layer} not known')
 
-        self.operators.append(nn.Linear(prev_object[1], 1))
+        self.operators.append(nn.Linear(current_layer_size, 1))
 
         self.operators.apply(init_xavier_uniform)
 
@@ -73,39 +69,35 @@ class Critic(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, in_dim, action_dim, policy_structure, log_std_min=-20,
+    def __init__(self, in_dim, action_dim, network_structure, log_std_min=-20,
                  log_std_max=2):
         super(Policy, self).__init__()
 
         assert len(in_dim) == 1
         assert len(action_dim) == 1
 
-        self.in_dim = np.product(in_dim)
-        self.action_dim = np.product(action_dim)
-        self.hidden_dim = hidden_dim
-
-        # first position should be a layer, linear layer for now
-        assert policy_structure[0][1] is not None
-        prev_object = policy_structure.pop(0)
+        in_dim = np.product(in_dim)
+        action_dim = np.product(action_dim)
 
         self.operators = nn.ModuleList([
-            Flatten(),
-            nn.Linear(in_dim, prev_object[1]),
+            Flatten()
         ])
 
-        for layer, argument in policy_structure[:-1]:
+        current_layer_size = in_dim
+
+        for layer, params in network_structure:
             if layer == 'linear':
-                self.operators.append(nn.Linear(prev_object[1], argument))
-                prev_object = (layer, argument)
+                self.operators.append(nn.Linear(current_layer_size, params))
+                current_layer_size = params
             elif layer == 'relu':
-                assert argument is None, 'No argument for ReLU please'
+                assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
             elif layer == 'dropout':
-                self.operators.append(nn.Dropout(argument))
+                self.operators.append(nn.Dropout(params))
             else:
                 raise NotImplementedError(f'{layer} not known')
 
-        self.operators.append(nn.Linear(prev_object[1], 2 * action_dim))
+        self.operators.append(nn.Linear(current_layer_size, 2 * action_dim))
 
         self.operators.apply(init_xavier_uniform)
 
@@ -117,6 +109,8 @@ class Policy(nn.Module):
             x = operator(x)
 
         mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
+
+        log_std = self.std_clamp(log_std)
 
         if deterministic:
             action = torch.tanh(mean)
