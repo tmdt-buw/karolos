@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from torch.distributions import Normal
 
 
 class Flatten(torch.nn.Module):
@@ -24,9 +25,7 @@ class Clamp(torch.nn.Module):
 
 
 def init_xavier_uniform(m):
-    if type(m) == nn.Linear:
-        torch.nn.init.xavier_uniform_(m.weight)
-    if type(m) == nn.Conv2d:
+    if type(m) in [nn.Linear, nn.Conv2d]:
         torch.nn.init.xavier_uniform_(m.weight)
 
 
@@ -81,8 +80,9 @@ class Policy(nn.Module):
         assert len(in_dim) == 1
         assert len(action_dim) == 1
 
-        in_dim = np.product(in_dim)
-        action_dim = np.product(action_dim)
+        self.in_dim = np.product(in_dim)
+        self.action_dim = np.product(action_dim)
+        self.hidden_dim = hidden_dim
 
         # first position should be a layer, linear layer for now
         assert policy_structure[0][1] is not None
@@ -111,16 +111,52 @@ class Policy(nn.Module):
 
         self.std_clamp = Clamp(log_std_min, log_std_max)
 
-    def forward(self, state):
+    def forward(self, state, deterministic=True):
         x = state
         for operator in self.operators:
             x = operator(x)
 
         mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
 
-        log_std = self.std_clamp(log_std)
+        if deterministic:
+            action = torch.tanh(mean)
+            log_prob = torch.ones_like(log_std)
+        else:
+            std = log_std.exp()
 
-        return mean, log_std
+            normal = Normal(0, 1)
+            z = normal.sample()
+            action = torch.tanh(mean + std * z)
+
+            action_bound_compensation = torch.log(1. - action.pow(2) + 1e-6)
+            log_prob = Normal(mean, std).log_prob(mean + std * z)
+            log_prob.sub_(action_bound_compensation)
+            log_prob = log_prob.sum(dim=1, keepdim=True)
+
+        return action, log_prob
+
+    def get_weights(self):
+
+        weights = []
+
+        for operator in self.operators:
+            if type(operator) == nn.Linear:
+                weights.append(operator.weight)
+
+        return weights
+
+    def get_activations(self, state):
+        x = state
+
+        activations = []
+
+        for operator in self.operators:
+            x = operator(x)
+
+            if type(operator) == nn.ReLU:
+                activations.append(x)
+
+        return activations
 
 
 if __name__ == '__main__':
