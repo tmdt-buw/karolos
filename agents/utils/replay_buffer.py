@@ -19,7 +19,7 @@ class ReplayBuffer:
 
     def sample(self, n_samples):
         """Randomly sample a batch of experiences from memory."""
-        experiences = random.sample(self.memory, k=n_samples)
+        experiences = random.choices(self.memory, k=n_samples)
 
         states, actions, rewards, next_states, terminals = map(np.stack, zip(
             *experiences))

@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.abspath("."))
 
@@ -196,6 +196,7 @@ class Trainer:
 
         best_success_ratio = 0.5
 
+        # todo allow for less tests
         assert number_tests >= number_envs
 
         pbar = tqdm(total=training_config["total_timesteps"])
@@ -262,7 +263,7 @@ if __name__ == "__main__":
     experiment_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     training_config = {
-        "total_timesteps": 50_000_000,
+        "total_timesteps": 20_000_000,
         "test_interval": 500_000,
         "number_tests": 100,
         # "base_experiment": {
@@ -281,21 +282,22 @@ if __name__ == "__main__":
             "auto_entropy": True,
             "memory_size": 100_000,
             "tau": 0.0025,
-            "hidden_dim": 32,
-            "hidden_layers": 8,
             "seed": 192,
-            "policy_structure": [('linear', 32), ('relu', None), ('dropout', 0.2)] * 8,
-            "critic_structure": [('linear', 32), ('relu', None), ('dropout', 0.2)] * 8
+            "policy_structure": [('linear', 32), ('relu', None),
+                                 ('dropout', 0.2)] * 8,
+            "critic_structure": [('linear', 32), ('relu', None),
+                                 ('dropout', 0.2)] * 8
         },
-        "number_envs": 1,  # cpu_count(),
+        "number_envs": cpu_count(),
         "env_config": {
             "render": False,
-            "task_config": {"name": "push",
-                            "dof": 3,
-                            "only_positive": False,
-                            "sparse_reward": False,
-                            "max_steps": 25
-                            },
+            "task_config": {
+                "name": "reach",
+                "dof": 3,
+                "only_positive": False,
+                "sparse_reward": False,
+                "max_steps": 25
+            },
             "robot_config": {
                 "name": "panda",
                 "dof": 3,
