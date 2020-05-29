@@ -31,8 +31,6 @@ class AgentSAC:
         assert len(state_dim) == 1
         assert len(action_dim) == 1
 
-        self.hidden_dim = config["hidden_dim"]
-        self.hidden_layers = config['hidden_layers']
         self.learning_rate_critic = config["learning_rate_critic"]
         self.learning_rate_policy = config["learning_rate_policy"]
         self.learning_rate_alpha = config["learning_rate_alpha"]

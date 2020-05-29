@@ -283,10 +283,8 @@ if __name__ == "__main__":
             "memory_size": 100_000,
             "tau": 0.0025,
             "seed": 192,
-            "policy_structure": [('linear', 32), ('relu', None),
-                                 ('dropout', 0.2)] * 8,
-            "critic_structure": [('linear', 32), ('relu', None),
-                                 ('dropout', 0.2)] * 8
+            "policy_structure": [('linear', 32), ('relu', None)] * 8,
+            "critic_structure": [('linear', 32), ('relu', None)] * 8
         },
         "number_envs": cpu_count(),
         "env_config": {
