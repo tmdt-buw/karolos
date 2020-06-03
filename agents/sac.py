@@ -6,6 +6,8 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 import os
 import os.path as osp
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 
