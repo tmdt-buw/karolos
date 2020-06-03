@@ -6,7 +6,6 @@ https://spinningup.openai.com/en/latest/algorithms/sac.html
 import os
 import os.path as osp
 
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -256,135 +255,110 @@ class AgentSAC:
 
 if __name__ == '__main__':
     import pprint
-    from pathlib import Path
 
     config = {
-        "soft_q_lr": 0.0003,
-        "policy_lr": 0.0003,
+        "learning_rate_critic": 0.0003,
+        "learning_rate_policy": 0.0003,
         "alpha": 1,
-        "alpha_lr": 0.0003,
+        "learning_rate_alpha": 0.0003,
         "batch_size": 128,
         "weight_decay": 1e-3,
-        "gamma": 0.99,
+        "reward_discount": 0.99,
         "memory_size": 100000,
         "tau": 0.01,
-        "hidden_dim": 512,
-        "hidden_layers": 3,
-        "state_dim": 3,
-        "action_dim": 1,
+        "policy_structure": [('linear', 256), ('relu', None)] * 2,
+        "critic_structure": [('linear', 256), ('relu', None)] * 2,
         "seed": 192,
         "tensorboard_histogram_interval": 100,
         "auto_entropy": True,
-        "root_path":
-            Path(__file__).parent.resolve().as_posix().replace(' ',
-                                                               '\ ') + '/test_0/',
-        "run_name": 'test_0'
     }
-
-    os.system('mkdir -p {}'.format(config['root_path']))
 
     pprint.pprint(config)
 
-    agent = AgentSAC(config, state_dim=(5,), action_dim=(5,))
-
-    agent.save(".")
-    agent.load(".")
-
-    exit()
+    # agent.save(".")
+    # agent.load(".")
 
     """
     Use this function to test your agents on the pendulum v0 open ai gym. Continuous space
     """
 
+    import gym
+    import numpy as np
 
-    def test_agent():
-        import gym
-        import numpy as np
+    import matplotlib.pyplot as plt
 
-        from IPython.display import clear_output
-        import matplotlib.pyplot as plt
 
-        class NormalizedActions(gym.ActionWrapper):
-            def action(self, action):
-                low = self.action_space.low
-                high = self.action_space.high
+    class NormalizedActions(gym.ActionWrapper):
+        def action(self, action):
+            low = self.action_space.low
+            high = self.action_space.high
 
-                action = low + (action + 1.0) * 0.5 * (high - low)
-                action = np.clip(action, low, high)
+            action = low + (action + 1.0) * 0.5 * (high - low)
+            action = np.clip(action, low, high)
 
-                return action
+            return action
 
-            def reverse_action(self, action):
-                low = self.action_space.low
-                high = self.action_space.high
+        def reverse_action(self, action):
+            low = self.action_space.low
+            high = self.action_space.high
 
-                action = 2 * (action - low) / (high - low) - 1
-                action = np.clip(action, low, high)
+            action = 2 * (action - low) / (high - low) - 1
+            action = np.clip(action, low, high)
 
-                return action
+            return action
 
-        max_steps = 150
-        max_episodes = 1000
-        frame_idx = 0
 
-        explore_steps = 200
-        rewards = []
+    max_steps = 150
+    max_episodes = 1000
+    frame_idx = 0
 
-        def plot(rewards):
-            clear_output(True)
-            plt.figure(figsize=(20, 5))
+    explore_steps = 200
+    rewards = []
+
+    env = NormalizedActions(gym.make("Pendulum-v0"))
+    action_space = env.action_space
+    state_space = env.observation_space
+    action_range = 1.
+    print('env action space: ', env.action_space, "sample:",
+          env.action_space.sample(), "shape:", env.action_space.shape)
+    print('env state space: ', env.observation_space, "sample:",
+          env.observation_space.sample(), "shape:",
+          env.observation_space.shape)
+
+    ag = AgentSAC(config, state_space, action_space)
+
+    for eps in range(max_episodes):
+        state = env.reset()
+        state = np.array([state])
+        episode_reward = 0
+
+        for step in range(max_steps):
+            action = ag.predict(state, deterministic=False)
+
+            next_state, reward, done, _ = env.step(action)
+            print(state, action, next_state, reward, done)
+            # env.render()
+            experience = [state, action, reward, next_state, done]
+
+            # print([e.shape for e in experience])
+
+            ag.add_experience([experience])
+            ag.learn()
+
+            state = next_state
+            episode_reward += reward
+            frame_idx += 1
+
+            if done:
+                break
+
+        if eps % 10 == 0 and eps > 0:
             plt.plot(rewards)
-            plt.savefig('sac_v2.png')
-            # plt.show()
+            plt.show()
 
-        env = NormalizedActions(gym.make("Pendulum-v0"))
-        # env = gym.make("Pendulum-v0")
-        action_space = env.action_space
-        state_space = env.observation_space
-        state_dim = env.observation_space.shape[0]
-        action_dim = env.action_space.shape[0]
-        action_range = 1.
-        print('env action space: ', env.action_space, "sample:",
-              env.action_space.sample(), "shape:", env.action_space.shape)
-        print('env state space: ', env.observation_space, "sample:",
-              env.observation_space.sample(), "shape:",
-              env.observation_space.shape)
+        print('Episode: ', eps, '| Episode Reward: ', episode_reward)
+        rewards.append(episode_reward)
 
-        ag = AgentSAC(config, state_dim=state_dim, action_dim=action_dim)
-        ag.batch_size = 256
-        target_ent = -1 * env.action_space.shape[0]
-        print('target_entropy:', target_ent)
-        ag.set_target_entropy(target_ent)
+    plt.plot(rewards)
 
-        for eps in range(max_episodes):
-            state = env.reset()
-            episode_reward = 0
-
-            for step in range(max_steps):
-                if frame_idx > explore_steps:
-                    ag.random = False
-                    action = ag.act(state)
-                else:
-                    action = ag.sample_action()
-
-                next_state, reward, done, _ = env.step(action)
-                # next_state = [item for sublist in next_state for item in sublist]
-                env.render()
-                # print('a:', action, 's:', state)
-                ag.step(state, action, reward, done, next_state,
-                        tensorboard=None)
-
-                state = next_state
-                episode_reward += reward
-                frame_idx += 1
-
-                if done:
-                    break
-
-            if eps % 20 == 0 and eps > 0:
-                plot(rewards)
-            print('Episode: ', eps, '| Episode Reward: ', episode_reward)
-            rewards.append(episode_reward)
-
-
-    test_agent()
+    plt.show()
