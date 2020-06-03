@@ -310,7 +310,6 @@ if __name__ == '__main__':
 
     max_steps = 150
     max_episodes = 1000
-    frame_idx = 0
 
     explore_steps = 200
     rewards = []
@@ -325,29 +324,29 @@ if __name__ == '__main__':
           env.observation_space.sample(), "shape:",
           env.observation_space.shape)
 
-    ag = AgentSAC(config, state_space, action_space)
+    agent = AgentSAC(config, state_space, action_space)
 
     for eps in range(max_episodes):
         state = env.reset()
-        state = np.array([state])
         episode_reward = 0
 
         for step in range(max_steps):
-            action = ag.predict(state, deterministic=False)
+            action = agent.predict([state], deterministic=False)
+
+            action = action[0]
 
             next_state, reward, done, _ = env.step(action)
-            print(state, action, next_state, reward, done)
             # env.render()
-            experience = [state, action, reward, next_state, done]
 
-            # print([e.shape for e in experience])
+            next_state = np.ravel(next_state)
 
-            ag.add_experience([experience])
-            ag.learn()
+            experience = [np.ravel(state), np.ravel(action), reward, next_state, done]
+
+            agent.add_experience([experience])
+            agent.learn()
 
             state = next_state
             episode_reward += reward
-            frame_idx += 1
 
             if done:
                 break
