@@ -21,6 +21,43 @@ log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
 
 class Trainer:
 
+    def reset_all(self):
+
+        def get_rnd_state():
+            rnd_state = {
+            'robot':self.env_orchestrator.observation_dict['state']['robot'].sample(),
+            'task': self.env_orchestrator.observation_dict['state']['task'].sample()
+            }
+            return rnd_state
+
+        # create start states
+        desired_states = [
+            get_rnd_state() for _ in range(self.number_envs)
+        ]
+
+        env_responses = self.env_orchestrator.reset_all(desired_states)
+        to_reset = []
+        env_ret = []
+
+        for i, env_resp in enumerate(env_responses):
+            if env_resp[1][1] is None:
+                to_reset.append(env_resp[0])
+            else:
+                env_ret.append(env_resp)
+
+
+        while to_reset:
+
+            env_id = to_reset.pop(0)
+            ret = self.env_orchestrator.reset(env_id,
+                      get_rnd_state())
+            if ret[1][1] is None:
+                to_reset.append(env_id)
+            else:
+                env_ret.append(ret)
+
+        return env_ret
+
     def similar_config(self, configA, configB):
 
         def ordered(obj):
@@ -61,6 +98,8 @@ class Trainer:
                 previous_state = self.states.pop(env_id, None)
                 if previous_state is not None:
                     action = self.actions.pop(env_id)
+
+
 
                     experience = (previous_state['state']['agent_state'],
                                   action, reward,
@@ -139,18 +178,18 @@ class Trainer:
             json.dump(training_config, f)
 
         # get environment
-        number_envs = training_config["number_envs"]
+        self.number_envs = training_config["number_envs"]
         env_config = training_config["env_config"]
 
-        env_orchestrator = Orchestrator(env_config, number_envs)
+        self.env_orchestrator = Orchestrator(env_config, self.number_envs)
 
         # get agents
         agent_config = training_config["agent_config"]
 
         algorithm = training_config["algorithm"]
         self.agent = get_agent(algorithm, agent_config,
-                               env_orchestrator.observation_space,
-                               env_orchestrator.action_space)
+                               self.env_orchestrator.observation_space,
+                               self.env_orchestrator.action_space)
 
         models_dir = osp.join(experiment_dir, "models")
 
@@ -182,7 +221,7 @@ class Trainer:
         self.writer = SummaryWriter(experiment_dir)
 
         # reset all
-        env_responses = env_orchestrator.reset_all()
+        env_responses = self.reset_all()
 
         self.steps = defaultdict(int)
 
@@ -210,10 +249,10 @@ class Trainer:
                                       test_interval + 1) * test_interval
 
                 # reset all
-                env_responses = env_orchestrator.reset_all()
+                env_responses = self.reset_all()
 
                 # subtract tests already launched in each environment
-                tests_to_run = number_tests - number_envs
+                tests_to_run = number_tests - self.number_envs
                 concluded_tests = []
 
                 while len(concluded_tests) < number_tests:
@@ -229,7 +268,7 @@ class Trainer:
                             else:
                                 del requests[ii]
 
-                    env_responses = env_orchestrator.send_receive(requests)
+                    env_responses = self.env_orchestrator.send_receive(requests)
 
                 # evaluate test
                 success_ratio = np.mean(concluded_tests)
@@ -246,12 +285,12 @@ class Trainer:
                                                  f"{success_ratio:.3f}"))
 
                 # reset all
-                env_responses = env_orchestrator.reset_all()
+                env_responses = self.reset_all()
 
             # Train
             requests, _ = self.process_responses(env_responses, train=True)
 
-            env_responses = env_orchestrator.send_receive(requests)
+            env_responses = self.env_orchestrator.send_receive(requests)
 
             self.agent.learn()
 
