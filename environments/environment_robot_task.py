@@ -71,13 +71,17 @@ class Environment(gym.Env):
         """Reset the environment and return new state
         """
 
-        if desired_state is not None:
-            observation_robot = self.robot.reset(desired_state["robot"])
-            observation_task = self.task.reset(self.robot.robot,
-                                               desired_state["task"])
-        else:
-            observation_robot = self.robot.reset()
-            observation_task = self.task.reset(self.robot.robot)
+        try:
+            if desired_state is not None:
+                observation_robot = self.robot.reset(desired_state["robot"])
+                observation_task = self.task.reset(self.robot.robot,
+                                                   desired_state["task"])
+            else:
+                observation_robot = self.robot.reset()
+                observation_task = self.task.reset(self.robot.robot)
+
+        except AssertionError as e:
+            return e
 
         observation_state = {
             'state': {
