@@ -81,7 +81,7 @@ class Orchestrator(object):
 
         return responses
 
-    def reset_all(self, desired_states=None):
+    def reset_all(self, initial_state_generator=None):
         """ Resets all environment. Blocks until all environments are reset.
             If a desired_state is not possible, caller has to resubmit desired_state"""
 
@@ -89,8 +89,11 @@ class Orchestrator(object):
         token = random.getrandbits(10)
         self.send([(env_id, "ping", token) for env_id in self.pipes.keys()])
 
-        if desired_states is None:
+        if initial_state_generator is None:
             desired_states = [None] * len(self.pipes)
+        else:
+            desired_states = [initial_state_generator(env_id=env_id) for env_id
+                              in self.pipes.keys()]
 
         assert len(desired_states) == len(self.pipes)
 
