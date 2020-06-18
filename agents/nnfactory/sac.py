@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import MultivariateNormal
+from torch.distributions import Normal
 
 
 class Flatten(torch.nn.Module):
@@ -118,21 +118,15 @@ class Policy(nn.Module):
         else:
             std = log_std.exp()
 
-            normal = MultivariateNormal(torch.zeros_like(mean),
-                                        torch.diag_embed(torch.ones_like(std)))
+            normal = Normal(mean, std)
             z = normal.sample()
 
+            action = torch.tanh(z)
+
             log_prob = normal.log_prob(z)
-            log_prob.unsqueeze_(-1)
+            log_prob -= torch.log(1. - action.pow(2) + 1e-6)
 
-            action_base = mean + std * z
-            action = torch.tanh(action_base)
-
-            action_bound_compensation = torch.log(
-                1. - action.pow(2) + np.finfo(float).eps).sum(dim=1,
-                                                              keepdim=True)
-
-            log_prob.sub_(action_bound_compensation)
+            log_prob = log_prob.sum(dim=1, keepdim=True)
 
         return action, log_prob
 
