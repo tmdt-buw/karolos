@@ -1,6 +1,9 @@
 """
 https://spinningup.openai.com/en/latest/algorithms/sac.html
 
+
+IDEAS
+include parameter for wrapper of learn function to call multiple times per learning step
 """
 
 import os
@@ -46,7 +49,7 @@ class AgentSAC:
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
 
-        self.reward_scale = 10.
+        self.reward_scale = 1.
         self.target_entropy = -1 * action_dim[0]
 
         # generate networks
@@ -92,6 +95,7 @@ class AgentSAC:
         self.criterion_critic_2 = nn.MSELoss()
 
         self.memory = ReplayBuffer(buffer_size=self.memory_size)
+
 
     def learn(self):
 
