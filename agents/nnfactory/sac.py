@@ -114,12 +114,12 @@ class Policy(nn.Module):
 
         if deterministic:
             action = torch.tanh(mean)
-            log_prob = torch.zeros_like(log_std)
+            log_prob = torch.ones_like(log_std)
         else:
             std = log_std.exp()
 
             normal = Normal(mean, std)
-            z = normal.sample()
+            z = normal.rsample()
 
             action = torch.tanh(z)
 

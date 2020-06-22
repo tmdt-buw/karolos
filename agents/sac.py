@@ -27,10 +27,10 @@ class AgentSAC:
         self.action_space = action_space
 
         state_dim = self.observation_space.shape
-        action_dim = self.action_space.shape
+        self.action_dim = self.action_space.shape
 
         assert len(state_dim) == 1
-        assert len(action_dim) == 1
+        assert len(self.action_dim) == 1
 
         self.learning_rate_critic = config["learning_rate_critic"]
         self.learning_rate_policy = config["learning_rate_policy"]
@@ -42,25 +42,27 @@ class AgentSAC:
         self.memory_size = config['memory_size']
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
+        self.grad_clipping = config["gradient_clipping"]
+        self.clip_val = 10
 
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
 
         self.reward_scale = config['reward_scale']
-        self.target_entropy = -1 * action_dim[0]
+        self.target_entropy = -1 * self.action_dim[0]
 
         # generate networks
-        self.critic_1 = Critic(state_dim, action_dim,
+        self.critic_1 = Critic(state_dim, self.action_dim,
                                self.critic_structure).to(
             device)
-        self.critic_2 = Critic(state_dim, action_dim,
+        self.critic_2 = Critic(state_dim, self.action_dim,
                                self.critic_structure).to(
             device)
-        self.target_critic_1 = Critic(state_dim, action_dim,
+        self.target_critic_1 = Critic(state_dim, self.action_dim,
                                       self.critic_structure).to(device)
-        self.target_critic_2 = Critic(state_dim, action_dim,
+        self.target_critic_2 = Critic(state_dim, self.action_dim,
                                       self.critic_structure).to(device)
-        self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
+        self.policy = Policy(in_dim=state_dim, action_dim=self.action_dim,
                              network_structure=self.policy_structure).to(
             device)
 
@@ -68,16 +70,16 @@ class AgentSAC:
                                      requires_grad=True, device=device)
 
         # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
-        self.optimizer_critic_1 = torch.optim.AdamW(self.critic_1.parameters(),
+        self.optimizer_critic_1 = torch.optim.Adam(self.critic_1.parameters(),
                                                     lr=self.learning_rate_critic,
                                                     weight_decay=self.weight_decay)
-        self.optimizer_critic_2 = torch.optim.AdamW(self.critic_2.parameters(),
+        self.optimizer_critic_2 = torch.optim.Adam(self.critic_2.parameters(),
                                                     lr=self.learning_rate_critic,
                                                     weight_decay=self.weight_decay)
-        self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(),
+        self.optimizer_policy = torch.optim.Adam(self.policy.parameters(),
                                                   lr=self.learning_rate_policy,
                                                   weight_decay=self.weight_decay)
-        self.alpha_optim = torch.optim.AdamW([self.log_alpha],
+        self.alpha_optim = torch.optim.SGD([self.log_alpha],
                                              lr=self.learning_rate_alpha,
                                              weight_decay=self.weight_decay)
 
@@ -129,20 +131,28 @@ class AgentSAC:
 
         # Train critic
         target_critic_min = torch.min(
-            self.target_critic_1(next_states, predicted_next_action),
-            self.target_critic_2(next_states, predicted_next_action))
-        target_critic_min.sub_(self.alpha * next_log_prob)
+            self.target_critic_1(next_states,
+                 predicted_next_action), self.target_critic_2(next_states,
+                 predicted_next_action)) - self.alpha * next_log_prob
+
         target_q_value = rewards + (
                 1 - dones) * self.reward_discount * target_critic_min
         q_val_loss1 = self.criterion_critic_1(predicted_q1,
                                               target_q_value.detach())
-        self.optimizer_critic_2.zero_grad()
         q_val_loss2 = self.criterion_critic_2(predicted_q2,
                                               target_q_value.detach())
+
+        self.optimizer_critic_2.zero_grad()
         self.optimizer_critic_1.zero_grad()
+
         q_val_loss1.backward()
-        self.optimizer_critic_1.step()
         q_val_loss2.backward()
+
+        if self.grad_clipping:
+            torch.nn.utils.clip_grad_norm_(self.critic_1.parameters(), self.clip_val)
+            torch.nn.utils.clip_grad_norm_(self.critic_2.parameters(), self.clip_val)
+
+        self.optimizer_critic_1.step()
         self.optimizer_critic_2.step()
 
         # Training policy
@@ -153,6 +163,10 @@ class AgentSAC:
 
         self.optimizer_policy.zero_grad()
         loss_policy.backward()
+
+        if self.grad_clipping:
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.clip_val)
+
         self.optimizer_policy.step()
 
         # Update target
@@ -177,6 +191,14 @@ class AgentSAC:
     def add_experience(self, experience):
         for e in experience:
             self.memory.add(*e)
+
+    def random_action(self, states):
+
+        action_dim = tuple(self.action_dim)
+
+        action = np.random.rand(*action_dim) * 2 - 1
+
+        return np.array(action)
 
     def save(self, path):
 

@@ -281,6 +281,7 @@ if __name__ == "__main__":
             "batch_size": 32,
             "reward_discount": 0.99,
             "auto_entropy": True,
+            "gradient_clipping": True,
             "memory_size": 100_000,
             "tau": 0.001,
             "seed": 192,
