@@ -260,7 +260,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    experiment_name = datetime.datetime.now().strftime("new_sac_1")
+    experiment_name = datetime.datetime.now().strftime("new_sac_1123")
 
     training_config = {
         "total_timesteps": 20_000_000,
@@ -275,7 +275,7 @@ if __name__ == "__main__":
             "learning_rate_critic": 0.0005,
             "learning_rate_policy": 0.0005,
             "alpha": 1,
-            "reward_scale": 1,
+            "reward_scale": 10,
             "learning_rate_alpha": 0.0005,
             "weight_decay": 1e-4,
             "batch_size": 32,
