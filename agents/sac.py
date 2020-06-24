@@ -1,9 +1,6 @@
 """
 https://spinningup.openai.com/en/latest/algorithms/sac.html
 
-
-IDEAS
-include parameter for wrapper of learn function to call multiple times per learning step
 """
 
 import os
@@ -25,7 +22,7 @@ print('\n DEVICE', device, '\n')
 
 
 class AgentSAC:
-    def __init__(self, config, observation_space, action_space):
+    def __init__(self, config, observation_space, action_space, experiment_dir):
 
         self.observation_space = observation_space
         self.action_space = action_space
@@ -46,11 +43,12 @@ class AgentSAC:
         self.memory_size = config['memory_size']
         self.tau = config['tau']
         self.auto_entropy = config['auto_entropy']
+        self.grad_clipping = config["gradient_clipping"]
+        self.clip_val = 10
 
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
 
-        self.reward_scale = 1.
         self.target_entropy = -1 * action_dim[0]
 
         # generate networks
@@ -142,13 +140,20 @@ class AgentSAC:
                 1 - dones) * self.reward_discount * target_critic_min
         q_val_loss1 = self.criterion_critic_1(predicted_q1,
                                               target_q_value.detach())
-        self.optimizer_critic_2.zero_grad()
+
         q_val_loss2 = self.criterion_critic_2(predicted_q2,
                                               target_q_value.detach())
         self.optimizer_critic_1.zero_grad()
+        self.optimizer_critic_2.zero_grad()
+
         q_val_loss1.backward()
-        self.optimizer_critic_1.step()
         q_val_loss2.backward()
+
+        if self.grad_clipping:
+            torch.nn.utils.clip_grad_norm_(self.critic_1.parameters(), self.clip_val)
+            torch.nn.utils.clip_grad_norm_(self.critic_2.parameters(), self.clip_val)
+
+        self.optimizer_critic_1.step()
         self.optimizer_critic_2.step()
 
         self.writer.add_scalar('q_val_loss1', q_val_loss1.item(), step)
@@ -165,6 +170,10 @@ class AgentSAC:
 
         self.optimizer_policy.zero_grad()
         loss_policy.backward()
+
+        if self.grad_clipping:
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.clip_val)
+
         self.optimizer_policy.step()
 
         # Update target

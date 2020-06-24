@@ -260,11 +260,11 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    experiment_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    experiment_name = datetime.datetime.now().strftime("new_sac_1123")
 
     training_config = {
         "total_timesteps": 20_000_000,
-        "test_interval": 500_000,
+        "test_interval": 250_000,
         "number_tests": 100,
         # "base_experiment": {
         #     "experiment": "20200513-145010",
@@ -275,18 +275,20 @@ if __name__ == "__main__":
             "learning_rate_critic": 0.0005,
             "learning_rate_policy": 0.0005,
             "alpha": 1,
+            "reward_scale": 10,
             "learning_rate_alpha": 0.0005,
             "weight_decay": 1e-4,
-            "batch_size": 128,
-            "reward_discount": 0.95,
+            "batch_size": 32,
+            "reward_discount": 0.99,
             "auto_entropy": True,
+            "gradient_clipping": True,
             "memory_size": 100_000,
-            "tau": 0.0025,
+            "tau": 0.001,
             "seed": 192,
-            "policy_structure": [('linear', 32), ('relu', None)] * 8,
-            "critic_structure": [('linear', 32), ('relu', None)] * 8
+            "policy_structure": [('linear', 32), ('dropout', .5), ('relu', None)] * 8,
+            "critic_structure": [('linear', 32), ('dropout', .5), ('relu', None)] * 8
         },
-        "number_envs": cpu_count(),
+        "number_envs": 6,
         "env_config": {
             "render": False,
             "task_config": {
