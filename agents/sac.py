@@ -13,6 +13,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard.writer import SummaryWriter
 
 from agents.nnfactory.sac import Policy, Critic
 from agents.utils.replay_buffer import ReplayBuffer
@@ -96,8 +97,9 @@ class AgentSAC:
 
         self.memory = ReplayBuffer(buffer_size=self.memory_size)
 
+        self.writer = SummaryWriter(osp.join(experiment_dir, "debug"))
 
-    def learn(self):
+    def learn(self, step):
 
         self.policy.train()
         self.critic_1.train()
@@ -149,6 +151,12 @@ class AgentSAC:
         q_val_loss2.backward()
         self.optimizer_critic_2.step()
 
+        self.writer.add_scalar('q_val_loss1', q_val_loss1.item(), step)
+        self.writer.add_scalar('q_val_loss2', q_val_loss2.item(), step)
+        self.writer.add_scalar('alpha', self.alpha, step)
+        self.writer.add_histogram('rewards', rewards, step)
+        self.writer.add_histogram('target_q_value', target_q_value, step)
+
         # Training policy
         predicted_new_q_val = torch.min(
             self.critic_1(states, predicted_action),
@@ -178,9 +186,9 @@ class AgentSAC:
                 critic_layer_parameters.data * self.tau
             )
 
-    def add_experience(self, experience):
-        for e in experience:
-            self.memory.add(*e)
+    def add_experience(self, experiences):
+        for experience in experiences:
+            self.memory.add(experience)
 
     def save(self, path):
 
@@ -254,32 +262,33 @@ class AgentSAC:
 
         return action
 
-    def set_target_entropy(self, target_e):
-        self.target_entropy = target_e
-        return
+    def set_target_entropy(self, target_entropy):
+        self.target_entropy = target_entropy
 
 
 if __name__ == '__main__':
+    import gym
+    import matplotlib.pyplot as plt
     import pprint
+    from tqdm import tqdm
 
-    config = {
-        "learning_rate_critic": 0.0003,
-        "learning_rate_policy": 0.0003,
+    agent_config = {
+        "learning_rate_critic": 0.01,
+        "learning_rate_policy": 0.01,
         "alpha": 1,
         "learning_rate_alpha": 0.0003,
         "batch_size": 128,
-        "weight_decay": 1e-3,
+        "weight_decay": 0,
         "reward_discount": 0.99,
-        "memory_size": 100000,
+        "memory_size": 100_000,
         "tau": 0.01,
         "policy_structure": [('linear', 256), ('relu', None)] * 2,
         "critic_structure": [('linear', 256), ('relu', None)] * 2,
-        "seed": 192,
-        "tensorboard_histogram_interval": 100,
         "auto_entropy": True,
     }
 
-    pprint.pprint(config)
+    pprint.pprint(agent_config)
+
 
     # agent.save(".")
     # agent.load(".")
@@ -314,42 +323,31 @@ if __name__ == '__main__':
             return action
 
 
-    max_steps = 150
-    max_episodes = 1000
+    max_steps = 500
+    episodes = 50
 
-    explore_steps = 200
     rewards = []
 
     env = NormalizedActions(gym.make("Pendulum-v0"))
-    action_space = env.action_space
-    state_space = env.observation_space
-    action_range = 1.
-    print('env action space: ', env.action_space, "sample:",
-          env.action_space.sample(), "shape:", env.action_space.shape)
-    print('env state space: ', env.observation_space, "sample:",
-          env.observation_space.sample(), "shape:",
-          env.observation_space.shape)
+    # env = NormalizedActions(gym.make("LunarLanderContinuous-v2"))
 
-    agent = AgentSAC(config, state_space, action_space)
+    agent = AgentSAC(agent_config, env.observation_space, env.action_space)
 
-    for eps in range(max_episodes):
+    for eps in tqdm(range(episodes)):
         state = env.reset()
         episode_reward = 0
 
         for step in range(max_steps):
-            action = agent.predict([state], deterministic=False)
 
-            action = action[0]
+            action = agent.predict(np.expand_dims(state, 0),
+                                   deterministic=False)[0]
 
             next_state, reward, done, _ = env.step(action)
-            # env.render()
 
-            next_state = np.ravel(next_state)
-
-            experience = [np.ravel(state), np.ravel(action), reward, next_state, done]
+            experience = [state, action, reward, next_state, done]
 
             agent.add_experience([experience])
-            agent.learn()
+            agent.learn(step)
 
             state = next_state
             episode_reward += reward
@@ -361,9 +359,23 @@ if __name__ == '__main__':
             plt.plot(rewards)
             plt.show()
 
-        print('Episode: ', eps, '| Episode Reward: ', episode_reward)
-        rewards.append(episode_reward)
-
     plt.plot(rewards)
-
     plt.show()
+
+    while True:
+        state = env.reset()
+
+        env.render()
+
+        for step in range(max_steps):
+
+            action = agent.predict(np.expand_dims(state, 0))[0]
+
+            next_state, reward, done, _ = env.step(action)
+
+            env.render()
+
+            state = next_state
+
+            if done:
+                break

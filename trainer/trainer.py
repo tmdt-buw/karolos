@@ -51,11 +51,11 @@ class Trainer:
             elif func == "step":
                 state, reward, done = data
 
-                self.writer.add_scalar(
-                    f'{"train" if train else "test"} reward step',
-                    reward,
-                    sum(self.steps.values()) + 1
-                )
+                # self.writer.add_scalar(
+                #     f'{"train" if train else "test"} reward step',
+                #     reward,
+                #     sum(self.steps.values()) + 1
+                # )
 
                 self.episodic_reward[env_id].append(reward)
                 previous_state = self.states.pop(env_id, None)
@@ -88,13 +88,13 @@ class Trainer:
                         self.agent.add_experience([experience])
 
                 if done:
-                    episode_reward = sum(self.episodic_reward[env_id])
-
-                    self.writer.add_scalar(
-                        f'{"train" if train else "test"} reward episode',
-                        episode_reward,
-                        sum(self.steps.values()) + 1
-                    )
+                    # episode_reward = sum(self.episodic_reward[env_id])
+                    #
+                    # self.writer.add_scalar(
+                    #     f'{"train" if train else "test"} reward episode',
+                    #     episode_reward,
+                    #     sum(self.steps.values()) + 1
+                    # )
 
                     results_episodes.append(state["goal"]["reached"])
 
@@ -150,7 +150,7 @@ class Trainer:
         algorithm = training_config["algorithm"]
         self.agent = get_agent(algorithm, agent_config,
                                env_orchestrator.observation_space,
-                               env_orchestrator.action_space)
+                               env_orchestrator.action_space, experiment_dir)
 
         models_dir = osp.join(experiment_dir, "models")
 
@@ -194,7 +194,7 @@ class Trainer:
         test_interval = training_config["test_interval"]
         next_test_timestep = 0
 
-        best_success_ratio = 0.5
+        best_success_ratio = 0.0
 
         # todo allow for less tests
         assert number_tests >= number_envs
@@ -253,7 +253,7 @@ class Trainer:
 
             env_responses = env_orchestrator.send_receive(requests)
 
-            self.agent.learn()
+            self.agent.learn(sum(self.steps.values()) + 1)
 
             pbar.update(sum(self.steps.values()) - pbar.n)
             pbar.refresh()
