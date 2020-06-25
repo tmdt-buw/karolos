@@ -53,9 +53,9 @@ class Critic(nn.Module):
             elif layer == 'relu':
                 assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
-	    elif layer == 'gelu':
-		assert params in None, 'No argument for GeLU'
-		self.operators.append(nn.GELU())
+            elif layer == 'gelu':
+                assert params in None, 'No argument for GeLU'
+                self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
             else:
