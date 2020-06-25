@@ -20,8 +20,20 @@ log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
 
 
 class Trainer:
+    def get_initial_state(self, train: bool, env_id=None):
+        # initial_state = {
+        #     'robot': self.env_orchestrator.observation_dict['state'][
+        #         'robot'].sample(),
+        #     'task': self.env_orchestrator.observation_dict['state'][
+        #         'task'].sample()
+        # }
 
-    def similar_config(self, configA, configB):
+        initial_state = None
+
+        return initial_state
+
+    @staticmethod
+    def similar_config(config_1, config_2):
 
         def ordered(obj):
             if isinstance(obj, dict):
@@ -31,7 +43,7 @@ class Trainer:
             else:
                 return obj
 
-        if not ordered(configA) == ordered(configB):
+        if not ordered(config_1) == ordered(config_2):
             return False
         else:
             return True
@@ -45,9 +57,13 @@ class Trainer:
             func, data = response
 
             if func == "reset":
-                self.states[env_id] = data
-                self.actions.pop(env_id, None)
-                self.episodic_reward[env_id] = []
+                if type(data) == AssertionError:
+                    requests.append((env_id, "reset",
+                                     self.get_initial_state(train, env_id)))
+                else:
+                    self.states[env_id] = data
+                    self.actions.pop(env_id, None)
+                    self.episodic_reward[env_id] = []
             elif func == "step":
                 state, reward, done = data
 
@@ -98,7 +114,9 @@ class Trainer:
 
                     results_episodes.append(state["goal"]["reached"])
 
-                    requests.append((env_id, "reset", None))
+                    requests.append(
+                        (env_id, "reset",
+                         self.get_initial_state(train, env_id)))
                 else:
                     self.states[env_id] = state
                 self.steps[env_id] += 1
@@ -139,18 +157,18 @@ class Trainer:
             json.dump(training_config, f)
 
         # get environment
-        number_envs = training_config["number_envs"]
+        self.number_envs = training_config["number_envs"]
         env_config = training_config["env_config"]
 
-        env_orchestrator = Orchestrator(env_config, number_envs)
+        self.env_orchestrator = Orchestrator(env_config, self.number_envs)
 
         # get agents
         agent_config = training_config["agent_config"]
 
         algorithm = training_config["algorithm"]
         self.agent = get_agent(algorithm, agent_config,
-                               env_orchestrator.observation_space,
-                               env_orchestrator.action_space, experiment_dir)
+                               self.env_orchestrator.observation_space,
+                               self.env_orchestrator.action_space)
 
         models_dir = osp.join(experiment_dir, "models")
 
@@ -181,8 +199,11 @@ class Trainer:
 
         self.writer = SummaryWriter(experiment_dir)
 
+        from functools import partial
+
         # reset all
-        env_responses = env_orchestrator.reset_all()
+        env_responses = self.env_orchestrator.reset_all(
+            partial(self.get_initial_state, train=True))
 
         self.steps = defaultdict(int)
 
@@ -197,7 +218,7 @@ class Trainer:
         best_success_ratio = 0.0
 
         # todo allow for less tests
-        assert number_tests >= number_envs
+        assert number_tests >= self.number_envs
 
         pbar = tqdm(total=training_config["total_timesteps"])
 
@@ -210,13 +231,20 @@ class Trainer:
                                       test_interval + 1) * test_interval
 
                 # reset all
-                env_responses = env_orchestrator.reset_all()
+                env_responses = self.env_orchestrator.reset_all(
+                    partial(self.get_initial_state, train=False))
 
                 # subtract tests already launched in each environment
-                tests_to_run = number_tests - number_envs
+                tests_to_run = number_tests - self.number_envs
                 concluded_tests = []
 
                 while len(concluded_tests) < number_tests:
+
+                    for response in env_responses:
+                        func, data = response[1]
+
+                        if func == "reset" and type(data) == AssertionError:
+                            tests_to_run += 1
 
                     requests, results_episodes = self.process_responses(
                         env_responses, train=False)
@@ -229,7 +257,8 @@ class Trainer:
                             else:
                                 del requests[ii]
 
-                    env_responses = env_orchestrator.send_receive(requests)
+                    env_responses = self.env_orchestrator.send_receive(
+                        requests)
 
                 # evaluate test
                 success_ratio = np.mean(concluded_tests)
@@ -246,12 +275,13 @@ class Trainer:
                                                  f"{success_ratio:.3f}"))
 
                 # reset all
-                env_responses = env_orchestrator.reset_all()
+                env_responses = self.env_orchestrator.reset_all(
+                    partial(self.get_initial_state, train=True))
 
             # Train
             requests, _ = self.process_responses(env_responses, train=True)
 
-            env_responses = env_orchestrator.send_receive(requests)
+            env_responses = self.env_orchestrator.send_receive(requests)
 
             self.agent.learn(sum(self.steps.values()) + 1)
 

@@ -1,9 +1,10 @@
 import multiprocessing as mp
 import random
-from environments import get_env
 
-from gym import spaces
 import numpy as np
+from gym import spaces
+
+from environments import get_env
 
 
 class Orchestrator(object):
@@ -80,15 +81,19 @@ class Orchestrator(object):
 
         return responses
 
-    def reset_all(self, desired_states=None):
-        """Resets all environment. Blocks until all environments are reset."""
+    def reset_all(self, initial_state_generator=None):
+        """ Resets all environment. Blocks until all environments are reset.
+            If a desired_state is not possible, caller has to resubmit desired_state"""
 
         # send ping with token to flush the pipes
         token = random.getrandbits(10)
         self.send([(env_id, "ping", token) for env_id in self.pipes.keys()])
 
-        if desired_states is None:
+        if initial_state_generator is None:
             desired_states = [None] * len(self.pipes)
+        else:
+            desired_states = [initial_state_generator(env_id=env_id) for env_id
+                              in self.pipes.keys()]
 
         assert len(desired_states) == len(self.pipes)
 
@@ -172,15 +177,29 @@ if __name__ == "__main__":
     nb_envs = 3
 
     orchestrator = Orchestrator(env_config, nb_envs)
-    print()
-    print(orchestrator.observation_space.high,
-          len(orchestrator.observation_space.high))
-    print(orchestrator.observation_space.low)
-    print(orchestrator.observation_space.sample(),
-          len(orchestrator.observation_space.sample()))
-    exit()
-    while True:
-        result = orchestrator.send_receive(
-            [(ee, "reset", None) for ee in range(nb_envs)])
 
-        print(len(result))
+    env_responses = orchestrator.reset_all()
+
+    desired_state = {
+        'robot': orchestrator.observation_dict['state']['robot'].sample(),
+        'task': np.ones_like(
+            orchestrator.observation_dict['state']['task'].sample())
+    }
+
+    print(desired_state)
+
+    while True:
+        requests = []
+        for env_id, response in env_responses:
+            func, data = response
+
+            # print(type(data))
+
+            # print(env_id, func, data)
+            requests.append((env_id, "reset", desired_state))
+
+        env_responses = orchestrator.send_receive(requests)
+        # result = orchestrator.send_receive(
+        #     [(ee, "reset", None) for ee in range(nb_envs)])
+
+        # print(len(result))
