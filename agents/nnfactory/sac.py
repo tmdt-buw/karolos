@@ -49,9 +49,13 @@ class Critic(nn.Module):
             if layer == 'linear':
                 self.operators.append(nn.Linear(current_layer_size, params))
                 current_layer_size = params
+
             elif layer == 'relu':
                 assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
+	    elif layer == 'gelu':
+		assert params in None, 'No argument for GeLU'
+		self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
             else:

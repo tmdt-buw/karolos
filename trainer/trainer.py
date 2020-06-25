@@ -168,7 +168,7 @@ class Trainer:
         algorithm = training_config["algorithm"]
         self.agent = get_agent(algorithm, agent_config,
                                self.env_orchestrator.observation_space,
-                               self.env_orchestrator.action_space)
+                               self.env_orchestrator.action_space, experiment_dir)
 
         models_dir = osp.join(experiment_dir, "models")
 
@@ -290,7 +290,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    experiment_name = datetime.datetime.now().strftime("new_sac")
+    experiment_name = datetime.datetime.now().strftime("gelu")
 
     training_config = {
         "total_timesteps": 8000000,
