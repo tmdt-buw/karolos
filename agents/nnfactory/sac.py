@@ -92,6 +92,15 @@ class Policy(nn.Module):
             elif layer == 'relu':
                 assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
+            elif layer == 'selu':
+                assert params is None, 'No argument for SeLU please'
+                self.operators.append(nn.SELU())
+            elif layer == 'tanh':
+                assert params is None, 'No argument for Tanh please'
+                self.operators.append(nn.Tanh())
+            elif layer == 'gelu':
+                assert params is None, 'No argument for GreLU please'
+                self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
             else:

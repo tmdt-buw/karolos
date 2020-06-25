@@ -80,8 +80,8 @@ class AgentSAC:
                                                   lr=self.learning_rate_policy,
                                                   weight_decay=self.weight_decay)
         self.alpha_optim = torch.optim.AdamW([self.log_alpha],
-                                             lr=self.learning_rate_alpha,
-                                             weight_decay=self.weight_decay)
+                                             lr=self.learning_rate_alpha)
+                                             #weight_decay=self.weight_decay)
 
         for target_param, param in zip(self.target_critic_1.parameters(),
                                        self.critic_1.parameters()):
