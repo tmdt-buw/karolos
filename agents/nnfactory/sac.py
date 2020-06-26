@@ -63,6 +63,8 @@ class Critic(nn.Module):
                 self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
+            elif layer == 'batchnorm':
+                self.operators.append(nn.BatchNorm1d(current_layer_size))
             else:
                 raise NotImplementedError(f'{layer} not known')
 
@@ -112,6 +114,8 @@ class Policy(nn.Module):
                 self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
+            elif layer == 'batchnorm':
+                self.operators.append(nn.BatchNorm1d(current_layer_size))
             else:
                 raise NotImplementedError(f'{layer} not known')
 
@@ -132,7 +136,7 @@ class Policy(nn.Module):
 
         if deterministic:
             action = torch.tanh(mean)
-            log_prob = torch.ones_like(log_std)
+            log_prob = torch.zeros_like(log_std)
         else:
             std = log_std.exp()
 

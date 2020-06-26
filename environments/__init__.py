@@ -1,9 +1,13 @@
-from environments.environment_robot_task import Environment
-
-
 def get_env(env_config):
-    def env_init():
-        env = Environment(**env_config)
-        return env
 
-    return env_init
+    environment = env_config.pop("environment")
+
+    if environment == "robot":
+        from environments.environment_robot_task import Environment
+        env = Environment(**env_config)
+    else:
+        import gym
+        from environments.gym_wrapper import GymWrapper
+        env = GymWrapper(gym.make(environment), **env_config)
+
+    return env

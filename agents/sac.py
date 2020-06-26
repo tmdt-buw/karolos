@@ -22,7 +22,8 @@ print('\n DEVICE', device, '\n')
 
 
 class AgentSAC:
-    def __init__(self, config, observation_space, action_space, experiment_dir):
+    def __init__(self, config, observation_space, action_space,
+                 experiment_dir="."):
 
         self.observation_space = observation_space
         self.action_space = action_space
@@ -105,8 +106,8 @@ class AgentSAC:
         self.target_critic_1.train()
         self.target_critic_2.train()
 
-        states, actions, rewards, next_states, dones = self.memory.sample(
-            self.batch_size)
+        experiences = self.memory.sample(self.batch_size)
+        states, actions, rewards, next_states, dones = experiences
 
         states = torch.FloatTensor(states).to(device)
         actions = torch.FloatTensor(actions).to(device)
@@ -116,18 +117,25 @@ class AgentSAC:
 
         predicted_q1 = self.critic_1(states, actions)
         predicted_q2 = self.critic_2(states, actions)
+        self.writer.add_histogram('predicted_q1', predicted_q1, step)
+        self.writer.add_histogram('predicted_q2', predicted_q2, step)
 
         predicted_action, log_prob = self.policy(states, deterministic=False)
         predicted_next_action, next_log_prob = self.policy(next_states,
                                                            deterministic=False)
 
+        self.writer.add_histogram('rewards', rewards, step)
+
         if self.auto_entropy is True:
             alpha_loss = -(self.log_alpha * (
                     log_prob + self.target_entropy).detach()).mean()
+            self.writer.add_scalar('alpha_loss', alpha_loss, step)
+
             self.alpha_optim.zero_grad()
             alpha_loss.backward()
             self.alpha_optim.step()
             self.alpha = self.log_alpha.exp()
+            self.writer.add_scalar('alpha', self.alpha, step)
         else:
             self.alpha = 1.
 
@@ -135,14 +143,23 @@ class AgentSAC:
         target_critic_min = torch.min(
             self.target_critic_1(next_states, predicted_next_action),
             self.target_critic_2(next_states, predicted_next_action))
+        self.writer.add_histogram('target_critic_min_1', target_critic_min, step)
+
         target_critic_min.sub_(self.alpha * next_log_prob)
+        self.writer.add_histogram('target_critic_min_2', target_critic_min, step)
+
         target_q_value = rewards + (
                 1 - dones) * self.reward_discount * target_critic_min
+        self.writer.add_histogram('target_q_value', target_q_value, step)
+
         q_val_loss1 = self.criterion_critic_1(predicted_q1,
                                               target_q_value.detach())
+        self.writer.add_scalar('q_val_loss1', q_val_loss1.item(), step)
 
         q_val_loss2 = self.criterion_critic_2(predicted_q2,
                                               target_q_value.detach())
+        self.writer.add_scalar('q_val_loss2', q_val_loss2.item(), step)
+
         self.optimizer_critic_1.zero_grad()
         self.optimizer_critic_2.zero_grad()
 
@@ -155,12 +172,6 @@ class AgentSAC:
 
         self.optimizer_critic_1.step()
         self.optimizer_critic_2.step()
-
-        self.writer.add_scalar('q_val_loss1', q_val_loss1.item(), step)
-        self.writer.add_scalar('q_val_loss2', q_val_loss2.item(), step)
-        self.writer.add_scalar('alpha', self.alpha, step)
-        self.writer.add_histogram('rewards', rewards, step)
-        self.writer.add_histogram('target_q_value', target_q_value, step)
 
         # Training policy
         predicted_new_q_val = torch.min(
@@ -302,16 +313,6 @@ if __name__ == '__main__':
     # agent.save(".")
     # agent.load(".")
 
-    """
-    Use this function to test your agents on the pendulum v0 open ai gym. Continuous space
-    """
-
-    import gym
-    import numpy as np
-
-    import matplotlib.pyplot as plt
-
-
     class NormalizedActions(gym.ActionWrapper):
         def action(self, action):
             low = self.action_space.low
@@ -364,7 +365,9 @@ if __name__ == '__main__':
             if done:
                 break
 
-        if eps % 10 == 0 and eps > 0:
+        rewards.append(episode_reward)
+
+        if eps % (episodes // 5) == 0 and eps > 0:
             plt.plot(rewards)
             plt.show()
 
