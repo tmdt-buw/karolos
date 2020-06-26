@@ -1,234 +1,309 @@
 """
+https://spinningup.openai.com/en/latest/algorithms/sac.html
+
 """
 
-import copy
+import os
+import os.path as osp
 
+import numpy as np
 import torch
-import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
+import torch.nn as nn
+from torch.utils.tensorboard.writer import SummaryWriter
 
-from agents.nnfactory.ac import Actor, Critic
+from agents.nnfactory.ddpg import Policy, Critic
 from agents.utils.replay_buffer import ReplayBuffer
-from agents.utils.noise_emerging_gaussian import emerging_gaussian
 
-#random.seed(123)
+# todo make device parameter of Agent
+use_cuda = torch.cuda.is_available()
+device = torch.device('cuda' if use_cuda else 'cpu')
+print('\n DEVICE', device, '\n')
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-class AgentDDPG(object):
+class AgentDDPG:
+    def __init__(self, config, observation_space, action_space,
+                 experiment_folder="."):
 
-    def __init__(self, config):
+        self.writer = SummaryWriter("debug")
 
-        # print("Init agents with cuda: {} device: {}".format(torch.cuda.is_available(),
-        #                                                     torch.cuda.get_device_name(
-        #                                                     torch.cuda.current_device())))
+        self.observation_space = observation_space
+        self.action_space = action_space
 
-        self.critic_lr = config['critic_lr']
-        self.actor_lr = config['actor_lr']
-        self.actor_init = config["actor_init"]
-        self.critic_init = config["critic_init"]
-        self.batch_size = config['batch_size']
-        self.gamma = config['gamma']
+        state_dim = self.observation_space.shape
+        action_dim = self.action_space.shape
+
+        assert len(state_dim) == 1
+        assert len(action_dim) == 1
+
+        self.learning_rate_critic = config["learning_rate_critic"]
+        self.learning_rate_policy = config["learning_rate_policy"]
         self.weight_decay = config["weight_decay"]
+        self.batch_size = config['batch_size']
+        self.reward_discount = config['reward_discount']
         self.memory_size = config['memory_size']
         self.tau = config['tau']
-        self.root_path = config['root_path']
-        self.run_name = config["run_name"]
-        self.backup_interval = config["backup_interval"]
-        self.action_dim = config["action_dim"]
-        self.state_dim = config["state_dim"]
-        torch.manual_seed(config['seed'])
 
-        # Initialize Neural Networks from nnfactory/ac.py
-        self.critic = Critic(self.action_dim, self.state_dim, init=self.critic_init).to(device)
-        self.actor = Actor(self.action_dim, self.state_dim, init=self.actor_init).to(device)
+        self.policy_structure = config['policy_structure']
+        self.critic_structure = config['critic_structure']
 
-        # target network
-        self.actor_target = copy.deepcopy(self.actor)
-        self.critic_target = copy.deepcopy(self.critic)
+        self.target_entropy = -1 * action_dim[0]
 
-        self.opt_critic = torch.optim.AdamW(lr=self.critic_lr, params=self.critic.parameters(), weight_decay=self.weight_decay)
-        self.opt_actor = torch.optim.AdamW(lr=self.actor_lr, params=self.actor.parameters(), weight_decay=self.weight_decay)
+        # generate networks
+        self.critic = Critic(state_dim, action_dim,
+                             self.critic_structure).to(
+            device)
+        self.target_critic = Critic(state_dim, action_dim,
+                                    self.critic_structure).to(device)
+        self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
+                             network_structure=self.policy_structure).to(
+            device)
+        self.target_policy = Policy(in_dim=state_dim, action_dim=action_dim,
+                                    network_structure=self.policy_structure).to(
+            device)
 
-        # If the run number is > 0, assume we continue training from previous checkpoint
-        run_no = int(self.run_name.split('_')[1])
+        # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
+        self.optimizer_critic = torch.optim.AdamW(self.critic.parameters(),
+                                                  lr=self.learning_rate_critic,
+                                                  weight_decay=self.weight_decay)
+        self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(),
+                                                  lr=self.learning_rate_policy,
+                                                  weight_decay=self.weight_decay)
 
-        if run_no > 0:
-            previous = 'run_{}'.format(run_no - 1)
-            # load previous models (state dictionaries) and optimizers
-            try:
-                print('Loading agents from {}/{}'.format(self.root_path, previous))
-                self.critic.load_state_dict(torch.load('{}/{}/Critic.pt'.format(self.root_path, previous)))
-                self.actor.load_state_dict(torch.load('{}/{}/Actor.pt'.format(self.root_path, previous)))
-                self.critic_target.load_state_dict(torch.load('{}/{}/TCritic.pt'.format(self.root_path, previous)))
-                self.actor_target.load_state_dict(torch.load('{}/{}/TActor.pt'.format(self.root_path, previous)))
-                self.opt_critic.load_state_dict(torch.load('{}/{}/OptCritic.pt'.format(self.root_path, previous)))
-                self.opt_actor.load_state_dict(torch.load('{}/{}/OptActor.pt'.format(self.root_path, previous)))
-            except FileNotFoundError:
-                print('Could not locate savefiles in {}/{}'.format(self.root_path, previous))
-                print(' \nUsing new agents/Critic and Optimizers! \n')
-                # equalize weights for targets, bec new networks
-                self.actor_target.load_state_dict(self.actor.state_dict())
-                self.critic_target.load_state_dict(self.critic.state_dict())
-        else:
-            # init new model, because we are at start of new experiment
+        for target_param, param in zip(self.target_critic.parameters(),
+                                       self.critic.parameters()):
+            target_param.data.copy_(param.data)
+        for target_param, param in zip(self.target_policy.parameters(),
+                                       self.policy.parameters()):
+            target_param.data.copy_(param.data)
 
-            # target networks should have same weights in the beginning (only if we are not! restoring from a savepoint!)
-            # https://pytorch.org/tutorials/intermediate/reinforcement_q_learning.html
-            print("Creating new agents")
-            self.actor_target.load_state_dict(self.actor.state_dict())
-            self.critic_target.load_state_dict(self.critic.state_dict())
-            self.actor_target.eval()
-            self.critic_target.eval()
+        self.criterion_critic = nn.MSELoss()
 
-        # memory
-        self.memory = ReplayBuffer(buffer_size=self.memory_size, batch_size=self.batch_size, seed=0)
+        self.memory = ReplayBuffer(buffer_size=self.memory_size)
 
-        # noise
-        self.noise = emerging_gaussian
+    def learn(self, step):
 
-        # train flag for initial random runs
-        self.train = True
+        self.policy.train()
+        self.critic.train()
+        self.target_critic.train()
+        self.target_policy.train()
 
-        # tensorboard
-        self.no_step = 0
-        actor_dummy = torch.tensor([0.5 for _ in range(self.state_dim)]).to(device)
-        #critic_dummy_action = torch.tensor([0.5 for _ in range(self.action_dim)]).to(device)
-        #critic_dummy_state = torch.tensor([0.5 for _ in range(self.state_dim)]).to(device)
+        states, actions, rewards, next_states, dones = self.memory.sample(
+            self.batch_size)
 
-        #res = self.critic.forward(critic_dummy_state, critic_dummy_action)
+        states = torch.FloatTensor(states).to(device)
+        actions = torch.FloatTensor(actions).to(device)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
+        next_states = torch.FloatTensor(next_states).to(device)
+        dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(device)
 
-        self.tb = SummaryWriter('{}/{}'.format(self.root_path, self.run_name))
-        self.tb.add_graph(self.actor, (actor_dummy, ))
-        #self.tb.add_graph(self.critic, input_to_model=([critic_dummy_state, critic_dummy_action]))
-        self.tb.flush()
+        predicted_value = self.critic(states, actions)
 
-    def learn(self):
-        # https://discuss.pytorch.org/t/what-step-backward-and-zero-grad-do/33301
+        predicted_next_action = self.policy(next_states)
 
-        if self.train:
-            states, actions, rewards, next_states, terminals = self.memory.sample()
-            print("training")
-            # print("Got memory:")
-            # print('states', type(states),states)
-            # print('actions',type(actions),actions)
-            # print('rewards',type(rewards),rewards)
-            # print('next_states',type(next_states),next_states)
-            # print('terminals',type(terminals), terminals)
+        value_target = self.target_critic(next_states,
+                                          self.policy(next_states))
+        value_target.mul_(1 - dones)
+        value_target.add_(rewards)
 
-            proposed_action = self.actor_target(next_states)
-            target_Q = self.critic_target(next_states, proposed_action)
+        value_predicted = self.target_critic(states, actions)
 
-            target_Q = rewards + ((1-terminals) * self.gamma * target_Q).detach()
-            current_Q = self.critic(states, actions)
+        critic_loss = self.criterion_critic(value_predicted, value_target)
 
-            self.tb.add_scalar('Critic_target/TargetQ_mean', target_Q.mean(), self.no_step)
-            self.tb.add_scalar('Critic/CurrentQ_mean', current_Q.mean(), self.no_step)
+        # Train critic
 
-            # print("current_q: \n{}".format(current_Q))
-            # print("target_q: \n{}".format(target_Q))
-            critic_loss = F.mse_loss(current_Q, target_Q)
+        target_q_value = rewards + (1 - dones) * self.reward_discount * \
+                         self.target_critic(next_states, predicted_next_action)
 
-            self.opt_critic.zero_grad() # erase old gradients
-            critic_loss.backward()      # calculate new gradients using critic_loss
-            self.opt_critic.poll()      # let the optimizer step once using the previously computed gradients
+        q_val_loss1 = self.criterion_critic(predicted_value,
+                                            target_q_value.detach())
 
-            actor_loss = -self.critic(states, self.actor(states)).mean()
+        self.optimizer_critic.zero_grad()
+        q_val_loss1.backward()
+        self.optimizer_critic.step()
 
-            self.opt_actor.zero_grad()
-            actor_loss.backward()
-            self.opt_actor.poll()
+        # Training policy
+        predicted_action = self.policy(states)
+        loss_policy = -self.critic(states, predicted_action).mean()
 
-            # tensorboard
-            for tag, param in self.critic.named_parameters():
-                #print("hist crit {}".format(tag))
-                self.tb.add_histogram('Critic/param_{}'.format(tag), param.data.cpu().numpy(), self.no_step)
-                self.tb.add_histogram('Critic/grad_{}'.format(tag), param.grad.data.cpu().numpy(), self.no_step)
+        self.optimizer_policy.zero_grad()
+        loss_policy.backward()
+        self.optimizer_policy.step()
 
-            for tag, param in self.actor.named_parameters():
-                #print("hist act {}".format(tag))
-                self.tb.add_histogram('Actor/param_{}'.format(tag), param.data.cpu().numpy(), self.no_step)
-                self.tb.add_histogram('Actor/grad_{}'.format(tag), param.grad.data.cpu().numpy(), self.no_step)
+        # Update target
+        for target_critic_layer_parameters, critic_layer_parameters in \
+                zip(self.target_critic.parameters(),
+                    self.critic.parameters()):
+            target_critic_layer_parameters.data.copy_(
+                target_critic_layer_parameters.data * (
+                        1.0 - self.tau) +
+                critic_layer_parameters.data * self.tau
+            )
 
-            self.tb.add_scalar('Critic/loss', critic_loss, self.no_step)
-            self.tb.add_scalar('Actor/loss', actor_loss, self.no_step)
-            self.tb.flush()
+    def add_experience(self, experiences):
+        for experience in experiences:
+            self.memory.add(experience)
 
-            for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-                    target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+    def save(self, path):
 
-            for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
-                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+        if not osp.exists(path):
+            os.makedirs(path)
 
-    def step(self, s, a, r, s_, t, tensorboard=None):
-        if tensorboard is not None:
-            if tensorboard['test']:
-                # only add the result of our test run to tensorboard (currently reward is 0 if goal not reached and [-1, 1] if terminal state reached)
-                if tensorboard['reward'] != 0:
-                    self.tb.add_scalar('Test/reward', tensorboard['reward'], self.no_step)
+        torch.save(self.policy.state_dict(), osp.join(path, "policy.pt"))
+        torch.save(self.critic.state_dict(), osp.join(path, "critic_1.pt"))
+        torch.save(self.target_critic.state_dict(),
+                   osp.join(path, "target_critic_1.pt"))
 
-                self.tb.add_scalar('Test/exploration_prob', tensorboard['noise'], self.no_step)
-                self.tb.add_scalars('Test/actions',{'noise_height': a[0], 'noise_pause': a[1],
-                                                     'height': tensorboard['orig_action'][0],
-                                                     'pause': tensorboard['orig_action'][1]}, self.no_step)
-            else:
-                # we dont need to see many 0 on our graph
-                if tensorboard['reward'] != 0:
-                    self.tb.add_scalar('Step/rewards', tensorboard['reward'], self.no_step)
-                self.tb.add_scalar('Step/exploration_prob', tensorboard['noise'], self.no_step)
-                self.tb.add_scalars('Step/actions', {'noise_height': a[0], 'noise_pause': a[1],
-                                                     'height': tensorboard['orig_action'][0],
-                                                     'pause': tensorboard['orig_action'][1]}, self.no_step)
+        torch.save(self.optimizer_policy.state_dict(),
+                   osp.join(path, "optimizer_policy.pt"))
+        torch.save(self.optimizer_critic.state_dict(),
+                   osp.join(path, "optimizer_critic_1.pt"))
 
-        self.no_step += 1
-        self.memory.add(s, a, r, s_, t)
-        if len(self.memory) > self.batch_size:
-            self.learn()
+    def load(self, path, train_mode=True):
+        try:
+            self.policy.load_state_dict(
+                torch.load(osp.join(path, "policy.pt")))
+            self.critic.load_state_dict(
+                torch.load(osp.join(path, "critic_1.pt")))
+            self.target_critic.load_state_dict(
+                torch.load(osp.join(path, "target_critic_1.pt")))
 
-        # save the model every n steps
-        if self.no_step % self.backup_interval == 0:
-            # set evaluation mode (disable dropout, batchnorm)
-            # https://pytorch.org/docs/stable/nn.html?highlight=eval#torch.nn.Module.eval
-            self.actor.eval()
-            self.critic.eval()
-            self.actor_target.eval()
-            self.critic_target.eval()
+            self.optimizer_policy.load_state_dict(
+                torch.load(osp.join(path, "optimizer_policy.pt")))
+            self.optimizer_critic.load_state_dict(
+                torch.load(osp.join(path, "optimizer_critic_1.pt")))
+        except FileNotFoundError:
+            print('###################')
+            print('Could not load agent, missing files in', path)
+            print('###################')
+            raise
 
-            torch.save(self.actor.state_dict(), '{}/{}/Actor.pt'.format(self.root_path, self.run_name))
-            torch.save(self.critic.state_dict(), '{}/{}/Critic.pt'.format(self.root_path, self.run_name))
-            torch.save(self.actor_target.state_dict(), '{}/{}/TActor.pt'.format(self.root_path, self.run_name))
-            torch.save(self.critic_target.state_dict(), '{}/{}/TCritic.pt'.format(self.root_path, self.run_name))
-            torch.save(self.opt_actor.state_dict(), '{}/{}/OptActor.pt'.format(self.root_path, self.run_name))
-            torch.save(self.opt_critic.state_dict(), '{}/{}/OptCritic.pt'.format(self.root_path, self.run_name))
-
-            self.actor.train()
+        if train_mode:
+            self.policy.train()
             self.critic.train()
-            self.actor_target.train()
-            self.critic_target.train()
+            self.target_critic.train()
+        else:
+            self.policy.eval()
+            self.critic.eval()
+            self.target_critic.eval()
 
-    def act(self, state: list, exploration_prob=0):
-        # no_grad() ?
-        # actor.eval(), actor.train() needed if using dropout or batchnorm
-        # https://discuss.pytorch.org/t/model-eval-vs-with-torch-no-grad/19615
-        # https://pytorch.org/docs/stable/nn.html#torch.nn.Module.eval
+    def predict(self, states, deterministic=True):
 
+        self.policy.eval()
 
-        state = torch.tensor(state, dtype=torch.float32).to(device)
+        states = torch.FloatTensor(states).to(device)
 
-        self.actor.eval()
-        action = self.actor(state)
-        self.actor.train()
+        action = self.policy(states, deterministic)
 
-        action_orig = copy.deepcopy(list(action.cpu().data.numpy().flatten()))
-        action = list(action.cpu().data.numpy().flatten())
-        action[0] = self.noise(action_orig[0], exploration_prob, 0, 1)
-        action[1] = self.noise(action_orig[1], exploration_prob, 0, 1)
+        action = action.detach().cpu().numpy()
 
-        print('a:', action, 'a_orig:', action_orig)
+        action = action.clip(self.action_space.low, self.action_space.high)
 
+        return action
 
-        return action, action_orig
+    def set_target_entropy(self, target_e):
+        self.target_entropy = target_e
+        return
 
 
 if __name__ == '__main__':
-    ac = AgentAC('./agent_config.json')
+    import gym
+    import matplotlib.pyplot as plt
+    import pprint
+    from tqdm import tqdm
+
+    agent_config = {
+        "learning_rate_critic": 0.001,
+        "learning_rate_policy": 0.001,
+        "batch_size": 128,
+        "weight_decay": 0,
+        "reward_discount": 0.99,
+        "memory_size": 100_000,
+        "tau": 0.005,
+        "policy_structure": [('linear', 256), ('relu', None)] * 2,
+        "critic_structure": [('linear', 256), ('relu', None)] * 2,
+    }
+
+    pprint.pprint(agent_config)
+
+
+    # agent.save(".")
+    # agent.load(".")
+
+    class NormalizedActions(gym.ActionWrapper):
+        def action(self, action):
+            low = self.action_space.low
+            high = self.action_space.high
+
+            action = low + (action + 1.0) * 0.5 * (high - low)
+            action = np.clip(action, low, high)
+
+            return action
+
+        def reverse_action(self, action):
+            low = self.action_space.low
+            high = self.action_space.high
+
+            action = 2 * (action - low) / (high - low) - 1
+            action = np.clip(action, low, high)
+
+            return action
+
+
+    max_steps = 500
+    episodes = 50
+
+    rewards = []
+
+    env = NormalizedActions(gym.make("Pendulum-v0"))
+    # env = NormalizedActions(gym.make("LunarLanderContinuous-v2"))
+
+    agent = AgentDDPG(agent_config, env.observation_space, env.action_space)
+
+    for eps in tqdm(range(episodes)):
+        state = env.reset()
+        episode_reward = 0
+
+        for step in range(max_steps):
+
+            action = agent.predict(np.expand_dims(state, 0),
+                                   deterministic=False)[0]
+
+            next_state, reward, done, _ = env.step(action)
+
+            experience = [state, action, reward, next_state, done]
+
+            agent.add_experience([experience])
+            agent.learn(step)
+
+            state = next_state
+            episode_reward += reward
+
+            if done:
+                break
+
+        rewards.append(episode_reward)
+
+        if eps % (episodes // 5) == 0 and eps > 0:
+            plt.plot(rewards)
+            plt.show()
+
+    plt.plot(rewards)
+    plt.show()
+
+    while True:
+        state = env.reset()
+
+        env.render()
+
+        for step in range(max_steps):
+
+            action = agent.predict(np.expand_dims(state, 0))[0]
+
+            next_state, reward, done, _ = env.step(action)
+
+            env.render()
+
+            state = next_state
+
+            if done:
+                break

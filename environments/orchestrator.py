@@ -28,7 +28,7 @@ class Orchestrator(object):
 
     def run(self, env_config, pipe):
 
-        env = get_env(env_config)()
+        env = get_env(env_config)
 
         while True:
 
