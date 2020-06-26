@@ -67,11 +67,11 @@ class Trainer:
             elif func == "step":
                 state, reward, done = data
 
-                # self.writer.add_scalar(
-                #     f'{"train" if train else "test"} reward step',
-                #     reward,
-                #     sum(self.steps.values()) + 1
-                # )
+                self.writer.add_scalar(
+                    f'{"train" if train else "test"} reward step',
+                    reward,
+                    sum(self.steps.values()) + 1
+                )
 
                 self.episodic_reward[env_id].append(reward)
                 previous_state = self.states.pop(env_id, None)
@@ -104,13 +104,13 @@ class Trainer:
                         self.agent.add_experience([experience])
 
                 if done:
-                    # episode_reward = sum(self.episodic_reward[env_id])
-                    #
-                    # self.writer.add_scalar(
-                    #     f'{"train" if train else "test"} reward episode',
-                    #     episode_reward,
-                    #     sum(self.steps.values()) + 1
-                    # )
+                    episode_reward = sum(self.episodic_reward[env_id])
+
+                    self.writer.add_scalar(
+                        f'{"train" if train else "test"} reward episode',
+                        episode_reward,
+                        sum(self.steps.values()) + 1
+                    )
 
                     results_episodes.append(state["goal"]["reached"])
 
