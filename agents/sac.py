@@ -197,7 +197,7 @@ class AgentSAC:
 
     def add_experience(self, experiences):
         for experience in experiences:
-            self.memory.add(experience)
+            self.memory.add(*experience)
 
     def save(self, path):
 
