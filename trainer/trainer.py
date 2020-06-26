@@ -14,13 +14,14 @@ import os
 import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
+from functools import partial
 
 log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
                                  "../results")
 
 
 class Trainer:
-    def get_initial_state(self, train: bool, env_id=None):
+    def get_initial_state(self, random: bool, env_id=None):
         # initial_state = {
         #     'robot': self.env_orchestrator.observation_dict['state'][
         #         'robot'].sample(),
@@ -48,7 +49,7 @@ class Trainer:
         else:
             return True
 
-    def process_responses(self, env_responses, train: bool):
+    def process_responses(self, env_responses, mode: str):
 
         requests = []
         results_episodes = []
@@ -59,7 +60,7 @@ class Trainer:
             if func == "reset":
                 if type(data) == AssertionError:
                     requests.append((env_id, "reset",
-                                     self.get_initial_state(train, env_id)))
+                                     self.get_initial_state(mode != "test", env_id)))
                 else:
                     self.states[env_id] = data
                     self.actions.pop(env_id, None)
@@ -67,11 +68,11 @@ class Trainer:
             elif func == "step":
                 state, reward, done = data
 
-                self.writer.add_scalar(
-                    f'{"train" if train else "test"} reward step',
-                    reward,
-                    sum(self.steps.values()) + 1
-                )
+                # self.writer.add_scalar(
+                #     f'{"train" if train else "test"} reward step',
+                #     reward,
+                #     sum(self.steps.values()) + 1
+                # )
 
                 self.episodic_reward[env_id].append(reward)
                 previous_state = self.states.pop(env_id, None)
@@ -104,19 +105,19 @@ class Trainer:
                         self.agent.add_experience([experience])
 
                 if done:
-                    episode_reward = sum(self.episodic_reward[env_id])
-
-                    self.writer.add_scalar(
-                        f'{"train" if train else "test"} reward episode',
-                        episode_reward,
-                        sum(self.steps.values()) + 1
-                    )
+                    # episode_reward = sum(self.episodic_reward[env_id])
+                    #
+                    # self.writer.add_scalar(
+                    #     f'{"train" if train else "test"} reward episode',
+                    #     episode_reward,
+                    #     sum(self.steps.values()) + 1
+                    # )
 
                     results_episodes.append(state["goal"]["reached"])
 
                     requests.append(
                         (env_id, "reset",
-                         self.get_initial_state(train, env_id)))
+                         self.get_initial_state(mode != "test", env_id)))
                 else:
                     self.states[env_id] = state
                 self.steps[env_id] += 1
@@ -133,8 +134,12 @@ class Trainer:
                             required_predictions]
             observations = np.stack(observations)
 
-            predictions = self.agent.predict(observations,
-                                             deterministic=not train)
+            if mode == "random":
+                predictions = [self.agent.action_space.sample() for _ in range(observations.shape[0])]
+                # print(predictions.shape)
+            else:
+                predictions = self.agent.predict(observations,
+                                             deterministic=mode == "test")
 
             for env_id, prediction in zip(required_predictions,
                                           predictions):
@@ -157,10 +162,10 @@ class Trainer:
             json.dump(training_config, f)
 
         # get environment
-        self.number_envs = training_config["number_envs"]
+        number_envs = training_config["number_envs"]
         env_config = training_config["env_config"]
 
-        self.env_orchestrator = Orchestrator(env_config, self.number_envs)
+        self.env_orchestrator = Orchestrator(env_config, number_envs)
 
         # get agents
         agent_config = training_config["agent_config"]
@@ -199,11 +204,9 @@ class Trainer:
 
         self.writer = SummaryWriter(experiment_dir, 'trainer')
 
-        from functools import partial
-
         # reset all
         env_responses = self.env_orchestrator.reset_all(
-            partial(self.get_initial_state, train=True))
+            partial(self.get_initial_state, random=True))
 
         self.steps = defaultdict(int)
 
@@ -218,9 +221,11 @@ class Trainer:
         best_success_ratio = 0.0
 
         # todo allow for less tests
-        assert number_tests >= self.number_envs
+        assert number_tests >= number_envs
 
         pbar = tqdm(total=training_config["total_timesteps"])
+
+        mode = "train"
 
         while sum(self.steps.values()) < training_config["total_timesteps"]:
 
@@ -230,12 +235,17 @@ class Trainer:
                 next_test_timestep = (sum(self.steps.values()) //
                                       test_interval + 1) * test_interval
 
+                if sum(self.steps.values()):
+                    mode = "test"
+                else:
+                    mode = "random"
+
                 # reset all
                 env_responses = self.env_orchestrator.reset_all(
-                    partial(self.get_initial_state, train=False))
+                    partial(self.get_initial_state, random=False))
 
                 # subtract tests already launched in each environment
-                tests_to_run = number_tests - self.number_envs
+                tests_to_run = number_tests - number_envs
                 concluded_tests = []
 
                 while len(concluded_tests) < number_tests:
@@ -247,7 +257,7 @@ class Trainer:
                             tests_to_run += 1
 
                     requests, results_episodes = self.process_responses(
-                        env_responses, train=False)
+                        env_responses, mode=mode)
                     concluded_tests += results_episodes
 
                     for ii in reversed(range(len(requests))):
@@ -276,10 +286,12 @@ class Trainer:
 
                 # reset all
                 env_responses = self.env_orchestrator.reset_all(
-                    partial(self.get_initial_state, train=True))
+                    partial(self.get_initial_state, random=True))
+
+                mode = "train"
 
             # Train
-            requests, _ = self.process_responses(env_responses, train=True)
+            requests, _ = self.process_responses(env_responses, mode=mode)
 
             env_responses = self.env_orchestrator.send_receive(requests)
 
@@ -290,50 +302,83 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    experiment_name = datetime.datetime.now().strftime("gelu")
+    experiment_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    training_config = {
-        "total_timesteps": 8000000,
-        "test_interval": 250_000,
-        "number_tests": 100,
-        # "base_experiment": {
-        #     "experiment": "20200513-145010",
-        #     "agent": 0,
-        # },
-        "algorithm": "sac",
-        "agent_config": {
-            "learning_rate_critic": 0.0005,
-            "learning_rate_policy": 0.0005,
-            "alpha": 5,
-            "learning_rate_alpha": 0.001,
-            "weight_decay": 1e-4,
-            "batch_size": 32,
-            "reward_discount": 0.99,
-            "auto_entropy": True,
-            "gradient_clipping": True,
-            "memory_size": 100_000,
-            "tau": 0.001,
-            "seed": 192,
-            "policy_structure": [('linear', 64), ('dropout', .2), ('gelu', None)] * 8,
-            "critic_structure": [('linear', 64), ('dropout', .2), ('gelu', None)] * 8
-        },
-        "number_envs": cpu_count(),
-        "env_config": {
-            "render": False,
-            "task_config": {
-                "name": "reach",
-                "dof": 3,
-                "only_positive": False,
-                "sparse_reward": False,
-                "max_steps": 25
+    # 0.0005
+    learning_rates = [0.0005]
+    hidden_layer_sizes = [32]
+    network_depths = [8]
+    alpha_learning_rates = [1e-5]
+
+    import itertools
+
+    for params in itertools.product(learning_rates, hidden_layer_sizes, network_depths, alpha_learning_rates):
+
+        experiment_name = experiment_date + "/" + "_".join(list(
+            map(str, params)))
+
+        learning_rate, hidden_layer_size, network_depth, alpha_learning_rate = params
+
+        training_config = {
+            "total_timesteps": 5_000_000,
+            "test_interval": 500_000,
+            "number_tests": 100,
+            # "base_experiment": {
+            #     "experiment": "20200513-145010",
+            #     "agent": 0,
+            # },
+            # "algorithm": "sac",
+            # "agent_config": {
+            #     "learning_rate_critic": learning_rate,
+            #     "learning_rate_policy": learning_rate,
+            #     "alpha": 1,
+            #     "learning_rate_alpha": alpha_learning_rate,
+            #     "weight_decay": 1e-4,
+            #     "batch_size": 128,
+            #     "reward_discount": 0.99,
+            #     "auto_entropy": True,
+            #     "gradient_clipping": False,
+            #     "memory_size": 1_000_000,
+            #     "tau": 0.0025,
+            #     "seed": 192,
+            #     "policy_structure": [('linear', hidden_layer_size),
+            #                          ('relu', None)] * network_depth,
+            #     "critic_structure": [('linear', hidden_layer_size),
+            #                          ('relu', None)] * network_depth
+            # },
+            "algorithm": "ddpg",
+            "agent_config": {
+                "learning_rate_critic": learning_rate,
+                "learning_rate_policy": learning_rate,
+                "weight_decay": 1e-4,
+                "batch_size": 128,
+                "reward_discount": 0.99,
+                "memory_size": 1_000_000,
+                "tau": 0.0025,
+                "seed": 192,
+                "policy_structure": [('linear', hidden_layer_size),
+                                     ('relu', None)] * network_depth,
+                "critic_structure": [('linear', hidden_layer_size),
+                                     ('relu', None)] * network_depth
             },
-            "robot_config": {
-                "name": "panda",
-                "dof": 3,
-                "sim_time": .1,
-                "scale": .1
+            "number_envs": cpu_count(),
+            "env_config": {
+                "environment": "robot",
+                "render": False,
+                "task_config": {
+                    "name": "reach",
+                    "dof": 3,
+                    "only_positive": False,
+                    "sparse_reward": False,
+                    "max_steps": 25
+                },
+                "robot_config": {
+                    "name": "panda",
+                    "dof": 3,
+                    "sim_time": .1,
+                    "scale": .1
+                }
             }
         }
-    }
 
-    trainer = Trainer(training_config, experiment_name)
+        trainer = Trainer(training_config, experiment_name)
