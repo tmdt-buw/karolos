@@ -197,7 +197,7 @@ class Trainer:
             else:
                 raise ValueError("Configurations do not match!")
 
-        self.writer = SummaryWriter(experiment_dir)
+        self.writer = SummaryWriter(experiment_dir, 'trainer')
 
         from functools import partial
 
