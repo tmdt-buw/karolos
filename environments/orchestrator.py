@@ -28,7 +28,7 @@ class Orchestrator(object):
 
     def run(self, env_config, pipe):
 
-        env = get_env(env_config)()
+        env = get_env(env_config)
 
         while True:
 
@@ -46,6 +46,8 @@ class Orchestrator(object):
                 pipe.send(("render", env.render(params)))
             elif func == "action space":
                 pipe.send(("action space", env.action_space))
+            elif func == "observation space":
+                pipe.send(("observation space", env.observation_space))
             elif func == "observation dict":
                 pipe.send(("observation dict", env.observation_dict))
             else:
@@ -136,12 +138,17 @@ class Orchestrator(object):
     @property
     def observation_space(self):
         if self.observation_space_ is None:
-            self.observation_space_ = tuple(
-                np.array(self.observation_dict['state']['robot'].shape) +
-                np.array(self.observation_dict['state']['task'].shape)
-            )
-            self.observation_space_ = spaces.Box(-1, 1,
-                                                 shape=self.observation_space)
+            self.pipes[0].send(["observation space", None])
+            func, self.observation_space_ = self.pipes[0].recv()
+
+            assert func == "observation space", f"'{func}' istead of 'observation space'"
+
+            # self.observation_space_ = tuple(
+            #     np.array(self.observation_dict['state']['robot'].shape) +
+            #     np.array(self.observation_dict['state']['task'].shape)
+            # )
+            # self.observation_space_ = spaces.Box(-1, 1,
+            #                                      shape=self.observation_space)
 
         return self.observation_space_
 

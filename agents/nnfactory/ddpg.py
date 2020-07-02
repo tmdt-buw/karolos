@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import MultivariateNormal
 
 
 class Flatten(torch.nn.Module):
@@ -52,15 +51,6 @@ class Critic(nn.Module):
             elif layer == 'relu':
                 assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
-            elif layer == 'selu':
-                assert params is None, 'No argument for SeLU please'
-                self.operators.append(nn.SELU())
-            elif layer == 'tanh':
-                assert params is None, 'No argument for Tanh please'
-                self.operators.append(nn.Tanh())
-            elif layer == 'gelu':
-                assert params is None, 'No argument for GreLU please'
-                self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
             elif layer == 'batchnorm':
@@ -103,15 +93,6 @@ class Policy(nn.Module):
             elif layer == 'relu':
                 assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
-            elif layer == 'selu':
-                assert params is None, 'No argument for SeLU please'
-                self.operators.append(nn.SELU())
-            elif layer == 'tanh':
-                assert params is None, 'No argument for Tanh please'
-                self.operators.append(nn.Tanh())
-            elif layer == 'gelu':
-                assert params is None, 'No argument for GreLU please'
-                self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
             elif layer == 'batchnorm':
@@ -119,42 +100,21 @@ class Policy(nn.Module):
             else:
                 raise NotImplementedError(f'{layer} not known')
 
-        self.operators.append(nn.Linear(current_layer_size, 2 * action_dim))
+        self.operators.append(nn.Linear(current_layer_size, action_dim))
 
         self.operators.apply(init_xavier_uniform)
-
-        self.std_clamp = Clamp(log_std_min, log_std_max)
 
     def forward(self, state, deterministic=True):
         x = state
         for operator in self.operators:
             x = operator(x)
 
-        mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
+        from torch.distributions import Normal
 
-        log_std = self.std_clamp(log_std)
+        normal = Normal(x, torch.ones_like(x))
+        action = normal.rsample()
 
-        if deterministic:
-            action = torch.tanh(mean)
-            log_prob = torch.zeros(log_std.shape[0]).unsqueeze_(-1)
-        else:
-            std = log_std.exp()
-
-            normal = MultivariateNormal(mean, torch.diag_embed(std.pow(2)))
-            action_base = normal.rsample()
-
-            log_prob = normal.log_prob(action_base)
-            log_prob.unsqueeze_(-1)
-
-            action = torch.tanh(action_base)
-
-            action_bound_compensation = torch.log(
-                1. - action.pow(2) + np.finfo(float).eps).sum(dim=1,
-                                                              keepdim=True)
-
-            log_prob.sub_(action_bound_compensation)
-
-        return action, log_prob
+        return action
 
     def get_weights(self):
 

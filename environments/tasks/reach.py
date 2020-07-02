@@ -1,6 +1,7 @@
-from environments.tasks.task import Task
 import numpy as np
 from gym import spaces
+
+from environments.tasks.task import Task
 
 
 class Reach(Task):
@@ -126,24 +127,19 @@ class Reach(Task):
             done = goal_reached or self.step_counter >= self.max_steps
 
             if goal_reached:
-                reward = 10.
+                reward = 1.
             else:
-                reward = np.exp(
-                    -3 * distance_tcp_object) * 2 - 1  # - .1 * distance_tcp_object
-            # if goal_reached:
-            #     reward = 1.
-            # else:
-            #     if self.sparse_reward:
-            #         reward = -1.
-            #     else:
-            #         reward = np.exp(-3 * distance_tcp_object) * 2 - 1 - .1 * distance_tcp_object
-            #         # reward /= self.max_steps
+                if self.sparse_reward:
+                    reward = -1.
+                else:
+                    reward = np.exp(-5 * distance_tcp_object) - 1
+                    reward /= self.max_steps
         else:
-            reward = -10.
+            reward = -1.
             goal_reached = False
             done = True
 
-        # reward = np.clip(reward, -1, 1)
+        reward = np.clip(reward, -1, 1)
 
         return reward, done, goal_reached
 

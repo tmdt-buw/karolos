@@ -1,18 +1,19 @@
 import json
 import os
 import os.path as osp
+
 import pybullet as p
 import pybullet_data as pd
+
 from agents import get_agent
 from environments import get_env
-import numpy as np
 
 p.connect(p.GUI)
 p.setAdditionalSearchPath(pd.getDataPath())
 
 # todo make experiment a parameter
 experiments = os.listdir("results")
-experiment_folder = osp.join("results", max(experiments))
+experiment_folder = osp.join("results", "20200702-143606", "(0.0005, 0.0005)_32_8_5e-05_0.0025")
 
 print(experiment_folder)
 
@@ -29,9 +30,9 @@ env_config["bullet_client"] = p
 print(env_config)
 print(agent_config)
 
-env = get_env(env_config)()
-agent = get_agent(agent_config, env.observation_space,
-                  env.action_space)
+env = get_env(env_config)
+agent = get_agent("sac", agent_config, env.observation_space,
+                  env.action_space, ".")
 
 models_folder = osp.join(experiment_folder, "models")
 
@@ -64,4 +65,4 @@ for desired_state in desired_states:
 
             action = action[0]
 
-            observation, rewards, done = env.step(action)
+            observation, reward, done = env.step(action)

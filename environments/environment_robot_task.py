@@ -118,18 +118,7 @@ class Environment(gym.Env):
         observation["goal"]["reached"] = goal_reached
 
         # todo make generic by merging task observation and achived goal
-        her_reward, her_done, her_goal_reached = self.task.compute_reward(
-            achieved_goal,
-            achieved_goal)
-        # her_done, _ = self.task.compute_done(achieved_goal,
-        #                                      achieved_goal)
-
-        observation["her"] = {
-            "achieved_goal": achieved_goal,
-            "reward": her_reward,
-            "done": her_done
-        }
-
+        
         observation["state"] = {
             'task': observation_task,
             'robot': observation_robot,
