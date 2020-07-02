@@ -285,60 +285,48 @@ if __name__ == "__main__":
     experiment_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     # 0.0005
-    learning_rates = [0.0005]
+    learning_rates = [(0.0005, 0.0005)]
     hidden_layer_sizes = [32]
     network_depths = [8]
-    alpha_learning_rates = [1e-5]
+    entropy_regularization_learning_rates = [5e-5]
+    taus = [0.0025]
 
     import itertools
 
-    for params in itertools.product(learning_rates, hidden_layer_sizes, network_depths, alpha_learning_rates):
+    for params in itertools.product(learning_rates, hidden_layer_sizes,
+                                    network_depths,
+                                    entropy_regularization_learning_rates,
+                                    taus):
+        experiment_name = experiment_date + "/" + "_".join(
+            list(map(str, params)))
 
-        experiment_name = experiment_date + "/" + "_".join(list(
-            map(str, params)))
+        learning_rates, hidden_layer_size, network_depth, entropy_regularization_learning_rate, tau = params
 
-        learning_rate, hidden_layer_size, network_depth, alpha_learning_rate = params
+        learning_rate_policy, learning_rate_critic = learning_rates
 
         training_config = {
-            "total_timesteps": 5_000_000,
+            "total_timesteps": 20_000_000,
             "test_interval": 500_000,
             "number_tests": 100,
             # "base_experiment": {
             #     "experiment": "20200513-145010",
             #     "agent": 0,
             # },
-            # "algorithm": "sac",
-            # "agent_config": {
-            #     "learning_rate_critic": learning_rate,
-            #     "learning_rate_policy": learning_rate,
-            #     "alpha": 1,
-            #     "learning_rate_alpha": alpha_learning_rate,
-            #     "weight_decay": 1e-4,
-            #     "batch_size": 128,
-            #     "reward_discount": 0.99,
-            #     "auto_entropy": True,
-            #     "gradient_clipping": False,
-            #     "memory_size": 1_000_000,
-            #     "tau": 0.0025,
-            #     "seed": 192,
-            #     "policy_structure": [('linear', hidden_layer_size),
-            #                          ('relu', None)] * network_depth,
-            #     "critic_structure": [('linear', hidden_layer_size),
-            #                          ('relu', None)] * network_depth
-            # },
-            "algorithm": "ddpg",
+
+            "algorithm": "sac",
             "agent_config": {
-                "learning_rate_critic": learning_rate,
-                "learning_rate_policy": learning_rate,
+                "learning_rate_critic": learning_rate_critic,
+                "learning_rate_policy": learning_rate_policy,
+                "entropy_regularization": 1,
+                "learning_rate_entropy_regularization": entropy_regularization_learning_rate,
                 "weight_decay": 1e-4,
-                "batch_size": 128,
+                "batch_size": 512,
                 "reward_discount": 0.99,
                 "reward_scale": 100,
                 "automatic_entropy_regularization": True,
                 "gradient_clipping": False,
                 "memory_size": 1_000_000,
-                "tau": 0.0025,
-                "seed": 192,
+                "tau": tau,
                 "policy_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth,
                 "critic_structure": [('linear', hidden_layer_size),
