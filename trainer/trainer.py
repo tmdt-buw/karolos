@@ -84,26 +84,6 @@ class Trainer:
                                   state['state']['agent_state'], done)
                     self.agent.add_experience([experience])
 
-                    if training_config.get("use_hindsight_experience_replay",
-                                           False) and "her" in state:
-                        her_goal = state["her"]["achieved_goal"]
-
-                        her_previous_state = previous_state['state'][
-                            'agent_state'].copy()
-                        her_previous_state[-len(her_goal):] = her_goal
-
-                        her_reward = state["her"]["reward"]
-
-                        her_state = state['state']['agent_state'].copy()
-                        her_state[-len(her_goal):] = her_goal
-
-                        her_done = state["her"]["done"]
-
-                        experience = (her_previous_state,
-                                      action, her_reward,
-                                      her_state, her_done)
-                        self.agent.add_experience([experience])
-
                 if done:
                     # episode_reward = sum(self.episodic_reward[env_id])
                     #
