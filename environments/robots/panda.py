@@ -77,10 +77,10 @@ class Panda(gym.Env):
 
         if state_mode == 'full':
             self.observation_space = spaces.Box(-1., 1., shape=(
-                2 * len(self.joints),))
+                2 * len(self.joints) + 3,))
         elif state_mode == 'reduced':
             self.observation_space = spaces.Box(-1., 1., shape=(
-                2 * len(self.ids_controllable),))
+                2 * len(self.ids_controllable) + 3,))
 
         # reset to initial position
         self.reset()
@@ -185,8 +185,9 @@ class Panda(gym.Env):
 
         positions = np.array(positions)
         velocities = np.array(velocities)
+        position_tcp = self.get_position_tcp()
 
-        observation = np.concatenate((positions, velocities))
+        observation = np.concatenate((positions, velocities, position_tcp))
 
         observation = observation.clip(self.observation_space.low,
                                        self.observation_space.high)
