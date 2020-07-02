@@ -7,7 +7,6 @@ import os
 import os.path as osp
 
 import numpy as np
-
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -36,16 +35,17 @@ class AgentSAC:
 
         self.learning_rate_critic = config["learning_rate_critic"]
         self.learning_rate_policy = config["learning_rate_policy"]
-        self.learning_rate_alpha = config["learning_rate_alpha"]
-        self.alpha = config["alpha"]
+        self.learning_rate_entropy_regularization = config[
+            "learning_rate_entropy_regularization"]
+        self.entropy_regularization = config["entropy_regularization"]
         self.weight_decay = config["weight_decay"]
         self.batch_size = config['batch_size']
-        self.reward_discount = config['reward_discount']
+        self.reward_discount = config.get('reward_discount', .99)
+        self.reward_scale = config.get('reward_scale', 1.)
         self.memory_size = config['memory_size']
         self.tau = config['tau']
-        self.auto_entropy = config['auto_entropy']
-        self.grad_clipping = config["gradient_clipping"]
-        self.clip_val = 10
+        self.automatic_entropy_regularization = config[
+            'automatic_entropy_regularization']
 
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
@@ -67,8 +67,9 @@ class AgentSAC:
                              network_structure=self.policy_structure).to(
             device)
 
-        self.log_alpha = torch.zeros(1, dtype=torch.float32,
-                                     requires_grad=True, device=device)
+        self.log_entropy_regularization = torch.tensor(
+            [np.log(self.entropy_regularization)], dtype=torch.float,
+            requires_grad=True, device=device)
 
         # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
         self.optimizer_critic_1 = torch.optim.AdamW(self.critic_1.parameters(),
@@ -80,9 +81,10 @@ class AgentSAC:
         self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(),
                                                   lr=self.learning_rate_policy,
                                                   weight_decay=self.weight_decay)
-        self.alpha_optim = torch.optim.AdamW([self.log_alpha],
-                                             lr=self.learning_rate_alpha)
-                                             #weight_decay=self.weight_decay)
+        self.entropy_regularization_optim = torch.optim.AdamW(
+            [self.log_entropy_regularization],
+            lr=self.learning_rate_entropy_regularization,
+            weight_decay=self.weight_decay)
 
         for target_param, param in zip(self.target_critic_1.parameters(),
                                        self.critic_1.parameters()):
@@ -96,7 +98,8 @@ class AgentSAC:
 
         self.memory = ReplayBuffer(buffer_size=self.memory_size)
 
-        self.writer = SummaryWriter(osp.join(experiment_dir, "debug"))
+        self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
+                                    "debug")
 
     def learn(self, step):
 
@@ -126,27 +129,31 @@ class AgentSAC:
 
         self.writer.add_histogram('rewards', rewards, step)
 
-        if self.auto_entropy is True:
-            alpha_loss = -(self.log_alpha * (
+        if self.automatic_entropy_regularization is True:
+            entropy_regularization_loss = -(self.log_entropy_regularization * (
                     log_prob + self.target_entropy).detach()).mean()
-            self.writer.add_scalar('alpha_loss', alpha_loss, step)
+            self.writer.add_scalar('entropy_regularization_loss',
+                                   entropy_regularization_loss, step)
 
-            self.alpha_optim.zero_grad()
-            alpha_loss.backward()
-            self.alpha_optim.step()
-            self.alpha = self.log_alpha.exp()
-            self.writer.add_scalar('alpha', self.alpha, step)
+            self.entropy_regularization_optim.zero_grad()
+            entropy_regularization_loss.backward()
+            self.entropy_regularization_optim.step()
+            self.entropy_regularization = self.log_entropy_regularization.exp()
+            self.writer.add_scalar('entropy_regularization',
+                                   self.entropy_regularization, step)
         else:
-            self.alpha = 1.
+            self.entropy_regularization = 1.
 
         # Train critic
         target_critic_min = torch.min(
             self.target_critic_1(next_states, predicted_next_action),
             self.target_critic_2(next_states, predicted_next_action))
-        self.writer.add_histogram('target_critic_min_1', target_critic_min, step)
+        self.writer.add_histogram('target_critic_min_1', target_critic_min,
+                                  step)
 
-        target_critic_min.sub_(self.alpha * next_log_prob)
-        self.writer.add_histogram('target_critic_min_2', target_critic_min, step)
+        target_critic_min.sub_(self.entropy_regularization * next_log_prob)
+        self.writer.add_histogram('target_critic_min_2', target_critic_min,
+                                  step)
 
         target_q_value = rewards + (
                 1 - dones) * self.reward_discount * target_critic_min
@@ -166,25 +173,25 @@ class AgentSAC:
         q_val_loss1.backward()
         q_val_loss2.backward()
 
-        if self.grad_clipping:
-            torch.nn.utils.clip_grad_norm_(self.critic_1.parameters(), self.clip_val)
-            torch.nn.utils.clip_grad_norm_(self.critic_2.parameters(), self.clip_val)
-
         self.optimizer_critic_1.step()
         self.optimizer_critic_2.step()
+
+        # errors = torch.max(nn.MSELoss(reduction="none")(predicted_q1,
+        #                                                 target_q_value.detach()),
+        #                    nn.MSELoss(reduction="none")(predicted_q2,
+        #                                                 target_q_value.detach())).flatten()
+        #
+        # self.update_experience(indices, errors)
 
         # Training policy
         predicted_new_q_val = torch.min(
             self.critic_1(states, predicted_action),
             self.critic_2(states, predicted_action))
-        loss_policy = (self.alpha * log_prob - predicted_new_q_val).mean()
+        loss_policy = (
+                self.entropy_regularization * log_prob - predicted_new_q_val).mean()
 
         self.optimizer_policy.zero_grad()
         loss_policy.backward()
-
-        if self.grad_clipping:
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.clip_val)
-
         self.optimizer_policy.step()
 
         # Update target
@@ -208,7 +215,11 @@ class AgentSAC:
 
     def add_experience(self, experiences):
         for experience in experiences:
-            self.memory.add(*experience)
+            self.memory.add(experience)
+
+    # def update_experience(self, indices, errors):
+    #     for index, error in zip(indices, errors):
+    #         self.memory.update(index, error)
 
     def save(self, path):
 
@@ -230,49 +241,30 @@ class AgentSAC:
         torch.save(self.optimizer_critic_2.state_dict(),
                    osp.join(path, "optimizer_critic_2.pt"))
 
-    def load(self, path, train_mode=True):
-        try:
-            self.policy.load_state_dict(
-                torch.load(osp.join(path, "policy.pt")))
-            self.critic_1.load_state_dict(
-                torch.load(osp.join(path, "critic_1.pt")))
-            self.critic_2.load_state_dict(
-                torch.load(osp.join(path, "critic_2.pt")))
-            self.target_critic_1.load_state_dict(
-                torch.load(osp.join(path, "target_critic_1.pt")))
-            self.target_critic_2.load_state_dict(
-                torch.load(osp.join(path, "target_critic_2.pt")))
+    def load(self, path):
+        self.policy.load_state_dict(
+            torch.load(osp.join(path, "policy.pt")))
+        self.critic_1.load_state_dict(
+            torch.load(osp.join(path, "critic_1.pt")))
+        self.critic_2.load_state_dict(
+            torch.load(osp.join(path, "critic_2.pt")))
+        self.target_critic_1.load_state_dict(
+            torch.load(osp.join(path, "target_critic_1.pt")))
+        self.target_critic_2.load_state_dict(
+            torch.load(osp.join(path, "target_critic_2.pt")))
 
-            self.optimizer_policy.load_state_dict(
-                torch.load(osp.join(path, "optimizer_policy.pt")))
-            self.optimizer_critic_1.load_state_dict(
-                torch.load(osp.join(path, "optimizer_critic_1.pt")))
-            self.optimizer_critic_2.load_state_dict(
-                torch.load(osp.join(path, "optimizer_critic_2.pt")))
-        except FileNotFoundError:
-            print('###################')
-            print('Could not load agent, missing files in', path)
-            print('###################')
-            raise
-
-        if train_mode:
-            self.policy.train()
-            self.critic_1.train()
-            self.critic_2.train()
-            self.target_critic_1.train()
-            self.target_critic_2.train()
-        else:
-            self.policy.eval()
-            self.critic_1.eval()
-            self.critic_2.eval()
-            self.target_critic_1.eval()
-            self.target_critic_2.eval()
+        self.optimizer_policy.load_state_dict(
+            torch.load(osp.join(path, "optimizer_policy.pt")))
+        self.optimizer_critic_1.load_state_dict(
+            torch.load(osp.join(path, "optimizer_critic_1.pt")))
+        self.optimizer_critic_2.load_state_dict(
+            torch.load(osp.join(path, "optimizer_critic_2.pt")))
 
     def predict(self, states, deterministic=True):
 
         self.policy.eval()
 
-        states = torch.FloatTensor(states).to(device)
+        states = torch.tensor(states).to(device)
 
         action, _ = self.policy(states, deterministic)
 
@@ -295,16 +287,17 @@ if __name__ == '__main__':
     agent_config = {
         "learning_rate_critic": 0.01,
         "learning_rate_policy": 0.01,
-        "alpha": 1,
-        "learning_rate_alpha": 0.0003,
+        "entropy_regularization": 1,
+        "learning_rate_entropy_regularization": 0.0003,
         "batch_size": 128,
         "weight_decay": 0,
         "reward_discount": 0.99,
+        "reward_scale": 1,
         "memory_size": 100_000,
         "tau": 0.01,
         "policy_structure": [('linear', 256), ('relu', None)] * 2,
         "critic_structure": [('linear', 256), ('relu', None)] * 2,
-        "auto_entropy": True,
+        "automatic_entropy_regularization": True,
     }
 
     pprint.pprint(agent_config)
@@ -367,7 +360,7 @@ if __name__ == '__main__':
 
         rewards.append(episode_reward)
 
-        if eps % (episodes // 5) == 0 and eps > 0:
+        if eps % min(25, episodes // 5) == 0 and eps > 0:
             plt.plot(rewards)
             plt.show()
 

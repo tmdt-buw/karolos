@@ -40,6 +40,7 @@ class AgentDDPG:
         self.weight_decay = config["weight_decay"]
         self.batch_size = config['batch_size']
         self.reward_discount = config['reward_discount']
+        self.reward_scale = config.get('reward_scale')
         self.memory_size = config['memory_size']
         self.tau = config['tau']
 
@@ -95,6 +96,8 @@ class AgentDDPG:
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
         next_states = torch.FloatTensor(next_states).to(device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(device)
+
+        rewards *= self.reward_scale
 
         predicted_value = self.critic(states, actions)
 
