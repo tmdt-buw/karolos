@@ -29,9 +29,9 @@ env_config["bullet_client"] = p
 print(env_config)
 print(agent_config)
 
-env = get_env(env_config)()
-agent = get_agent(agent_config, env.observation_space,
-                  env.action_space)
+env = get_env(env_config)
+agent = get_agent("sac", agent_config, env.observation_space,
+                  env.action_space, ".")
 
 models_folder = osp.join(experiment_folder, "models")
 
@@ -64,4 +64,4 @@ for desired_state in desired_states:
 
             action = action[0]
 
-            observation, rewards, done = env.step(action)
+            observation, reward, done = env.step(action)

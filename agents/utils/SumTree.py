@@ -6,8 +6,8 @@ class SumTree:
 
     def __init__(self, capacity):
         self.capacity = capacity
-        self.tree = numpy.zeros( 2*capacity - 1 )
-        self.data = numpy.zeros( capacity, dtype=object )
+        self.tree = numpy.zeros(2 * capacity - 1)
+        self.data = numpy.zeros(capacity, dtype=object)
 
     def _propagate(self, idx, change):
         parent = (idx - 1) // 2
@@ -27,26 +27,26 @@ class SumTree:
         if s <= self.tree[left]:
             return self._retrieve(left, s)
         else:
-            return self._retrieve(right, s-self.tree[left])
+            return self._retrieve(right, s - self.tree[left])
 
     def total(self):
         return self.tree[0]
 
-    def add(self, p, data):
+    def add(self, sample, priority):
         idx = self.write + self.capacity - 1
 
-        self.data[self.write] = data
-        self.update(idx, p)
+        self.data[self.write] = sample
+        self.update(idx, priority)
 
         self.write += 1
         if self.write >= self.capacity:
             self.write = 0
 
-    def update(self, idx, p):
-        change = p - self.tree[idx]
+    def update(self, index, priority):
+        change = priority - self.tree[index]
 
-        self.tree[idx] = p
-        self._propagate(idx, change)
+        self.tree[index] = priority
+        self._propagate(index, change)
 
     def get(self, s):
         idx = self._retrieve(0, s)
@@ -62,11 +62,10 @@ if __name__ == '__main__':
 
     import numpy as np
 
-
     tree = SumTree(1000)
 
     for i in range(10000):
-        tree.add(1/((i%1000)+100), i)
+        tree.add(1 / ((i % 1000) + 100), i)
 
     n = 10000
 
