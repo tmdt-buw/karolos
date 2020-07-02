@@ -1,6 +1,7 @@
-from environments.tasks.task import Task
 import numpy as np
 from gym import spaces
+
+from environments.tasks.task import Task
 
 
 class Reach(Task):
@@ -131,7 +132,7 @@ class Reach(Task):
                 if self.sparse_reward:
                     reward = -1.
                 else:
-                    reward = np.exp(-distance_tcp_object * 3.5) * 2 - 1
+                    reward = np.exp(-5 * distance_tcp_object) - 1
                     reward /= self.max_steps
         else:
             reward = -1.

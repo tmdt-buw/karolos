@@ -264,7 +264,7 @@ class AgentSAC:
 
         self.policy.eval()
 
-        states = torch.tensor(states).to(device)
+        states = torch.tensor(states, dtype=torch.float).to(device)
 
         action, _ = self.policy(states, deterministic)
 
