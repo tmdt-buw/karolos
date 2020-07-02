@@ -20,8 +20,11 @@ class GymWrapper(gym.Env):
 
         return next_state, reward, done
 
-    def reset(self):
+    def reset(self, desired_state=None):
         state = self.env.reset()
+
+        self.step_counter = 0
+        self.episode_reward = 0
 
         return state
 

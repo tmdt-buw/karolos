@@ -1,18 +1,19 @@
 import json
 import os
 import os.path as osp
+
 import pybullet as p
 import pybullet_data as pd
+
 from agents import get_agent
 from environments import get_env
-import numpy as np
 
 p.connect(p.GUI)
 p.setAdditionalSearchPath(pd.getDataPath())
 
 # todo make experiment a parameter
 experiments = os.listdir("results")
-experiment_folder = osp.join("results", max(experiments))
+experiment_folder = osp.join("results", "20200702-143606", "(0.0005, 0.0005)_32_8_5e-05_0.0025")
 
 print(experiment_folder)
 
