@@ -1,11 +1,12 @@
-from collections import namedtuple
-import gym
-from gym import spaces
 import logging
+import time
+from collections import namedtuple
+
+import gym
 import numpy as np
 import pybullet as p
 import pybullet_data as pd
-import time
+from gym import spaces
 
 
 class Panda(gym.Env):
@@ -52,8 +53,8 @@ class Panda(gym.Env):
             6: Joint(0.707, (-2.8973, 2.8973), 2.6100, 12),
 
             # hand
+            8: Joint(0.035, (0, 0.04), 0.05, 70),
             9: Joint(0.035, (0, 0.04), 0.05, 70),
-            10: Joint(0.035, (0, 0.04), 0.05, 70),
         }
 
         for joint_id, joint in self.joints.items():
@@ -195,11 +196,7 @@ class Panda(gym.Env):
 
     def get_position_tcp(self):
 
-        state_fingers = self.bullet_client.getLinkStates(self.robot, [9, 10])
-
-        positions_fingers = [state_finger[0] for state_finger in state_fingers]
-
-        position_tcp = np.mean(positions_fingers, axis=0)
+        position_tcp = self.bullet_client.getLinkState(self.robot, 10)[0]
 
         return position_tcp
 
