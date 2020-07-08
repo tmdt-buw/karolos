@@ -48,8 +48,6 @@ class Orchestrator(object):
                 pipe.send(("action space", env.action_space))
             elif func == "observation space":
                 pipe.send(("observation space", env.observation_space))
-            elif func == "observation dict":
-                pipe.send(("observation dict", env.observation_dict))
             else:
                 raise NotImplementedError(func)
 
@@ -76,8 +74,6 @@ class Orchestrator(object):
 
             if pipe.poll():
                 response = pipe.recv()
-
-                # print("receive", response)
 
                 responses.append((env_id, response))
 
@@ -143,25 +139,7 @@ class Orchestrator(object):
 
             assert func == "observation space", f"'{func}' istead of 'observation space'"
 
-            # self.observation_space_ = tuple(
-            #     np.array(self.observation_dict['state']['robot'].shape) +
-            #     np.array(self.observation_dict['state']['task'].shape)
-            # )
-            # self.observation_space_ = spaces.Box(-1, 1,
-            #                                      shape=self.observation_space)
-
         return self.observation_space_
-
-    @property
-    def observation_dict(self):
-        if self.observation_dict_ is None:
-            self.pipes[0].send(["observation dict", None])
-            func, self.observation_dict_ = self.pipes[0].recv()
-
-            assert func == "observation dict", f"'{func}' instead of " \
-                                               f"'observation dict'"
-
-        return self.observation_dict_
 
 
 if __name__ == "__main__":

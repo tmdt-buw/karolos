@@ -23,7 +23,8 @@ class Reach(Task):
             (0., .8)
         ])
 
-        self.observation_space = spaces.Box(-1, 1, shape=(3,))
+        self.observation_space = spaces.Box(-1, 1, shape=(0,))
+        self.goal_space = spaces.Box(-1, 1, shape=(3,))
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
                                                   useFixedBase=True)
@@ -86,62 +87,23 @@ class Reach(Task):
 
         return self.get_observation()
 
-    def get_target(self):
+    def get_observation(self):
+        return np.array([])
 
-        position_target, _ = self.bullet_client.getBasePositionAndOrientation(
+    def get_status(self, robot):
+        achieved_goal = robot.get_position_tcp()
+
+        desired_goal, _ = self.bullet_client.getBasePositionAndOrientation(
             self.target)
 
-        position_target = np.array(position_target)
+        desired_goal = np.array(desired_goal)
 
-        return position_target
+        distance_tcp_object = np.linalg.norm(achieved_goal - desired_goal)
+        goal_reached = distance_tcp_object < 0.05
 
-    def get_observation(self):
+        done = goal_reached or self.step_counter >= self.max_steps
 
-        position_target = self.get_target()
-
-        observation = [np.interp(position, limits, [-1, 1])
-                       for position, limits in
-                       zip(position_target, self.limits)]
-
-        observation = np.array(observation)
-
-        observation = observation.clip(self.observation_space.low,
-                                       self.observation_space.high)
-        return observation
-
-    def get_goals(self, robot, success=True):
-        if success:
-            achieved_goal = robot.get_position_tcp()
-        else:
-            achieved_goal = None
-        desired_goal = self.get_target()
-
-        return achieved_goal, desired_goal
-
-    def compute_reward(self, achieved_goal, desired_goal):
-
-        if achieved_goal is not None:
-            distance_tcp_object = np.linalg.norm(achieved_goal - desired_goal)
-
-            goal_reached = distance_tcp_object < 0.05
-            done = goal_reached or self.step_counter >= self.max_steps
-
-            if goal_reached:
-                reward = 1.
-            else:
-                if self.sparse_reward:
-                    reward = -1.
-                else:
-                    reward = np.exp(-5 * distance_tcp_object) - 1
-                    reward /= self.max_steps
-        else:
-            reward = -1.
-            goal_reached = False
-            done = True
-
-        reward = np.clip(reward, -1, 1)
-
-        return reward, done, goal_reached
+        return achieved_goal, desired_goal, goal_reached, done
 
 
 if __name__ == "__main__":

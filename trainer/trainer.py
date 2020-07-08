@@ -60,70 +60,65 @@ class Trainer:
             if func == "reset":
                 if type(data) == AssertionError:
                     requests.append((env_id, "reset",
-                                     self.get_initial_state(mode != "test", env_id)))
+                                     self.get_initial_state(mode != "test",
+                                                            env_id)))
                 else:
-                    self.states[env_id] = data
-                    self.actions.pop(env_id, None)
-                    self.episodic_reward[env_id] = []
+                    self.trajectories.pop(env_id, None)
+                    self.trajectories[env_id].append(data)
             elif func == "step":
-                state, reward, done = data
-
-                # self.writer.add_scalar(
-                #     f'{"train" if train else "test"} reward step',
-                #     reward,
-                #     sum(self.steps.values()) + 1
-                # )
-
-                self.episodic_reward[env_id].append(reward)
-                previous_state = self.states.pop(env_id, None)
-                if previous_state is not None:
-                    action = self.actions.pop(env_id)
-
-                    experience = (previous_state['state']['agent_state'],
-                                  action, reward,
-                                  state['state']['agent_state'], done)
-                    self.agent.add_experience([experience])
+                state, goal, done = data
+                self.trajectories[env_id].append((state, goal))
 
                 if done:
-                    # episode_reward = sum(self.episodic_reward[env_id])
-                    #
-                    # self.writer.add_scalar(
-                    #     f'{"train" if train else "test"} reward episode',
-                    #     episode_reward,
-                    #     sum(self.steps.values()) + 1
-                    # )
+                    reward = self.agent.add_trajectory(
+                        self.trajectories.pop(env_id))
 
-                    results_episodes.append(state["goal"]["reached"])
+                    self.writer.add_scalar(
+                        f'{mode} reward episode', reward,
+                        sum(self.steps.values()) + 1
+                    )
+
+                    results_episodes.append(goal["reached"])
 
                     requests.append(
                         (env_id, "reset",
                          self.get_initial_state(mode != "test", env_id)))
-                else:
-                    self.states[env_id] = state
+
                 self.steps[env_id] += 1
             else:
                 raise NotImplementedError(
                     f"Undefined behavior for {env_id} | {response}")
 
-        required_predictions = list(
-            set(self.states.keys()) - set(self.actions.keys()))
+        required_predictions = [env_id for env_id in self.trajectories.keys()
+                                if len(self.trajectories[env_id]) % 2]
 
         if required_predictions:
-            observations = [self.states[env_id]['state']['agent_state'] for
-                            env_id in
-                            required_predictions]
-            observations = np.stack(observations)
 
             if mode == "random":
-                predictions = [self.agent.action_space.sample() for _ in range(observations.shape[0])]
-                # print(predictions.shape)
+                predictions = [self.agent.action_space.sample() for _ in
+                               range(len(required_predictions))]
             else:
-                predictions = self.agent.predict(observations,
-                                             deterministic=mode == "test")
+                states = []
+                goals = []
+
+                for env_id in required_predictions:
+                    state, goal = self.trajectories[env_id][-1]
+
+                    state = np.concatenate([state["robot"], state["task"]])
+                    goal = goal["desired"]
+
+                    states.append(state)
+                    goals.append(goal)
+
+                states = np.stack(states)
+                goals = np.stack(goals)
+
+                predictions = self.agent.predict(states, goals,
+                                                 deterministic=mode == "test")
 
             for env_id, prediction in zip(required_predictions,
                                           predictions):
-                self.actions[env_id] = prediction
+                self.trajectories[env_id].append(prediction)
                 requests.append((env_id, "step", prediction))
 
         return requests, results_episodes
@@ -150,10 +145,22 @@ class Trainer:
         # get agents
         agent_config = training_config["agent_config"]
 
+        def reward_function(done, goal, **kwargs):
+            if goal["reached"]:
+                reward = 1.
+            elif done:
+                reward = -1.
+            else:
+                reward = np.exp(-5 * np.linalg.norm(goal["achieved"] -
+                                                    goal["desired"])) - 1
+
+            return reward
+
         algorithm = training_config["algorithm"]
         self.agent = get_agent(algorithm, agent_config,
                                self.env_orchestrator.observation_space,
-                               self.env_orchestrator.action_space, experiment_dir)
+                               self.env_orchestrator.action_space,
+                               reward_function, experiment_dir)
 
         models_dir = osp.join(experiment_dir, "models")
 
@@ -189,10 +196,7 @@ class Trainer:
             partial(self.get_initial_state, random=True))
 
         self.steps = defaultdict(int)
-
-        self.states = {}
-        self.actions = {}
-        self.episodic_reward = {}
+        self.trajectories = defaultdict(list)
 
         number_tests = training_config["number_tests"]
         test_interval = training_config["test_interval"]
