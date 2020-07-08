@@ -112,6 +112,8 @@ class AgentSAC:
         experiences = self.memory.sample(self.batch_size)
         states, actions, rewards, next_states, dones = experiences
 
+        rewards *= self.reward_scale
+
         states = torch.FloatTensor(states).to(device)
         actions = torch.FloatTensor(actions).to(device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
