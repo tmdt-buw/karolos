@@ -68,11 +68,11 @@ class Trainer:
             elif func == "step":
                 state, reward, done = data
 
-                # self.writer.add_scalar(
-                #     f'{"train" if train else "test"} reward step',
-                #     reward,
-                #     sum(self.steps.values()) + 1
-                # )
+                self.writer.add_scalar(
+                    f'reward step',
+                    reward,
+                    sum(self.steps.values()) + 1
+                )
 
                 self.episodic_reward[env_id].append(reward)
                 previous_state = self.states.pop(env_id, None)
@@ -85,13 +85,13 @@ class Trainer:
                     self.agent.add_experience([experience])
 
                 if done:
-                    # episode_reward = sum(self.episodic_reward[env_id])
-                    #
-                    # self.writer.add_scalar(
-                    #     f'{"train" if train else "test"} reward episode',
-                    #     episode_reward,
-                    #     sum(self.steps.values()) + 1
-                    # )
+                    episode_reward = sum(self.episodic_reward[env_id])
+
+                    self.writer.add_scalar(
+                        f'reward episode',
+                        episode_reward,
+                        sum(self.steps.values()) + 1
+                    )
 
                     results_episodes.append(state["goal"]["reached"])
 
@@ -287,8 +287,8 @@ if __name__ == "__main__":
     # 0.0005
     learning_rates = [(0.0005, 0.0005)]
     hidden_layer_sizes = [32]
-    network_depths = [8]
-    entropy_regularization_learning_rates = [5e-5]
+    network_depths = [10]
+    entropy_regularization_learning_rates = [1e-3]
     taus = [0.0025]
 
     import itertools
@@ -306,7 +306,7 @@ if __name__ == "__main__":
 
         training_config = {
             "total_timesteps": 20_000_000,
-            "test_interval": 500_000,
+            "test_interval": 100_000,
             "number_tests": 100,
             # "base_experiment": {
             #     "experiment": "20200513-145010",
@@ -320,7 +320,7 @@ if __name__ == "__main__":
                 "entropy_regularization": 1,
                 "learning_rate_entropy_regularization": entropy_regularization_learning_rate,
                 "weight_decay": 1e-4,
-                "batch_size": 512,
+                "batch_size": 64,
                 "reward_discount": 0.99,
                 "reward_scale": 100,
                 "automatic_entropy_regularization": True,
@@ -332,22 +332,24 @@ if __name__ == "__main__":
                 "critic_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth
             },
-            "number_envs": cpu_count(),
+            "number_envs": 12,
             "env_config": {
                 "environment": "robot",
                 "render": False,
                 "task_config": {
-                    "name": "reach",
+                    "name": "pick_place",
                     "dof": 3,
                     "only_positive": False,
                     "sparse_reward": False,
-                    "max_steps": 25
+                    "max_steps": 50
                 },
                 "robot_config": {
                     "name": "panda",
                     "dof": 3,
                     "sim_time": .1,
-                    "scale": .1
+                    "scale": .1,
+                    "use_gripper": True,
+                    "mirror_finger_control": True,
                 }
             }
         }

@@ -71,14 +71,15 @@ class Environment(gym.Env):
         """Reset the environment and return new state
         """
 
+
         try:
             if desired_state is not None:
                 observation_robot = self.robot.reset(desired_state["robot"])
-                observation_task = self.task.reset(self.robot.robot,
+                observation_task = self.task.reset(self.robot,
                                                    desired_state["task"])
             else:
                 observation_robot = self.robot.reset()
-                observation_task = self.task.reset(self.robot.robot)
+                observation_task = self.task.reset(self.robot)
 
         except AssertionError as e:
             return e
@@ -99,7 +100,7 @@ class Environment(gym.Env):
 
     def step(self, action):
         observation_robot = self.robot.step(action)
-        observation_task = self.task.step()
+        observation_task = self.task.step(self.robot)
 
         observation = {}
 
@@ -133,12 +134,14 @@ if __name__ == "__main__":
 
     env_kwargs1 = {
         "render": True,
-        "task_config": {"name": "reach",
+        "task_config": {"name": "pick_place",
                         "dof": 3,
                         "only_positive": False,
-                        "max_steps": 50
+                        "max_steps": 50,
                         },
         "robot_config": {
+            "use_gripper": True,
+            "mirror_finger_control": True,
             "name": "panda",
             "dof": 3,
             "sim_time": .1,
@@ -147,21 +150,30 @@ if __name__ == "__main__":
     }
 
     env1 = Environment(**env_kwargs1)
-
+    num=10
     while True:
 
         done = False
 
-        desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, 1],
-                         "task": [.5, 0.2, -1.]}
+        desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, .01, .01],
+                         "task": np.array([.5, .5, .5, .5, .5, .5, 0])}
 
-        obs = env1.reset(desired_state)
 
-        action1 = np.zeros_like(env1.action_space.sample())
-        action1[0] = 1
-        for i in range(25):
+        # desired_state = {"robot": env1.robot.observation_space.sample(),
+        #                  "task": env1.task.observation_space.sample()}
+
+        obs = env1.reset(desired_state=None)
+
+
+        action1 = env1.action_space.sample()
+
+        for i in range(num):
             obs, reward, done = env1.step(action1)
+            print(obs['state']['robot'])
+            input()
 
+        input('1')
         action1[0] = -1
-        for i in range(25):
+        for i in range(num):
             obs, reward, done = env1.step(action1)
+        input('2')
