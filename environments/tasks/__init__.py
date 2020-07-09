@@ -1,5 +1,6 @@
 from .reach import Reach
 from .push import Push
+from .pick_place import Pick_Place
 
 def get_task(task_config, bullet_client):
     task_name = task_config.pop("name")
@@ -8,6 +9,8 @@ def get_task(task_config, bullet_client):
         task = Reach(bullet_client, **task_config)
     elif task_name == 'push':
         task = Push(bullet_client, **task_config)
+    elif task_name == 'pick_place':
+        task = Pick_Place(bullet_client, **task_config)
     else:
         raise ValueError()
 

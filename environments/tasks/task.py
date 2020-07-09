@@ -56,7 +56,7 @@ class Task(object):
 
                 break
 
-    def step(self):
+    def step(self, robot=None):
         self.step_counter += 1
 
         observation = self.get_observation()
