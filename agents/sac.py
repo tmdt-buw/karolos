@@ -116,6 +116,8 @@ class AgentSAC:
 
         states, goals, actions, rewards, next_states, dones = experiences
 
+        rewards *= self.reward_scale
+
         states = torch.FloatTensor(states).to(device)
         goals = torch.FloatTensor(goals).to(device)
         actions = torch.FloatTensor(actions).to(device)

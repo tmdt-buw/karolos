@@ -1,8 +1,8 @@
 import numpy as np
 from gym import spaces
-
+import os
 from environments.tasks.task import Task
-
+from numpy.random import RandomState
 
 class Reach(Task):
 
@@ -29,6 +29,9 @@ class Reach(Task):
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
                                                   useFixedBase=True)
 
+        self.random = RandomState(
+            int.from_bytes(os.urandom(4), byteorder='little'))
+
         self.max_steps = max_steps
 
     def reset(self, robot=None, desired_state=None):
@@ -54,21 +57,21 @@ class Reach(Task):
 
             if robot:
                 contact_points = self.bullet_client.getContactPoints(
-                    robot, self.target)
+                    robot.robot, self.target)
             else:
                 contact_points = False
 
         while contact_points:
 
-            target_position = np.zeros(3)
+            target_position = np.random.uniform(-1, 1, 3)
 
             for dimension in range(self.dof):
                 if self.only_positive:
-                    target_position[dimension] = np.random.uniform(0,
+                    target_position[dimension] = self.random.uniform(0,
                                                                    self.limits[
                                                                        dimension, 1])
                 else:
-                    target_position[dimension] = np.random.uniform(
+                    target_position[dimension] = self.random.uniform(
                         *self.limits[dimension])
 
             if np.linalg.norm(target_position) < 0.8:
@@ -81,11 +84,11 @@ class Reach(Task):
 
             if robot:
                 contact_points = self.bullet_client.getContactPoints(
-                    robot, self.target)
+                    robot.robot, self.target)
             else:
                 contact_points = False
 
-        return self.get_observation()
+        return self.get_observation(robot)
 
     def get_observation(self):
         return np.array([])

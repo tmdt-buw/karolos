@@ -270,7 +270,7 @@
       <geometry>
         <mesh filename="package://meshes/visual/finger.obj"/>
       </geometry>
-      <material name="panda_white"/>
+      <material name="panda_black"/>
     </visual>
     <collision>
       <origin rpy="0 0 3.14159265359" xyz="0 0 0"/>
