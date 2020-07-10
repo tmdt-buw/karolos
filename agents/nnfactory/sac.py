@@ -72,8 +72,8 @@ class Critic(nn.Module):
 
         self.operators.apply(init_xavier_uniform)
 
-    def forward(self, state, action):
-        x = torch.cat([state, action], 1)
+    def forward(self, state, goal, action):
+        x = torch.cat([state, goal, action], 1)
         for operator in self.operators:
             x = operator(x)
         return x
@@ -125,8 +125,8 @@ class Policy(nn.Module):
 
         self.std_clamp = Clamp(log_std_min, log_std_max)
 
-    def forward(self, state, deterministic=True):
-        x = state
+    def forward(self, state, goal, deterministic=True):
+        x = torch.cat((state, goal), dim=-1)
         for operator in self.operators:
             x = operator(x)
 

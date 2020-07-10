@@ -22,12 +22,15 @@ print('\n DEVICE', device, '\n')
 
 class AgentSAC:
     def __init__(self, config, observation_space, action_space,
+                 reward_function,
                  experiment_dir="."):
 
         self.observation_space = observation_space
         self.action_space = action_space
 
-        state_dim = self.observation_space.shape
+        state_dim = (sum(map(np.product, [observation_space["robot"].shape,
+                                          observation_space["task"].shape,
+                                          observation_space["goal"].shape])),)
         action_dim = self.action_space.shape
 
         assert len(state_dim) == 1
@@ -96,7 +99,7 @@ class AgentSAC:
         self.criterion_critic_1 = nn.MSELoss()
         self.criterion_critic_2 = nn.MSELoss()
 
-        self.memory = ReplayBuffer(buffer_size=self.memory_size)
+        self.memory = ReplayBuffer(self.memory_size, reward_function)
 
         self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
                                     "debug")
@@ -110,23 +113,26 @@ class AgentSAC:
         self.target_critic_2.train()
 
         experiences = self.memory.sample(self.batch_size)
-        states, actions, rewards, next_states, dones = experiences
+
+        states, goals, actions, rewards, next_states, dones = experiences
 
         rewards *= self.reward_scale
 
         states = torch.FloatTensor(states).to(device)
+        goals = torch.FloatTensor(goals).to(device)
         actions = torch.FloatTensor(actions).to(device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
         next_states = torch.FloatTensor(next_states).to(device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(device)
 
-        predicted_q1 = self.critic_1(states, actions)
-        predicted_q2 = self.critic_2(states, actions)
+        predicted_q1 = self.critic_1(states, goals, actions)
+        predicted_q2 = self.critic_2(states, goals, actions)
         self.writer.add_histogram('predicted_q1', predicted_q1, step)
         self.writer.add_histogram('predicted_q2', predicted_q2, step)
 
-        predicted_action, log_prob = self.policy(states, deterministic=False)
-        predicted_next_action, next_log_prob = self.policy(next_states,
+        predicted_action, log_prob = self.policy(states, goals,
+                                                 deterministic=False)
+        predicted_next_action, next_log_prob = self.policy(next_states, goals,
                                                            deterministic=False)
 
         self.writer.add_histogram('rewards', rewards, step)
@@ -148,8 +154,8 @@ class AgentSAC:
 
         # Train critic
         target_critic_min = torch.min(
-            self.target_critic_1(next_states, predicted_next_action),
-            self.target_critic_2(next_states, predicted_next_action))
+            self.target_critic_1(next_states, goals, predicted_next_action),
+            self.target_critic_2(next_states, goals, predicted_next_action))
         self.writer.add_histogram('target_critic_min_1', target_critic_min,
                                   step)
 
@@ -187,8 +193,8 @@ class AgentSAC:
 
         # Training policy
         predicted_new_q_val = torch.min(
-            self.critic_1(states, predicted_action),
-            self.critic_2(states, predicted_action))
+            self.critic_1(states, goals, predicted_action),
+            self.critic_2(states, goals, predicted_action))
         loss_policy = (
                 self.entropy_regularization * log_prob - predicted_new_q_val).mean()
 
@@ -217,7 +223,28 @@ class AgentSAC:
 
     def add_experience(self, experiences):
         for experience in experiences:
-            self.memory.add(experience)
+            state, action, next_state, done, goal = experience
+            self.memory.add(state, action, next_state, done, goal)
+
+    def add_trajectory(self, trajectory):
+        assert len(trajectory) % 2
+
+        trajectory_reward = 0
+
+        for trajectory_step in range(len(trajectory) // 2):
+            observation = trajectory[trajectory_step * 2]
+            action = trajectory[trajectory_step * 2 + 1]
+            next_observation = trajectory[trajectory_step * 2 + 2]
+
+            state, _ = observation
+            next_state, goal = next_observation
+
+            done = trajectory_step == len(trajectory) // 2 - 1
+
+            reward = self.memory.add(state, action, next_state, done, goal)
+            trajectory_reward += reward
+
+        return trajectory_reward
 
     # def update_experience(self, indices, errors):
     #     for index, error in zip(indices, errors):
@@ -262,13 +289,14 @@ class AgentSAC:
         self.optimizer_critic_2.load_state_dict(
             torch.load(osp.join(path, "optimizer_critic_2.pt")))
 
-    def predict(self, states, deterministic=True):
+    def predict(self, states, goals, deterministic=True):
 
         self.policy.eval()
 
         states = torch.tensor(states, dtype=torch.float).to(device)
+        goals = torch.tensor(goals, dtype=torch.float).to(device)
 
-        action, _ = self.policy(states, deterministic)
+        action, _ = self.policy(states, goals, deterministic)
 
         action = action.detach().cpu().numpy()
 
@@ -282,6 +310,7 @@ class AgentSAC:
 
 if __name__ == '__main__':
     import gym
+    from gym import spaces
     import matplotlib.pyplot as plt
     import pprint
     from tqdm import tqdm
@@ -336,26 +365,66 @@ if __name__ == '__main__':
     env = NormalizedActions(gym.make("Pendulum-v0"))
     # env = NormalizedActions(gym.make("LunarLanderContinuous-v2"))
 
-    agent = AgentSAC(agent_config, env.observation_space, env.action_space)
+    observation_space = spaces.Dict({
+        'robot': env.observation_space,
+        'task': spaces.Box(-1, 1, shape=(0,)),
+        'goal': spaces.Box(-1, 1, shape=(1,))
+    })
+
+
+    def reward_function(action, next_state, **kwargs):
+
+        theta = np.arccos(action[0])
+
+        reward = -(theta ** 2 + 0.1 * next_state["robot"][
+            0] ** 2 + 0.001 * action ** 2)
+
+        return reward
+
+
+    agent = AgentSAC(agent_config, observation_space, env.action_space,
+                     reward_function)
+
+    goal = np.array([]).reshape((1,0))
+    task = np.array([]).reshape((1,0))
 
     for eps in tqdm(range(episodes)):
         state = env.reset()
+        state = np.expand_dims(state, 0)
+
         episode_reward = 0
 
         for step in range(max_steps):
 
-            action = agent.predict(np.expand_dims(state, 0),
-                                   deterministic=False)[0]
+            action = agent.predict(state, goal, deterministic=False)[0]
 
-            next_state, reward, done, _ = env.step(action)
+            next_state, _, done, _ = env.step(action)
 
-            experience = [state, action, reward, next_state, done]
+            next_state = np.expand_dims(next_state, 0)
+
+            print(next_state)
+
+            experience = [
+                {
+                    "robot": state,
+                    "task": task
+                },
+                action,
+                {
+                    "robot": state,
+                    "task": task
+                },
+                done,
+                {
+                    "desired": goal,
+                    "achieved": goal
+                }
+            ]
 
             agent.add_experience([experience])
             agent.learn(step)
 
             state = next_state
-            episode_reward += reward
 
             if done:
                 break
