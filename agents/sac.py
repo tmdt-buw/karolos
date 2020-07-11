@@ -464,7 +464,10 @@ if __name__ == '__main__':
                               np.expand_dims(goal, 0),
                               deterministic=False)[0]
 
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, _, _ = env.step(action)
+
+            goal_reached = next_state[0] > .98 and next_state[2] < 1e-5
+            done = goal_reached
 
             experience = [
                 {
@@ -479,7 +482,8 @@ if __name__ == '__main__':
                 done,
                 {
                     "desired": goal,
-                    "achieved": np.array([reward])
+                    "achieved": np.array([reward]),
+                    "reached": goal_reached
                 }
             ]
 
@@ -516,7 +520,10 @@ if __name__ == '__main__':
                 agent.predict(np.expand_dims(state, 0),
                               np.expand_dims(goal, 0))[0]
 
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, _, _ = env.step(action)
+
+            goal_reached = next_state[0] > .98 and next_state[2] < 1e-5
+            done = goal_reached
 
             env.render()
 
