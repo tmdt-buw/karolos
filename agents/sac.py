@@ -84,8 +84,7 @@ class Critic(NeuralNetwork):
 
 class AgentSAC:
     def __init__(self, config, observation_space, action_space,
-                 reward_function,
-                 experiment_dir="."):
+                 reward_function, experiment_dir="."):
 
         self.observation_space = observation_space
         self.action_space = action_space
@@ -179,8 +178,6 @@ class AgentSAC:
 
         states, goals, actions, rewards, next_states, dones = experiences
 
-        rewards *= self.reward_scale
-
         states = torch.FloatTensor(states).to(self.device)
         goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
@@ -189,10 +186,12 @@ class AgentSAC:
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(
             self.device)
 
-        predicted_q1 = self.critic_1(states, goals, actions)
-        predicted_q2 = self.critic_2(states, goals, actions)
-        self.writer.add_histogram('predicted_q1', predicted_q1, step)
-        self.writer.add_histogram('predicted_q2', predicted_q2, step)
+        rewards *= self.reward_scale
+
+        predicted_value_1 = self.critic_1(states, goals, actions)
+        predicted_value_2 = self.critic_2(states, goals, actions)
+        self.writer.add_histogram('predicted_q1', predicted_value_1, step)
+        self.writer.add_histogram('predicted_q2', predicted_value_2, step)
 
         predicted_action, log_prob = self.policy(states, goals,
                                                  deterministic=False)
@@ -231,19 +230,19 @@ class AgentSAC:
                 1 - dones) * self.reward_discount * target_critic_min
         self.writer.add_histogram('target_q_value', target_q_value, step)
 
-        q_val_loss1 = self.criterion_critic_1(predicted_q1,
-                                              target_q_value.detach())
-        self.writer.add_scalar('q_val_loss1', q_val_loss1.item(), step)
+        q_val_loss_1 = self.criterion_critic_1(predicted_value_1,
+                                               target_q_value.detach())
+        self.writer.add_scalar('q_val_loss1', q_val_loss_1.item(), step)
 
-        q_val_loss2 = self.criterion_critic_2(predicted_q2,
-                                              target_q_value.detach())
-        self.writer.add_scalar('q_val_loss2', q_val_loss2.item(), step)
+        q_val_loss_2 = self.criterion_critic_2(predicted_value_2,
+                                               target_q_value.detach())
+        self.writer.add_scalar('q_val_loss2', q_val_loss_2.item(), step)
 
         self.optimizer_critic_1.zero_grad()
         self.optimizer_critic_2.zero_grad()
 
-        q_val_loss1.backward()
-        q_val_loss2.backward()
+        q_val_loss_1.backward()
+        q_val_loss_2.backward()
 
         self.optimizer_critic_1.step()
         self.optimizer_critic_2.step()
@@ -375,159 +374,3 @@ class AgentSAC:
 
     def set_target_entropy(self, target_entropy):
         self.target_entropy = target_entropy
-
-
-if __name__ == '__main__':
-    import gym
-    from gym import spaces
-    import matplotlib.pyplot as plt
-    import pprint
-    from tqdm import tqdm
-
-    agent_config = {
-        "learning_rate_critic": 3e-4,
-        "learning_rate_policy": 3e-4,
-        "entropy_regularization": 1,
-        "learning_rate_entropy_regularization": 3e-4,
-        "batch_size": 256,
-        "weight_decay": 0,
-        "reward_discount": 0.99,
-        "reward_scale": 1,
-        "memory_size": 1_000_000,
-        "tau": 5e-3,
-        "policy_structure": [('linear', 256), ('relu', None)] * 2,
-        "critic_structure": [('linear', 256), ('relu', None)] * 2,
-        "automatic_entropy_regularization": True,
-    }
-
-    pprint.pprint(agent_config)
-
-
-    # agent.save(".")
-    # agent.load(".")
-
-    class NormalizedEnv(gym.ActionWrapper):
-        def action(self, action):
-            low = self.action_space.low
-            high = self.action_space.high
-
-            action = low + (action + 1.0) * 0.5 * (high - low)
-            action = np.clip(action, low, high)
-
-            return action
-
-        def reverse_action(self, action):
-            low = self.action_space.low
-            high = self.action_space.high
-
-            action = 2 * (action - low) / (high - low) - 1
-            action = np.clip(action, low, high)
-
-            return action
-
-
-    max_steps = 200
-    episodes = 50
-
-    rewards = []
-
-    env = NormalizedEnv(gym.make("Pendulum-v0"))
-    # env = NormalizedActions(gym.make("LunarLanderContinuous-v2"))
-
-    observation_space = spaces.Dict({
-        'robot': env.observation_space,
-        'task': spaces.Box(-1, 1, shape=(0,)),
-        'goal': spaces.Box(-1, 1, shape=(1,))
-    })
-
-
-    def reward_function(goal, **kwargs):
-        reward = goal["achieved"]
-
-        return reward
-
-
-    agent = AgentSAC(agent_config, observation_space, env.action_space,
-                     reward_function)
-
-    task = np.array([]).reshape((0,))
-    goal = np.zeros(1)
-
-    for eps in tqdm(range(episodes)):
-        state = env.reset()
-        episode_reward = 0
-
-        for step in range(max_steps):
-
-            action = \
-                agent.predict(np.expand_dims(state, 0),
-                              np.expand_dims(goal, 0),
-                              deterministic=False)[0]
-
-            next_state, reward, _, _ = env.step(action)
-
-            goal_reached = next_state[0] > .98 and next_state[2] < 1e-5
-            done = goal_reached
-
-            experience = [
-                {
-                    "robot": state,
-                    "task": task
-                },
-                action,
-                {
-                    "robot": next_state,
-                    "task": task
-                },
-                done,
-                {
-                    "desired": goal,
-                    "achieved": np.array([reward]),
-                    "reached": goal_reached
-                }
-            ]
-
-            reward = agent.add_experience([experience])[0]
-
-            episode_reward += reward
-            if eps * max_steps + step > agent_config["batch_size"]:
-                agent.learn(eps * max_steps + step)
-
-            state = next_state
-
-            if done:
-                break
-
-        # agent.learn(eps)
-
-        rewards.append(episode_reward)
-
-        if eps % min(25, episodes // 5) == 0 and eps > 0:
-            plt.plot(rewards)
-            plt.show()
-
-    plt.plot(rewards)
-    plt.show()
-
-    while True:
-        state = env.reset()
-
-        env.render()
-
-        for step in range(max_steps):
-
-            action = \
-                agent.predict(np.expand_dims(state, 0),
-                              np.expand_dims(goal, 0))[0]
-
-            next_state, reward, _, _ = env.step(action)
-
-            goal_reached = next_state[0] > .98 and next_state[2] < 1e-5
-            done = goal_reached
-
-            env.render()
-
-            state = next_state
-
-            if done:
-                break

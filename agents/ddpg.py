@@ -58,14 +58,14 @@ class Critic(NeuralNetwork):
 
 class AgentDDPG:
     def __init__(self, config, observation_space, action_space,
-                 experiment_folder="."):
-
-        self.writer = SummaryWriter("debug")
+                 reward_function, experiment_dir="."):
 
         self.observation_space = observation_space
         self.action_space = action_space
 
-        state_dim = self.observation_space.shape
+        state_dim = (sum(map(np.product, [observation_space["robot"].shape,
+                                          observation_space["task"].shape,
+                                          observation_space["goal"].shape])),)
         action_dim = self.action_space.shape
 
         assert len(state_dim) == 1
@@ -82,8 +82,6 @@ class AgentDDPG:
 
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
-
-        self.target_entropy = -1 * action_dim[0]
 
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
@@ -114,7 +112,10 @@ class AgentDDPG:
 
         self.criterion_critic = nn.MSELoss()
 
-        self.memory = ReplayBuffer(buffer_size=self.memory_size)
+        self.memory = ReplayBuffer(self.memory_size, reward_function)
+
+        self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
+                                    "debug")
 
     def learn(self, step):
 
@@ -123,10 +124,12 @@ class AgentDDPG:
         self.target_critic.train()
         self.target_policy.train()
 
-        states, actions, rewards, next_states, dones = self.memory.sample(
-            self.batch_size)
+        experiences = self.memory.sample(self.batch_size)
+
+        states, goals, actions, rewards, next_states, dones = experiences
 
         states = torch.FloatTensor(states).to(self.device)
+        goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
@@ -135,34 +138,24 @@ class AgentDDPG:
 
         rewards *= self.reward_scale
 
-        predicted_value = self.critic(states, actions)
+        predicted_value = self.critic(states, goals, actions)
 
-        predicted_next_action = self.policy(next_states)
-
-        value_target = self.target_critic(next_states,
-                                          self.policy(next_states))
-        value_target.mul_(1 - dones)
-        value_target.add_(rewards)
-
-        value_predicted = self.target_critic(states, actions)
-
-        critic_loss = self.criterion_critic(value_predicted, value_target)
+        predicted_next_action = self.policy(next_states, goals)
 
         # Train critic
+        target_value = rewards + (1 - dones) * self.reward_discount * \
+                       self.target_critic(next_states, goals,
+                                          predicted_next_action)
 
-        target_q_value = rewards + (1 - dones) * self.reward_discount * \
-                         self.target_critic(next_states, predicted_next_action)
-
-        q_val_loss1 = self.criterion_critic(predicted_value,
-                                            target_q_value.detach())
+        critic_loss = self.criterion_critic(predicted_value, target_value)
 
         self.optimizer_critic.zero_grad()
-        q_val_loss1.backward()
+        critic_loss.backward()
         self.optimizer_critic.step()
 
         # Training policy
-        predicted_action = self.policy(states)
-        loss_policy = -self.critic(states, predicted_action).mean()
+        predicted_action = self.policy(states, goals)
+        loss_policy = -self.critic(states, goals, predicted_action).mean()
 
         self.optimizer_policy.zero_grad()
         loss_policy.backward()
@@ -179,8 +172,14 @@ class AgentDDPG:
             )
 
     def add_experience(self, experiences):
+        rewards = []
+
         for experience in experiences:
-            self.memory.add(experience)
+            state, action, next_state, done, goal = experience
+            reward = self.memory.add(state, action, next_state, done, goal)
+            rewards.append(reward)
+
+        return rewards
 
     def save(self, path):
 
@@ -198,40 +197,26 @@ class AgentDDPG:
                    osp.join(path, "optimizer_critic_1.pt"))
 
     def load(self, path, train_mode=True):
-        try:
-            self.policy.load_state_dict(
-                torch.load(osp.join(path, "policy.pt")))
-            self.critic.load_state_dict(
-                torch.load(osp.join(path, "critic_1.pt")))
-            self.target_critic.load_state_dict(
-                torch.load(osp.join(path, "target_critic_1.pt")))
+        self.policy.load_state_dict(
+            torch.load(osp.join(path, "policy.pt")))
+        self.critic.load_state_dict(
+            torch.load(osp.join(path, "critic_1.pt")))
+        self.target_critic.load_state_dict(
+            torch.load(osp.join(path, "target_critic_1.pt")))
 
-            self.optimizer_policy.load_state_dict(
-                torch.load(osp.join(path, "optimizer_policy.pt")))
-            self.optimizer_critic.load_state_dict(
-                torch.load(osp.join(path, "optimizer_critic_1.pt")))
-        except FileNotFoundError:
-            print('###################')
-            print('Could not load agent, missing files in', path)
-            print('###################')
-            raise
+        self.optimizer_policy.load_state_dict(
+            torch.load(osp.join(path, "optimizer_policy.pt")))
+        self.optimizer_critic.load_state_dict(
+            torch.load(osp.join(path, "optimizer_critic_1.pt")))
 
-        if train_mode:
-            self.policy.train()
-            self.critic.train()
-            self.target_critic.train()
-        else:
-            self.policy.eval()
-            self.critic.eval()
-            self.target_critic.eval()
-
-    def predict(self, states, deterministic=True):
+    def predict(self, states, goals, deterministic=True):
 
         self.policy.eval()
 
-        states = torch.FloatTensor(states).to(self.device)
+        states = torch.tensor(states, dtype=torch.float).to(self.device)
+        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
-        action = self.policy(states, deterministic)
+        action = self.policy(states, goals, deterministic=deterministic)
 
         action = action.detach().cpu().numpy()
 
@@ -239,110 +224,5 @@ class AgentDDPG:
 
         return action
 
-    def set_target_entropy(self, target_e):
-        self.target_entropy = target_e
-        return
-
-
-if __name__ == '__main__':
-    import gym
-    import matplotlib.pyplot as plt
-    import pprint
-    from tqdm import tqdm
-
-    agent_config = {
-        "learning_rate_critic": 0.001,
-        "learning_rate_policy": 0.001,
-        "batch_size": 128,
-        "weight_decay": 0,
-        "reward_discount": 0.99,
-        "memory_size": 100_000,
-        "tau": 0.005,
-        "policy_structure": [('linear', 256), ('relu', None)] * 2,
-        "critic_structure": [('linear', 256), ('relu', None)] * 2,
-    }
-
-    pprint.pprint(agent_config)
-
-
-    # agent.save(".")
-    # agent.load(".")
-
-    class NormalizedActions(gym.ActionWrapper):
-        def action(self, action):
-            low = self.action_space.low
-            high = self.action_space.high
-
-            action = low + (action + 1.0) * 0.5 * (high - low)
-            action = np.clip(action, low, high)
-
-            return action
-
-        def reverse_action(self, action):
-            low = self.action_space.low
-            high = self.action_space.high
-
-            action = 2 * (action - low) / (high - low) - 1
-            action = np.clip(action, low, high)
-
-            return action
-
-
-    max_steps = 500
-    episodes = 50
-
-    rewards = []
-
-    env = NormalizedActions(gym.make("Pendulum-v0"))
-    # env = NormalizedActions(gym.make("LunarLanderContinuous-v2"))
-
-    agent = AgentDDPG(agent_config, env.observation_space, env.action_space)
-
-    for eps in tqdm(range(episodes)):
-        state = env.reset()
-        episode_reward = 0
-
-        for step in range(max_steps):
-
-            action = agent.predict(np.expand_dims(state, 0),
-                                   deterministic=False)[0]
-
-            next_state, reward, done, _ = env.step(action)
-
-            experience = [state, action, reward, next_state, done]
-
-            agent.add_experience([experience])
-            agent.learn(step)
-
-            state = next_state
-            episode_reward += reward
-
-            if done:
-                break
-
-        rewards.append(episode_reward)
-
-        if eps % (episodes // 5) == 0 and eps > 0:
-            plt.plot(rewards)
-            plt.show()
-
-    plt.plot(rewards)
-    plt.show()
-
-    while True:
-        state = env.reset()
-
-        env.render()
-
-        for step in range(max_steps):
-
-            action = agent.predict(np.expand_dims(state, 0))[0]
-
-            next_state, reward, done, _ = env.step(action)
-
-            env.render()
-
-            state = next_state
-
-            if done:
-                break
+    def set_target_entropy(self, target_entropy):
+        self.target_entropy = target_entropy
