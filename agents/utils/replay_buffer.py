@@ -24,7 +24,7 @@ class ReplayBuffer:
 
         experience = {
             "state": np.concatenate([state["robot"], state["task"]], axis=-1),
-            "goal": goal["achieved"],
+            "goal": goal["desired"],
             "action": action,
             "reward": reward,
             "next_state": np.concatenate(

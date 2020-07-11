@@ -9,15 +9,77 @@ import os.path as osp
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.distributions import MultivariateNormal
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from agents.nnfactory.sac import Policy, Critic
+from agents.utils.nn import NeuralNetwork, Clamp, init_xavier_uniform
 from agents.utils.replay_buffer import ReplayBuffer
 
-# todo make device parameter of Agent
-use_cuda = torch.cuda.is_available()
-device = torch.device('cuda' if use_cuda else 'cpu')
-print('\n DEVICE', device, '\n')
+
+class Policy(NeuralNetwork):
+    def __init__(self, state_dims, action_dim, network_structure,
+                 log_std_min=-20, log_std_max=2):
+        in_dim = int(
+            np.sum([np.product(state_dim) for state_dim in state_dims]))
+
+        out_dim = int(np.product(action_dim)) * 2
+
+        super(Policy, self).__init__(in_dim, network_structure)
+
+        dummy = super(Policy, self).forward(torch.zeros((1, in_dim)))
+
+        self.operators.append(nn.Linear(dummy.shape[1], out_dim))
+
+        self.operators.apply(init_xavier_uniform)
+
+        self.std_clamp = Clamp(log_std_min, log_std_max)
+
+    def forward(self, *state_args, deterministic=True):
+        x = super(Policy, self).forward(*state_args)
+
+        mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
+
+        log_std = self.std_clamp(log_std)
+
+        if deterministic:
+            action = torch.tanh(mean)
+            log_prob = torch.zeros(log_std.shape[0]).unsqueeze_(-1)
+        else:
+            std = log_std.exp()
+
+            normal = MultivariateNormal(mean, torch.diag_embed(std.pow(2)))
+            action_base = normal.rsample()
+
+            log_prob = normal.log_prob(action_base)
+            log_prob.unsqueeze_(-1)
+
+            action = torch.tanh(action_base)
+
+            action_bound_compensation = torch.log(
+                1. - action.pow(2) + np.finfo(float).eps).sum(dim=1,
+                                                              keepdim=True)
+
+            log_prob.sub_(action_bound_compensation)
+
+        return action, log_prob
+
+
+class Critic(NeuralNetwork):
+    def __init__(self, state_dims, action_dim, network_structure):
+        in_dim = int(
+            np.sum([np.product(arg) for arg in state_dims]) + np.product(
+                action_dim))
+
+        super(Critic, self).__init__(in_dim, network_structure)
+
+        dummy = super(Critic, self).forward(torch.zeros((1, in_dim)))
+
+        self.operators.append(nn.Linear(dummy.shape[1], 1))
+
+        self.operators.apply(init_xavier_uniform)
+
+    def forward(self, *args):
+        return super(Critic, self).forward(*args)
 
 
 class AgentSAC:
@@ -55,26 +117,27 @@ class AgentSAC:
 
         self.target_entropy = -1 * action_dim[0]
 
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu')
+
         # generate networks
         self.critic_1 = Critic(state_dim, action_dim,
                                self.critic_structure).to(
-            device)
+            self.device)
         self.critic_2 = Critic(state_dim, action_dim,
                                self.critic_structure).to(
-            device)
+            self.device)
         self.target_critic_1 = Critic(state_dim, action_dim,
-                                      self.critic_structure).to(device)
+                                      self.critic_structure).to(self.device)
         self.target_critic_2 = Critic(state_dim, action_dim,
-                                      self.critic_structure).to(device)
-        self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
-                             network_structure=self.policy_structure).to(
-            device)
+                                      self.critic_structure).to(self.device)
+        self.policy = Policy(state_dim, action_dim, self.policy_structure).to(
+            self.device)
 
         self.log_entropy_regularization = torch.tensor(
             [np.log(self.entropy_regularization)], dtype=torch.float,
-            requires_grad=True, device=device)
+            requires_grad=True, device=self.device)
 
-        # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
         self.optimizer_critic_1 = torch.optim.AdamW(self.critic_1.parameters(),
                                                     lr=self.learning_rate_critic,
                                                     weight_decay=self.weight_decay)
@@ -118,12 +181,13 @@ class AgentSAC:
 
         rewards *= self.reward_scale
 
-        states = torch.FloatTensor(states).to(device)
-        goals = torch.FloatTensor(goals).to(device)
-        actions = torch.FloatTensor(actions).to(device)
-        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
-        next_states = torch.FloatTensor(next_states).to(device)
-        dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(device)
+        states = torch.FloatTensor(states).to(self.device)
+        goals = torch.FloatTensor(goals).to(self.device)
+        actions = torch.FloatTensor(actions).to(self.device)
+        rewards = torch.FloatTensor(rewards).to(self.device)
+        next_states = torch.FloatTensor(next_states).to(self.device)
+        dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(
+            self.device)
 
         predicted_q1 = self.critic_1(states, goals, actions)
         predicted_q2 = self.critic_2(states, goals, actions)
@@ -222,9 +286,14 @@ class AgentSAC:
             )
 
     def add_experience(self, experiences):
+        rewards = []
+
         for experience in experiences:
             state, action, next_state, done, goal = experience
-            self.memory.add(state, action, next_state, done, goal)
+            reward = self.memory.add(state, action, next_state, done, goal)
+            rewards.append(reward)
+
+        return rewards
 
     def add_trajectory(self, trajectory):
         assert len(trajectory) % 2
@@ -293,10 +362,10 @@ class AgentSAC:
 
         self.policy.eval()
 
-        states = torch.tensor(states, dtype=torch.float).to(device)
-        goals = torch.tensor(goals, dtype=torch.float).to(device)
+        states = torch.tensor(states, dtype=torch.float).to(self.device)
+        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
-        action, _ = self.policy(states, goals, deterministic)
+        action, _ = self.policy(states, goals, deterministic=deterministic)
 
         action = action.detach().cpu().numpy()
 
@@ -316,16 +385,16 @@ if __name__ == '__main__':
     from tqdm import tqdm
 
     agent_config = {
-        "learning_rate_critic": 0.01,
-        "learning_rate_policy": 0.01,
+        "learning_rate_critic": 3e-4,
+        "learning_rate_policy": 3e-4,
         "entropy_regularization": 1,
-        "learning_rate_entropy_regularization": 0.0003,
-        "batch_size": 128,
+        "learning_rate_entropy_regularization": 3e-4,
+        "batch_size": 256,
         "weight_decay": 0,
         "reward_discount": 0.99,
         "reward_scale": 1,
-        "memory_size": 100_000,
-        "tau": 0.01,
+        "memory_size": 1_000_000,
+        "tau": 5e-3,
         "policy_structure": [('linear', 256), ('relu', None)] * 2,
         "critic_structure": [('linear', 256), ('relu', None)] * 2,
         "automatic_entropy_regularization": True,
@@ -337,7 +406,7 @@ if __name__ == '__main__':
     # agent.save(".")
     # agent.load(".")
 
-    class NormalizedActions(gym.ActionWrapper):
+    class NormalizedEnv(gym.ActionWrapper):
         def action(self, action):
             low = self.action_space.low
             high = self.action_space.high
@@ -357,12 +426,12 @@ if __name__ == '__main__':
             return action
 
 
-    max_steps = 500
+    max_steps = 200
     episodes = 50
 
     rewards = []
 
-    env = NormalizedActions(gym.make("Pendulum-v0"))
+    env = NormalizedEnv(gym.make("Pendulum-v0"))
     # env = NormalizedActions(gym.make("LunarLanderContinuous-v2"))
 
     observation_space = spaces.Dict({
@@ -372,12 +441,8 @@ if __name__ == '__main__':
     })
 
 
-    def reward_function(action, next_state, **kwargs):
-
-        theta = np.arccos(action[0])
-
-        reward = -(theta ** 2 + 0.1 * next_state["robot"][
-            0] ** 2 + 0.001 * action ** 2)
+    def reward_function(goal, **kwargs):
+        reward = goal["achieved"]
 
         return reward
 
@@ -385,24 +450,24 @@ if __name__ == '__main__':
     agent = AgentSAC(agent_config, observation_space, env.action_space,
                      reward_function)
 
-    goal = np.array([]).reshape((1,0))
-    task = np.array([]).reshape((1,0))
+    task = np.array([]).reshape((0,))
+    goal = np.zeros(1)
 
     for eps in tqdm(range(episodes)):
         state = env.reset()
-        state = np.expand_dims(state, 0)
-
         episode_reward = 0
 
         for step in range(max_steps):
 
-            action = agent.predict(state, goal, deterministic=False)[0]
+            action = \
+                agent.predict(np.expand_dims(state, 0),
+                              np.expand_dims(goal, 0),
+                              deterministic=False)[0]
 
-            next_state, _, done, _ = env.step(action)
+            next_state, reward, _, _ = env.step(action)
 
-            next_state = np.expand_dims(next_state, 0)
-
-            print(next_state)
+            goal_reached = next_state[0] > .98 and next_state[2] < 1e-5
+            done = goal_reached
 
             experience = [
                 {
@@ -411,23 +476,29 @@ if __name__ == '__main__':
                 },
                 action,
                 {
-                    "robot": state,
+                    "robot": next_state,
                     "task": task
                 },
                 done,
                 {
                     "desired": goal,
-                    "achieved": goal
+                    "achieved": np.array([reward]),
+                    "reached": goal_reached
                 }
             ]
 
-            agent.add_experience([experience])
-            agent.learn(step)
+            reward = agent.add_experience([experience])[0]
+
+            episode_reward += reward
+            if eps * max_steps + step > agent_config["batch_size"]:
+                agent.learn(eps * max_steps + step)
 
             state = next_state
 
             if done:
                 break
+
+        # agent.learn(eps)
 
         rewards.append(episode_reward)
 
@@ -445,9 +516,14 @@ if __name__ == '__main__':
 
         for step in range(max_steps):
 
-            action = agent.predict(np.expand_dims(state, 0))[0]
+            action = \
+                agent.predict(np.expand_dims(state, 0),
+                              np.expand_dims(goal, 0))[0]
 
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, _, _ = env.step(action)
+
+            goal_reached = next_state[0] > .98 and next_state[2] < 1e-5
+            done = goal_reached
 
             env.render()
 
