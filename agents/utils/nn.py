@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 
@@ -28,57 +27,11 @@ def init_xavier_uniform(m):
         torch.nn.init.xavier_uniform_(m.weight)
 
 
-class Critic(nn.Module):
-    def __init__(self, in_dim, action_dim, network_structure):
-        super(Critic, self).__init__()
+class NeuralNetwork(nn.Module):
+    def __init__(self, in_dim, network_structure):
+        super(NeuralNetwork, self).__init__()
 
-        assert len(in_dim) == 1
-        assert len(action_dim) == 1
-
-        in_dim = np.product(in_dim)
-        action_dim = np.product(action_dim)
-
-        self.operators = nn.ModuleList([
-            Flatten()
-        ])
-
-        current_layer_size = in_dim + action_dim
-
-        for layer, params in network_structure:
-            if layer == 'linear':
-                self.operators.append(nn.Linear(current_layer_size, params))
-                current_layer_size = params
-            elif layer == 'relu':
-                assert params is None, 'No argument for ReLU please'
-                self.operators.append(nn.ReLU())
-            elif layer == 'dropout':
-                self.operators.append(nn.Dropout(params))
-            elif layer == 'batchnorm':
-                self.operators.append(nn.BatchNorm1d(current_layer_size))
-            else:
-                raise NotImplementedError(f'{layer} not known')
-
-        self.operators.append(nn.Linear(current_layer_size, 1))
-
-        self.operators.apply(init_xavier_uniform)
-
-    def forward(self, state, action):
-        x = torch.cat([state, action], 1)
-        for operator in self.operators:
-            x = operator(x)
-        return x
-
-
-class Policy(nn.Module):
-    def __init__(self, in_dim, action_dim, network_structure, log_std_min=-20,
-                 log_std_max=2):
-        super(Policy, self).__init__()
-
-        assert len(in_dim) == 1
-        assert len(action_dim) == 1
-
-        in_dim = np.product(in_dim)
-        action_dim = np.product(action_dim)
+        assert type(in_dim) == int
 
         self.operators = nn.ModuleList([
             Flatten()
@@ -93,6 +46,15 @@ class Policy(nn.Module):
             elif layer == 'relu':
                 assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
+            elif layer == 'selu':
+                assert params is None, 'No argument for SeLU please'
+                self.operators.append(nn.SELU())
+            elif layer == 'tanh':
+                assert params is None, 'No argument for Tanh please'
+                self.operators.append(nn.Tanh())
+            elif layer == 'gelu':
+                assert params is None, 'No argument for GreLU please'
+                self.operators.append(nn.GELU())
             elif layer == 'dropout':
                 self.operators.append(nn.Dropout(params))
             elif layer == 'batchnorm':
@@ -100,21 +62,12 @@ class Policy(nn.Module):
             else:
                 raise NotImplementedError(f'{layer} not known')
 
-        self.operators.append(nn.Linear(current_layer_size, action_dim))
+    def forward(self, *args, **kwargs):
+        x = torch.cat(args, dim=-1)
 
-        self.operators.apply(init_xavier_uniform)
-
-    def forward(self, state, deterministic=True):
-        x = state
         for operator in self.operators:
             x = operator(x)
-
-        from torch.distributions import Normal
-
-        normal = Normal(x, torch.ones_like(x))
-        action = normal.rsample()
-
-        return action
+        return x
 
     def get_weights(self):
 
@@ -140,20 +93,27 @@ class Policy(nn.Module):
         return activations
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
 
     pol_struct = [('linear', 64), ('relu', None), ('dropout', 0.2),
                   ('linear', 32)]
 
+    neural_network = NeuralNetwork([21], [7], pol_struct).to(device)
+
+    print(neural_network)
+
+    print(neural_network(torch.rand((1, 21)).to(device)))
+
     policy = Policy([21], [7], pol_struct).to(device)
 
-    print(policy.operators)
+    print(policy(torch.rand((1, 21)).to(device)))
+    print(policy)
 
     val_struct = [('linear', 32), ('relu', None), ('dropout', 0.2),
                   ('linear', 32)]
 
-    val = Critic([21], [7], val_struct).to(device)
+    # val = Critic([21], [7], val_struct).to(device)
 
-    print(val.operators)
+    # print(val.operators)

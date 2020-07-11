@@ -9,15 +9,51 @@ import os.path as osp
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.distributions import Normal
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from agents.nnfactory.ddpg import Policy, Critic
+from agents.utils.nn import NeuralNetwork
+# from agents.nnfactory.ddpg import Policy, Critic
 from agents.utils.replay_buffer import ReplayBuffer
 
-# todo make device parameter of Agent
-use_cuda = torch.cuda.is_available()
-device = torch.device('cuda' if use_cuda else 'cpu')
-print('\n DEVICE', device, '\n')
+
+class Policy(NeuralNetwork):
+    def __init__(self, state_dims, action_dim, network_structure):
+        in_dim = int(
+            np.sum([np.product(state_dim) for state_dim in state_dims]))
+
+        out_dim = int(np.product(action_dim))
+
+        super(Policy, self).__init__(in_dim, network_structure)
+
+        dummy = super(Policy, self).forward(torch.zeros((1, in_dim)))
+
+        self.operators.append(nn.Linear(dummy.shape[1], out_dim))
+
+    def forward(self, *state_args, deterministic=True):
+        action = super(Policy, self).forward(*state_args)
+
+        if not deterministic:
+            normal = Normal(action, torch.ones_like(action))
+            action = normal.rsample()
+
+        return action
+
+
+class Critic(NeuralNetwork):
+    def __init__(self, state_dims, action_dim, network_structure):
+        in_dim = int(
+            np.sum([np.product(arg) for arg in state_dims]) + np.product(
+                action_dim))
+
+        super(Critic, self).__init__(in_dim, network_structure)
+
+        dummy = super(Critic, self).forward(torch.zeros((1, in_dim)))
+
+        self.operators.append(nn.Linear(dummy.shape[1], 1))
+
+    def forward(self, *args):
+        return super(Critic, self).forward(*args)
 
 
 class AgentDDPG:
@@ -49,20 +85,19 @@ class AgentDDPG:
 
         self.target_entropy = -1 * action_dim[0]
 
+        self.device = torch.device(
+            'cuda' if torch.cuda.is_available() else 'cpu')
+
         # generate networks
         self.critic = Critic(state_dim, action_dim,
-                             self.critic_structure).to(
-            device)
+                             self.critic_structure).to(self.device)
         self.target_critic = Critic(state_dim, action_dim,
-                                    self.critic_structure).to(device)
-        self.policy = Policy(in_dim=state_dim, action_dim=action_dim,
-                             network_structure=self.policy_structure).to(
-            device)
-        self.target_policy = Policy(in_dim=state_dim, action_dim=action_dim,
-                                    network_structure=self.policy_structure).to(
-            device)
+                                    self.critic_structure).to(self.device)
+        self.policy = Policy(state_dim, action_dim,
+                             self.policy_structure).to(self.device)
+        self.target_policy = Policy(state_dim, action_dim,
+                                    self.policy_structure).to(self.device)
 
-        # Adam and AdamW adapt their learning rates, no need for manual lr decay/cycling
         self.optimizer_critic = torch.optim.AdamW(self.critic.parameters(),
                                                   lr=self.learning_rate_critic,
                                                   weight_decay=self.weight_decay)
@@ -91,11 +126,12 @@ class AgentDDPG:
         states, actions, rewards, next_states, dones = self.memory.sample(
             self.batch_size)
 
-        states = torch.FloatTensor(states).to(device)
-        actions = torch.FloatTensor(actions).to(device)
-        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(device)
-        next_states = torch.FloatTensor(next_states).to(device)
-        dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(device)
+        states = torch.FloatTensor(states).to(self.device)
+        actions = torch.FloatTensor(actions).to(self.device)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
+        next_states = torch.FloatTensor(next_states).to(self.device)
+        dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(
+            self.device)
 
         rewards *= self.reward_scale
 
@@ -193,7 +229,7 @@ class AgentDDPG:
 
         self.policy.eval()
 
-        states = torch.FloatTensor(states).to(device)
+        states = torch.FloatTensor(states).to(self.device)
 
         action = self.policy(states, deterministic)
 
