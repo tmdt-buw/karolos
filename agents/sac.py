@@ -10,10 +10,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
-from torch.utils.tensorboard.writer import SummaryWriter
 
+from agents.agent import Agent
 from agents.utils.nn import NeuralNetwork, Clamp, init_xavier_uniform
-from agents.utils.replay_buffer import ReplayBuffer
 
 
 class Policy(NeuralNetwork):
@@ -82,20 +81,12 @@ class Critic(NeuralNetwork):
         return super(Critic, self).forward(*args)
 
 
-class AgentSAC:
+class AgentSAC(Agent):
     def __init__(self, config, observation_space, action_space,
                  reward_function, experiment_dir="."):
 
-        self.observation_space = observation_space
-        self.action_space = action_space
-
-        state_dim = (sum(map(np.product, [observation_space["robot"].shape,
-                                          observation_space["task"].shape,
-                                          observation_space["goal"].shape])),)
-        action_dim = self.action_space.shape
-
-        assert len(state_dim) == 1
-        assert len(action_dim) == 1
+        super(AgentSAC, self).__init__(config, observation_space, action_space,
+                                       reward_function, experiment_dir)
 
         self.learning_rate_critic = config["learning_rate_critic"]
         self.learning_rate_policy = config["learning_rate_policy"]
@@ -106,7 +97,6 @@ class AgentSAC:
         self.batch_size = config['batch_size']
         self.reward_discount = config.get('reward_discount', .99)
         self.reward_scale = config.get('reward_scale', 1.)
-        self.memory_size = config['memory_size']
         self.tau = config['tau']
         self.automatic_entropy_regularization = config[
             'automatic_entropy_regularization']
@@ -114,24 +104,19 @@ class AgentSAC:
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
 
-        self.target_entropy = -1 * action_dim[0]
-
-        self.device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu')
+        self.target_entropy = -1 * self.action_dim[0]
 
         # generate networks
-        self.critic_1 = Critic(state_dim, action_dim,
-                               self.critic_structure).to(
-            self.device)
-        self.critic_2 = Critic(state_dim, action_dim,
-                               self.critic_structure).to(
-            self.device)
-        self.target_critic_1 = Critic(state_dim, action_dim,
+        self.critic_1 = Critic(self.state_dim, self.action_dim,
+                               self.critic_structure).to(self.device)
+        self.critic_2 = Critic(self.state_dim, self.action_dim,
+                               self.critic_structure).to(self.device)
+        self.target_critic_1 = Critic(self.state_dim, self.action_dim,
                                       self.critic_structure).to(self.device)
-        self.target_critic_2 = Critic(state_dim, action_dim,
+        self.target_critic_2 = Critic(self.state_dim, self.action_dim,
                                       self.critic_structure).to(self.device)
-        self.policy = Policy(state_dim, action_dim, self.policy_structure).to(
-            self.device)
+        self.policy = Policy(self.state_dim, self.action_dim,
+                             self.policy_structure).to(self.device)
 
         self.log_entropy_regularization = torch.tensor(
             [np.log(self.entropy_regularization)], dtype=torch.float,
@@ -146,25 +131,16 @@ class AgentSAC:
         self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(),
                                                   lr=self.learning_rate_policy,
                                                   weight_decay=self.weight_decay)
-        self.entropy_regularization_optim = torch.optim.AdamW(
+        self.optimizer_entropy_regularization = torch.optim.AdamW(
             [self.log_entropy_regularization],
             lr=self.learning_rate_entropy_regularization,
             weight_decay=self.weight_decay)
 
-        for target_param, param in zip(self.target_critic_1.parameters(),
-                                       self.critic_1.parameters()):
-            target_param.data.copy_(param.data)
-        for target_param, param in zip(self.target_critic_2.parameters(),
-                                       self.critic_2.parameters()):
-            target_param.data.copy_(param.data)
+        self.update_target(self.critic_1, self.target_critic_1, 1.)
+        self.update_target(self.critic_2, self.target_critic_2, 1.)
 
         self.criterion_critic_1 = nn.MSELoss()
         self.criterion_critic_2 = nn.MSELoss()
-
-        self.memory = ReplayBuffer(self.memory_size, reward_function)
-
-        self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
-                                    "debug")
 
     def learn(self, step):
 
@@ -187,18 +163,17 @@ class AgentSAC:
             self.device)
 
         rewards *= self.reward_scale
+        self.writer.add_histogram('rewards', rewards, step)
 
         predicted_value_1 = self.critic_1(states, goals, actions)
         predicted_value_2 = self.critic_2(states, goals, actions)
-        self.writer.add_histogram('predicted_q1', predicted_value_1, step)
-        self.writer.add_histogram('predicted_q2', predicted_value_2, step)
+        self.writer.add_histogram('predicted_value_1', predicted_value_1, step)
+        self.writer.add_histogram('predicted_value_2', predicted_value_2, step)
 
         predicted_action, log_prob = self.policy(states, goals,
                                                  deterministic=False)
         predicted_next_action, next_log_prob = self.policy(next_states, goals,
                                                            deterministic=False)
-
-        self.writer.add_histogram('rewards', rewards, step)
 
         if self.automatic_entropy_regularization is True:
             entropy_regularization_loss = -(self.log_entropy_regularization * (
@@ -206,9 +181,9 @@ class AgentSAC:
             self.writer.add_scalar('entropy_regularization_loss',
                                    entropy_regularization_loss, step)
 
-            self.entropy_regularization_optim.zero_grad()
+            self.optimizer_entropy_regularization.zero_grad()
             entropy_regularization_loss.backward()
-            self.entropy_regularization_optim.step()
+            self.optimizer_entropy_regularization.step()
             self.entropy_regularization = self.log_entropy_regularization.exp()
             self.writer.add_scalar('entropy_regularization',
                                    self.entropy_regularization, step)
@@ -247,13 +222,6 @@ class AgentSAC:
         self.optimizer_critic_1.step()
         self.optimizer_critic_2.step()
 
-        # errors = torch.max(nn.MSELoss(reduction="none")(predicted_q1,
-        #                                                 target_q_value.detach()),
-        #                    nn.MSELoss(reduction="none")(predicted_q2,
-        #                                                 target_q_value.detach())).flatten()
-        #
-        # self.update_experience(indices, errors)
-
         # Training policy
         predicted_new_q_val = torch.min(
             self.critic_1(states, goals, predicted_action),
@@ -266,57 +234,8 @@ class AgentSAC:
         self.optimizer_policy.step()
 
         # Update target
-        for target_critic_layer_parameters, critic_layer_parameters in \
-                zip(self.target_critic_1.parameters(),
-                    self.critic_1.parameters()):
-            target_critic_layer_parameters.data.copy_(
-                target_critic_layer_parameters.data * (
-                        1.0 - self.tau) +
-                critic_layer_parameters.data * self.tau
-            )
-
-        for target_critic_layer_parameters, critic_layer_parameters in \
-                zip(self.target_critic_2.parameters(),
-                    self.critic_2.parameters()):
-            target_critic_layer_parameters.data.copy_(
-                target_critic_layer_parameters.data * (
-                        1.0 - self.tau) +
-                critic_layer_parameters.data * self.tau
-            )
-
-    def add_experience(self, experiences):
-        rewards = []
-
-        for experience in experiences:
-            state, action, next_state, done, goal = experience
-            reward = self.memory.add(state, action, next_state, done, goal)
-            rewards.append(reward)
-
-        return rewards
-
-    def add_trajectory(self, trajectory):
-        assert len(trajectory) % 2
-
-        trajectory_reward = 0
-
-        for trajectory_step in range(len(trajectory) // 2):
-            observation = trajectory[trajectory_step * 2]
-            action = trajectory[trajectory_step * 2 + 1]
-            next_observation = trajectory[trajectory_step * 2 + 2]
-
-            state, _ = observation
-            next_state, goal = next_observation
-
-            done = trajectory_step == len(trajectory) // 2 - 1
-
-            reward = self.memory.add(state, action, next_state, done, goal)
-            trajectory_reward += reward
-
-        return trajectory_reward
-
-    # def update_experience(self, indices, errors):
-    #     for index, error in zip(indices, errors):
-    #         self.memory.update(index, error)
+        self.update_target(self.critic_1, self.target_critic_1, self.tau)
+        self.update_target(self.critic_2, self.target_critic_2, self.tau)
 
     def save(self, path):
 

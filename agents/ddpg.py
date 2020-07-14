@@ -10,11 +10,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
-from torch.utils.tensorboard.writer import SummaryWriter
 
-from agents.utils.nn import NeuralNetwork
-# from agents.nnfactory.ddpg import Policy, Critic
-from agents.utils.replay_buffer import ReplayBuffer
+from agents.agent import Agent
+from agents.utils.nn import NeuralNetwork, init_xavier_uniform
 
 
 class Policy(NeuralNetwork):
@@ -29,6 +27,8 @@ class Policy(NeuralNetwork):
         dummy = super(Policy, self).forward(torch.zeros((1, in_dim)))
 
         self.operators.append(nn.Linear(dummy.shape[1], out_dim))
+
+        self.operators.apply(init_xavier_uniform)
 
     def forward(self, *state_args, deterministic=True):
         action = super(Policy, self).forward(*state_args)
@@ -52,24 +52,19 @@ class Critic(NeuralNetwork):
 
         self.operators.append(nn.Linear(dummy.shape[1], 1))
 
+        self.operators.apply(init_xavier_uniform)
+
     def forward(self, *args):
         return super(Critic, self).forward(*args)
 
 
-class AgentDDPG:
+class AgentDDPG(Agent):
     def __init__(self, config, observation_space, action_space,
                  reward_function, experiment_dir="."):
 
-        self.observation_space = observation_space
-        self.action_space = action_space
-
-        state_dim = (sum(map(np.product, [observation_space["robot"].shape,
-                                          observation_space["task"].shape,
-                                          observation_space["goal"].shape])),)
-        action_dim = self.action_space.shape
-
-        assert len(state_dim) == 1
-        assert len(action_dim) == 1
+        super(AgentDDPG, self).__init__(config, observation_space,
+                                        action_space,
+                                        reward_function, experiment_dir)
 
         self.learning_rate_critic = config["learning_rate_critic"]
         self.learning_rate_policy = config["learning_rate_policy"]
@@ -83,17 +78,14 @@ class AgentDDPG:
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
 
-        self.device = torch.device(
-            'cuda' if torch.cuda.is_available() else 'cpu')
-
         # generate networks
-        self.critic = Critic(state_dim, action_dim,
+        self.critic = Critic(self.state_dim, self.action_dim,
                              self.critic_structure).to(self.device)
-        self.target_critic = Critic(state_dim, action_dim,
+        self.target_critic = Critic(self.state_dim, self.action_dim,
                                     self.critic_structure).to(self.device)
-        self.policy = Policy(state_dim, action_dim,
+        self.policy = Policy(self.state_dim, self.action_dim,
                              self.policy_structure).to(self.device)
-        self.target_policy = Policy(state_dim, action_dim,
+        self.target_policy = Policy(self.state_dim, self.action_dim,
                                     self.policy_structure).to(self.device)
 
         self.optimizer_critic = torch.optim.AdamW(self.critic.parameters(),
@@ -103,22 +95,12 @@ class AgentDDPG:
                                                   lr=self.learning_rate_policy,
                                                   weight_decay=self.weight_decay)
 
-        for target_param, param in zip(self.target_critic.parameters(),
-                                       self.critic.parameters()):
-            target_param.data.copy_(param.data)
-        for target_param, param in zip(self.target_policy.parameters(),
-                                       self.policy.parameters()):
-            target_param.data.copy_(param.data)
+        self.update_target(self.policy, self.target_policy, 1.)
+        self.update_target(self.critic, self.target_critic, 1.)
 
         self.criterion_critic = nn.MSELoss()
 
-        self.memory = ReplayBuffer(self.memory_size, reward_function)
-
-        self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
-                                    "debug")
-
     def learn(self, step):
-
         self.policy.train()
         self.critic.train()
         self.target_critic.train()
@@ -131,14 +113,16 @@ class AgentDDPG:
         states = torch.FloatTensor(states).to(self.device)
         goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
-        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
+        rewards = torch.FloatTensor(rewards).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(
             self.device)
 
         rewards *= self.reward_scale
+        self.writer.add_histogram('rewards', rewards, step)
 
         predicted_value = self.critic(states, goals, actions)
+        self.writer.add_histogram('predicted_value', predicted_value, step)
 
         predicted_next_action = self.policy(next_states, goals)
 
@@ -162,27 +146,9 @@ class AgentDDPG:
         self.optimizer_policy.step()
 
         # Update target
-        for target_critic_layer_parameters, critic_layer_parameters in \
-                zip(self.target_critic.parameters(),
-                    self.critic.parameters()):
-            target_critic_layer_parameters.data.copy_(
-                target_critic_layer_parameters.data * (
-                        1.0 - self.tau) +
-                critic_layer_parameters.data * self.tau
-            )
-
-    def add_experience(self, experiences):
-        rewards = []
-
-        for experience in experiences:
-            state, action, next_state, done, goal = experience
-            reward = self.memory.add(state, action, next_state, done, goal)
-            rewards.append(reward)
-
-        return rewards
+        self.update_target(self.critic, self.target_critic, self.tau)
 
     def save(self, path):
-
         if not osp.exists(path):
             os.makedirs(path)
 
@@ -210,7 +176,6 @@ class AgentDDPG:
             torch.load(osp.join(path, "optimizer_critic_1.pt")))
 
     def predict(self, states, goals, deterministic=True):
-
         self.policy.eval()
 
         states = torch.tensor(states, dtype=torch.float).to(self.device)
@@ -223,6 +188,3 @@ class AgentDDPG:
         action = action.clip(self.action_space.low, self.action_space.high)
 
         return action
-
-    def set_target_entropy(self, target_entropy):
-        self.target_entropy = target_entropy
