@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from gym import spaces
 
-from agents.ddpg import AgentDDPG, Policy, Critic
+from agents.sac import AgentSAC, Policy, Critic
 
 
 def test_policy():
@@ -11,19 +11,24 @@ def test_policy():
                         ('linear', 32)]
 
     policy = Policy([[100]], [10], policy_structure)
-    dummy = policy(torch.zeros((1, 100)))
-    assert dummy.shape == (1, 10)
+    dummy_mean, dummy_std = policy(torch.zeros((1, 100)))
+    assert dummy_mean.shape == (1, 10)
+    assert dummy_std.shape == (1, 1)
 
-    dummy = policy(torch.zeros((100, 100)))
-    assert dummy.shape == (100, 10)
+    dummy_mean, dummy_std = policy(torch.zeros((100, 100)))
+    assert dummy_mean.shape == (100, 10)
+    assert dummy_std.shape == (100, 1)
 
     # test multiple state components
     policy = Policy([[100], [50]], [10], policy_structure)
-    dummy = policy(torch.zeros((1, 100)), torch.zeros((1, 50)))
-    assert dummy.shape == (1, 10)
+    dummy_mean, dummy_std = policy(torch.zeros((1, 100)), torch.zeros((1, 50)))
+    assert dummy_mean.shape == (1, 10)
+    assert dummy_std.shape == (1, 1)
 
-    dummy = policy(torch.zeros((100, 100)), torch.zeros((100, 50)))
-    assert dummy.shape == (100, 10)
+    dummy_mean, dummy_std = policy(torch.zeros((100, 100)),
+                                   torch.zeros((100, 50)))
+    assert dummy_mean.shape == (100, 10)
+    assert dummy_std.shape == (100, 1)
 
 
 def test_critic():
@@ -48,7 +53,7 @@ def test_critic():
     assert dummy.shape == (100, 1)
 
 
-def test_ddpg_pendulum():
+def test_sac_pendulum():
     agent_config = {
         "learning_rate_critic": 3e-4,
         "learning_rate_policy": 3e-4,
@@ -100,8 +105,8 @@ def test_ddpg_pendulum():
 
         return reward
 
-    agent = AgentDDPG(agent_config, observation_space, env.action_space,
-                      reward_function)
+    agent = AgentSAC(agent_config, observation_space, env.action_space,
+                     reward_function)
 
     task = np.array([]).reshape((0,))
     goal = np.zeros(1)
