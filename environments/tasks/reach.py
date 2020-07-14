@@ -88,7 +88,7 @@ class Reach(Task):
             else:
                 contact_points = False
 
-        return self.get_observation(robot)
+        return self.get_observation()
 
     def get_observation(self):
         return np.array([])
