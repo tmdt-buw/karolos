@@ -83,7 +83,7 @@ class Critic(NeuralNetwork):
 
 class AgentSAC(Agent):
     def __init__(self, config, observation_space, action_space,
-                 reward_function, experiment_dir="."):
+                 reward_function, experiment_dir=None):
 
         super(AgentSAC, self).__init__(config, observation_space, action_space,
                                        reward_function, experiment_dir)
@@ -163,12 +163,9 @@ class AgentSAC(Agent):
             self.device)
 
         rewards *= self.reward_scale
-        self.writer.add_histogram('rewards', rewards, step)
 
         predicted_value_1 = self.critic_1(states, goals, actions)
         predicted_value_2 = self.critic_2(states, goals, actions)
-        self.writer.add_histogram('predicted_value_1', predicted_value_1, step)
-        self.writer.add_histogram('predicted_value_2', predicted_value_2, step)
 
         predicted_action, log_prob = self.policy(states, goals,
                                                  deterministic=False)
@@ -178,15 +175,11 @@ class AgentSAC(Agent):
         if self.automatic_entropy_regularization is True:
             entropy_regularization_loss = -(self.log_entropy_regularization * (
                     log_prob + self.target_entropy).detach()).mean()
-            self.writer.add_scalar('entropy_regularization_loss',
-                                   entropy_regularization_loss, step)
 
             self.optimizer_entropy_regularization.zero_grad()
             entropy_regularization_loss.backward()
             self.optimizer_entropy_regularization.step()
             self.entropy_regularization = self.log_entropy_regularization.exp()
-            self.writer.add_scalar('entropy_regularization',
-                                   self.entropy_regularization, step)
         else:
             self.entropy_regularization = 1.
 
@@ -194,24 +187,17 @@ class AgentSAC(Agent):
         target_critic_min = torch.min(
             self.target_critic_1(next_states, goals, predicted_next_action),
             self.target_critic_2(next_states, goals, predicted_next_action))
-        self.writer.add_histogram('target_critic_min_1', target_critic_min,
-                                  step)
 
         target_critic_min.sub_(self.entropy_regularization * next_log_prob)
-        self.writer.add_histogram('target_critic_min_2', target_critic_min,
-                                  step)
 
         target_q_value = rewards + (
                 1 - dones) * self.reward_discount * target_critic_min
-        self.writer.add_histogram('target_q_value', target_q_value, step)
 
         q_val_loss_1 = self.criterion_critic_1(predicted_value_1,
                                                target_q_value.detach())
-        self.writer.add_scalar('q_val_loss1', q_val_loss_1.item(), step)
 
         q_val_loss_2 = self.criterion_critic_2(predicted_value_2,
                                                target_q_value.detach())
-        self.writer.add_scalar('q_val_loss2', q_val_loss_2.item(), step)
 
         self.optimizer_critic_1.zero_grad()
         self.optimizer_critic_2.zero_grad()
@@ -236,6 +222,20 @@ class AgentSAC(Agent):
         # Update target
         self.update_target(self.critic_1, self.target_critic_1, self.tau)
         self.update_target(self.critic_2, self.target_critic_2, self.tau)
+
+        if self.writer:
+            self.writer.add_scalar('entropy_regularization',
+                                   self.entropy_regularization, step)
+            self.writer.add_histogram('predicted_q1', predicted_value_1, step)
+            self.writer.add_histogram('predicted_q2', predicted_value_2, step)
+            self.writer.add_histogram('rewards', rewards, step)
+            self.writer.add_histogram('target_critic_min_1', target_critic_min,
+                                      step)
+            self.writer.add_histogram('target_critic_min_2', target_critic_min,
+                                      step)
+            self.writer.add_histogram('target_q_value', target_q_value, step)
+            self.writer.add_scalar('q_val_loss1', q_val_loss_1.item(), step)
+            self.writer.add_scalar('q_val_loss2', q_val_loss_2.item(), step)
 
     def save(self, path):
 

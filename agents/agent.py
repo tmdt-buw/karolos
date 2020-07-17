@@ -8,10 +8,10 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from agents.utils.replay_buffer import ReplayBuffer
 
 
-class Agent():
+class Agent:
 
     def __init__(self, config, observation_space, action_space,
-                 reward_function, experiment_dir="."):
+                 reward_function, experiment_dir=None):
 
         self.observation_space = observation_space
         self.action_space = action_space
@@ -31,8 +31,11 @@ class Agent():
         self.memory_size = config['memory_size']
         self.memory = ReplayBuffer(self.memory_size, reward_function)
 
-        self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
-                                    "debug")
+        if experiment_dir:
+            self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
+                                        "debug")
+        else:
+            self.writer = None
 
     def add_experience(self, experiences):
         rewards = []
