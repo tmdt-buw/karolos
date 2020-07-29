@@ -7,48 +7,48 @@ import numpy as np
 class ReplayBuffer:
     """Fixed-size buffer to store experience tuples."""
 
-    def __init__(self, buffer_size, reward_function):
+    def __init__(self, buffer_size):
         self.memory = deque(maxlen=buffer_size)
-        self.experience = namedtuple("Experience",
-                                     field_names=["state", "action", "reward",
-                                                  "next_state", "done"])
+        self.experience_keys = ["state", "goal", "action", "reward",
+                                                  "next_state", "done"]
 
-        self.reward_function = reward_function
-
-    def add(self, state, action, next_state, done, goal):
+    def add(self, experience):
         """Add a new experience to memory."""
 
-        reward = self.reward_function(state=state, action=action,
-                                      next_state=next_state, done=done,
-                                      goal=goal)
+        # reward = self.reward_function(state=state, action=action,
+        #                               next_state=next_state, done=done,
+        #                               goal=goal)
 
-        experience = {
-            "state": np.concatenate([state["robot"], state["task"]], axis=-1),
-            "goal": goal["desired"],
-            "action": action,
-            "reward": reward,
-            "next_state": np.concatenate(
-                [next_state["robot"], next_state["task"]], axis=-1),
-            "done": done
-        }
+        # experience = {
+        #     "state": np.concatenate([state["robot"], state["task"]], axis=-1),
+        #     "goal": goal["desired"],
+        #     "action": action,
+        #     "reward": reward,
+        #     "next_state": np.concatenate(
+        #         [next_state["robot"], next_state["task"]], axis=-1),
+        #     "done": done
+        # }
+
+        experience = [experience[key] for key in self.experience_keys]
 
         self.memory.append(experience)
-
-        return reward
 
     def sample(self, n_samples):
         """Randomly sample a batch of experiences from memory."""
         experiences = random.choices(self.memory, k=n_samples)
 
-        states = np.stack([experience["state"] for experience in experiences])
-        goals = np.stack([experience["goal"] for experience in experiences])
-        actions = np.stack(
-            [experience["action"] for experience in experiences])
-        rewards = np.array(
-            [experience["reward"] for experience in experiences])
-        next_states = np.stack(
-            [experience["next_state"] for experience in experiences])
-        dones = np.array([experience["done"] for experience in experiences])
+        states, goals, actions, rewards, next_states, dones = \
+            map(np.stack, zip(*experiences))
+
+        # states = np.stack([experience["state"] for experience in experiences])
+        # goals = np.stack([experience["goal"] for experience in experiences])
+        # actions = np.stack(
+        #     [experience["action"] for experience in experiences])
+        # rewards = np.array(
+        #     [experience["reward"] for experience in experiences])
+        # next_states = np.stack(
+        #     [experience["next_state"] for experience in experiences])
+        # dones = np.array([experience["done"] for experience in experiences])
 
         return states, goals, actions, rewards, next_states, dones
 

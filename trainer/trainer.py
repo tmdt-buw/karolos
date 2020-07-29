@@ -21,7 +21,8 @@ log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
 
 
 class Trainer:
-    def get_initial_state(self, random: bool, env_id=None):
+    @staticmethod
+    def get_initial_state(random: bool, env_id=None):
         # initial_state = {
         #     'robot': self.env_orchestrator.observation_dict['state'][
         #         'robot'].sample(),
@@ -32,6 +33,55 @@ class Trainer:
         initial_state = None
 
         return initial_state
+
+    @staticmethod
+    def reward_function(done, goal, **kwargs):
+        if goal["reached"]:
+            reward = 1.
+        elif done:
+            reward = -1.
+        else:
+            reward = np.exp(-5 * np.linalg.norm(goal["achieved"] -
+                                                goal["desired"])) - 1
+
+        return reward
+
+    @classmethod
+    def trajectory2experiences(cls, trajectory):
+        assert len(trajectory) % 2
+
+        experiences = []
+
+        for trajectory_step in range(len(trajectory) // 2):
+            state, _ = trajectory[trajectory_step * 2]
+
+            action = trajectory[trajectory_step * 2 + 1]
+
+            next_state, goal = trajectory[trajectory_step * 2 + 2]
+
+            done = trajectory_step == len(trajectory) // 2 - 1
+
+            reward = cls.reward_function(state=state, action=action,
+                                         next_state=next_state, done=done,
+                                         goal=goal)
+
+            state = np.concatenate([state["robot"], state["task"]], axis=-1)
+            goal = goal["desired"]
+            next_state = np.concatenate(
+                [next_state["robot"], next_state["task"]], axis=-1)
+
+            experience = {
+                "state": state,
+                "goal": goal,
+                "action": action,
+                "reward": reward,
+                "next_state": next_state,
+                "done": done
+            }
+
+            experiences.append(experience)
+
+        return experiences
 
     @staticmethod
     def similar_config(config_1, config_2):
@@ -70,8 +120,12 @@ class Trainer:
                 self.trajectories[env_id].append((state, goal))
 
                 if done:
-                    reward = self.agent.add_trajectory(
-                        self.trajectories.pop(env_id))
+                    experiences = self.trajectory2experiences(self.trajectories.pop(env_id))
+
+                    reward = sum(
+                        [experience["reward"] for experience in experiences])
+
+                    self.agent.add_experiences(experiences)
 
                     self.writer.add_scalar(
                         f'{mode} reward episode', reward,
@@ -145,22 +199,11 @@ class Trainer:
         # get agents
         agent_config = training_config["agent_config"]
 
-        def reward_function(done, goal, **kwargs):
-            if goal["reached"]:
-                reward = 1.
-            elif done:
-                reward = -1.
-            else:
-                reward = np.exp(-5 * np.linalg.norm(goal["achieved"] -
-                                                    goal["desired"])) - 1
-
-            return reward
-
         algorithm = training_config["algorithm"]
         self.agent = get_agent(algorithm, agent_config,
                                self.env_orchestrator.observation_space,
                                self.env_orchestrator.action_space,
-                               reward_function, experiment_dir)
+                               experiment_dir)
 
         models_dir = osp.join(experiment_dir, "models")
 
@@ -341,11 +384,11 @@ if __name__ == "__main__":
                 "environment": "robot",
                 "render": False,
                 "task_config": {
-                    "name": "pick_place",
+                    "name": "reach",
                     "dof": 3,
                     "only_positive": False,
                     "sparse_reward": False,
-                    "max_steps": 50
+                    "max_steps": 25
                 },
                 "robot_config": {
                     "name": "panda",
