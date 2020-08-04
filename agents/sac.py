@@ -155,7 +155,7 @@ class AgentSAC(Agent):
         states = torch.FloatTensor(states).to(self.device)
         goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
-        rewards = torch.FloatTensor(rewards).to(self.device)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(
             self.device)

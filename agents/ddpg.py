@@ -63,8 +63,7 @@ class AgentDDPG(Agent):
                  reward_function, experiment_dir="."):
 
         super(AgentDDPG, self).__init__(config, observation_space,
-                                        action_space,
-                                        reward_function, experiment_dir)
+                                        action_space, experiment_dir)
 
         self.learning_rate_critic = config["learning_rate_critic"]
         self.learning_rate_policy = config["learning_rate_policy"]
@@ -113,7 +112,7 @@ class AgentDDPG(Agent):
         states = torch.FloatTensor(states).to(self.device)
         goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
-        rewards = torch.FloatTensor(rewards).to(self.device)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(
             self.device)

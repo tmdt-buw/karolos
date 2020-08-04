@@ -105,8 +105,7 @@ def test_sac_pendulum():
 
         return reward
 
-    agent = AgentSAC(agent_config, observation_space, env.action_space,
-                     reward_function)
+    agent = AgentSAC(agent_config, observation_space, env.action_space)
 
     task = np.array([]).reshape((0,))
     goal = np.zeros(1)
@@ -131,25 +130,16 @@ def test_sac_pendulum():
             goal_reached = next_state[0] > .98 and next_state[2] < 1e-5
             done = goal_reached
 
-            experience = [
-                {
-                    "robot": state,
-                    "task": task
-                },
-                action,
-                {
-                    "robot": next_state,
-                    "task": task
-                },
-                done,
-                {
-                    "desired": goal,
-                    "achieved": np.array([reward]),
-                    "reached": goal_reached
-                }
-            ]
+            experience = {
+                "state": state,
+                "goal": goal,
+                "action": action,
+                "reward": reward,
+                "next_state": next_state,
+                "done": done
+            }
 
-            reward = agent.add_experience([experience])[0]
+            agent.add_experiences([experience])
 
             episode_reward += reward
             agent.learn(eps * max_steps + step)
