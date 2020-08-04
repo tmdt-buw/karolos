@@ -43,6 +43,7 @@ class Trainer:
         else:
             reward = np.exp(-5 * np.linalg.norm(goal["achieved"] -
                                                 goal["desired"])) - 1
+            reward /= 25
 
         return reward
 
@@ -334,8 +335,8 @@ if __name__ == "__main__":
     # 0.0005
     learning_rates = [(0.0005, 0.0005)]
     hidden_layer_sizes = [32]
-    network_depths = [10]
-    entropy_regularization_learning_rates = [1e-3]
+    network_depths = [8]
+    entropy_regularization_learning_rates = [5e-5]
     taus = [0.0025]
 
     import itertools
@@ -352,8 +353,8 @@ if __name__ == "__main__":
         learning_rate_policy, learning_rate_critic = learning_rates
 
         training_config = {
-            "total_timesteps": 20_000_000,
-            "test_interval": 100_000,
+            "total_timesteps": 5_000_000,
+            "test_interval": 500_000,
             "number_tests": 100,
             # "base_experiment": {
             #     "experiment": "20200513-145010",
@@ -367,7 +368,7 @@ if __name__ == "__main__":
                 "entropy_regularization": 1,
                 "learning_rate_entropy_regularization": entropy_regularization_learning_rate,
                 "weight_decay": 1e-4,
-                "batch_size": 64,
+                "batch_size": 512,
                 "reward_discount": 0.99,
                 "reward_scale": 100,
                 "automatic_entropy_regularization": True,
@@ -379,7 +380,7 @@ if __name__ == "__main__":
                 "critic_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth
             },
-            "number_envs": 12,
+            "number_envs": 4 * cpu_count(),
             "env_config": {
                 "environment": "robot",
                 "render": False,
