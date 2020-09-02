@@ -248,9 +248,6 @@ class Trainer:
 
         best_success_ratio = 0.0
 
-        # todo allow for less tests
-        assert number_tests >= number_envs
-
         pbar = tqdm(total=training_config["total_timesteps"])
 
         mode = "train"
@@ -274,6 +271,16 @@ class Trainer:
 
                 # subtract tests already launched in each environment
                 tests_to_run = number_tests - number_envs
+
+                # remove excessive tests
+                while tests_to_run < 0:
+                    excessive_tests = min(abs(tests_to_run), len(env_responses))
+
+                    tests_to_run += excessive_tests
+                    env_responses = env_responses[:-excessive_tests]
+
+                    env_responses += self.env_orchestrator.receive()
+
                 concluded_tests = []
 
                 while len(concluded_tests) < number_tests:
