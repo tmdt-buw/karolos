@@ -402,7 +402,7 @@ if __name__ == "__main__":
     network_depths = [8]
     entropy_regularization_learning_rates = [5e-5]
     taus = [0.0025]
-    her_ratios = [0.2]
+    her_ratios = [0.0]
 
     import itertools
 

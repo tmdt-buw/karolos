@@ -45,7 +45,7 @@ class Environment(gym.Env):
             'goal': self.task.goal_space
         })
 
-    def reset(self, params=None):
+    def reset(self, params=None, domain_randomization=None):
         """Reset the environment and return new state
         """
 
