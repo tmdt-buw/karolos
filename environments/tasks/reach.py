@@ -8,10 +8,14 @@ class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
                  dof=1, only_positive=False, sparse_reward=False,
-                 max_steps=100):
+                 max_steps=100, domain_randomization=None):
+
+        if domain_randomization is None:
+            domain_randomization = {}
 
         super(Reach, self).__init__(bullet_client=bullet_client,
                                     gravity=[0, 0, 0],
+                                    domain_randomization=domain_randomization,
                                     offset=offset,
                                     dof=dof,
                                     only_positive=only_positive,

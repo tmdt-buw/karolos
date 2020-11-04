@@ -6,6 +6,7 @@ class Task(object):
     def __init__(self,
                  bullet_client,
                  gravity,
+                 domain_randomization,
                  offset=(0, 0, 0),
                  dof=1,
                  only_positive=False, sparse_reward=False):
@@ -18,6 +19,7 @@ class Task(object):
         self.dof = dof
         self.only_positive = only_positive
         self.sparse_reward = sparse_reward
+        self.domain_randomization = domain_randomization
 
         bullet_client.setGravity(*gravity)
 
@@ -76,9 +78,10 @@ class Task(object):
         raise NotImplementedError()
 
     def randomize(self):
-        gravity_z = np.random.normal(dr_conf.gravity_z_mean, dr_conf.gravity_z_std)
+        gravity_z = np.random.normal(self.domain_randomization['gravity']['mean'],
+                                     self.domain_randomization['gravity']['std'])
         self.bullet_client.setGravity(0, 0, gravity_z)
         print('reach_dr_grav:', gravity_z)
 
     def standard(self):
-        self.bullet_client.setGravity(0, 0, -9.81)
+        self.bullet_client.setGravity(0, 0, self.domain_randomization['gravity']['mean'])

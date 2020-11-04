@@ -18,7 +18,10 @@ class Panda(gym.Env):
 
     def __init__(self, bullet_client, dof=3, state_mode='full',
                  use_gripper=False, mirror_finger_control=False, offset=(0, 0, 0), time_step=1. / 240.,
-                 sim_time=.1, scale=0.1):
+                 sim_time=.1, scale=0.1, domain_randomization=None):
+
+        if domain_randomization is None:
+            domain_randomization = {}
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -33,6 +36,7 @@ class Panda(gym.Env):
         self.mirror_finger = mirror_finger_control
         self.time_step = time_step
         self.scale = scale
+        self.domain_randomization = domain_randomization
 
         self.max_steps = int(sim_time / time_step)
 
@@ -70,17 +74,17 @@ class Panda(gym.Env):
         Link = namedtuple("Link", ["mass", "linear_damping"])
 
         self.links = {
-            0: Link(2.7, 0.04),
-            1: Link(2.73, 0.04),
-            2: Link(2.04, 0.04),
-            3: Link(2.08, 0.04),
-            4: Link(3.0, 0.04),
-            5: Link(1.3, 0.04),
-            6: Link(0.2, 0.04),
-            7: Link(0.81, 0.04),
-            8: Link(0.1, 0.04),
-            9: Link(0.1, 0.04),
-            10: Link(0.0, 0.04),
+            0: Link(200.7, 0.01),
+            1: Link(2.73, 0.01),
+            2: Link(2.04, 0.01),
+            3: Link(2.08, 0.01),
+            4: Link(3.0, 0.01),
+            5: Link(1.3, 0.01),
+            6: Link(0.2, 0.01),
+            7: Link(0.81, 0.01),
+            8: Link(0.1, 0.01),
+            9: Link(0.1, 0.01),
+            10: Link(0.0, 0.01),
         }
 
         self.standard()
@@ -281,19 +285,45 @@ class Panda(gym.Env):
         time.sleep(1)
         exit()
 
+
         for link_id, link in self.links.items():
-            linear_damping = max(0, np.random.normal(dr_conf.linear_damping_mean,
-                                                     dr_conf.linear_damping_std))
+            if 'linear_damping' in self.domain_randomization.keys():
+                linear_damping = max(0, np.random.normal(self.domain_randomization['linear_damping']['mean'],
+                                                         self.domain_randomization['linear_damping']['std']))
+            else:
+                linear_damping = link.linear_damping
+
+            if 'mass' in self.domain_randomization.keys():
+                mass = np.random.normal(link.mass, link.mass * self.domain_randomization['mass']['std_factor'])
+            else:
+                mass = link.mass
+
             self.bullet_client.changeDynamics(self.robot, link_id,
                                               linearDamping=linear_damping,
-                                              angularDamping=0)
+                                              mass=mass)
 
     def standard(self):
-        # for link_id, link in self.links.items():
-        #     self.bullet_client.changeDynamics(self.robot, link_id,
-        #                                       linearDamping=0,
-        #                                       angularDamping=0)
-        pass
+
+        for link_id, link in self.links.items():
+
+            if 'linear_damping' in self.domain_randomization.keys():
+                linear_damping = self.domain_randomization['linear_damping']['mean']
+            else:
+                linear_damping = link.linear_damping
+            print(link_id, link.linear_damping, link.mass)
+            self.bullet_client.changeDynamics(self.robot, link_id,
+                                              linearDamping=linear_damping,
+                                              angularDamping=0,
+                                              mass=link.mass)
+            self.bullet_client.stepSimulation()
+        for i in range(0,len(self.links)):
+            a = self.bullet_client.getDynamicsInfo(1,i)
+            #b = self.bullet_client.getJointInfo(1,i)
+            print("\n\n",i,
+                  #"\n", b)
+                  '\n', a)
+        time.sleep(1)
+        exit()
 
 
 if __name__ == "__main__":

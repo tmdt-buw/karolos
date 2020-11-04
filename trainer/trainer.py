@@ -114,7 +114,8 @@ class Trainer:
                 if type(data) == AssertionError:
                     requests.append((env_id, "reset",
                                      (self.get_initial_state(mode != "test",
-                                                            env_id), self.domain_randomize)))
+                                                            env_id), True)
+                                     ))
                 else:
                     self.trajectories.pop(env_id, None)
                     self.trajectories[env_id].append(data)
@@ -139,7 +140,8 @@ class Trainer:
 
                     requests.append(
                         (env_id, "reset",
-                         (self.get_initial_state(mode != "test", env_id), self.domain_randomize)))
+                         (self.get_initial_state(mode != "test", env_id), True)
+                         ))
 
                 self.steps[env_id] += 1
             else:
@@ -196,7 +198,6 @@ class Trainer:
         # get environment
         number_envs = training_config["number_envs"]
         env_config = training_config["env_config"]
-        self.domain_randomize = training_config['domain_randomization']
 
         self.env_orchestrator = Orchestrator(env_config, number_envs)
 
@@ -370,7 +371,6 @@ if __name__ == "__main__":
             #     "experiment": "20200513-145010",
             #     "agent": 0,
             # },
-            "domain_randomization": True,
             "algorithm": "sac",
             "agent_config": {
                 "learning_rate_critic": learning_rate_critic,
@@ -399,7 +399,13 @@ if __name__ == "__main__":
                     "dof": 3,
                     "only_positive": False,
                     "sparse_reward": False,
-                    "max_steps": 25
+                    "max_steps": 25,
+                    "domain_randomization": {
+                        "gravity": {
+                            'mean': -900.81,
+                            'std': 0.3,
+                        }
+                    }
                 },
                 "robot_config": {
                     "name": "panda",
@@ -408,7 +414,16 @@ if __name__ == "__main__":
                     "scale": .1,
                     "use_gripper": True,
                     "mirror_finger_control": True,
-                }
+                    "domain_randomization": {
+                        "linear_damping": {
+                            'mean': 0.04,
+                            'std': 0.01,
+                        },
+                        "mass": {
+                            'std_factor': 0.05,
+                        }
+                    }
+                },
             }
         }
 
