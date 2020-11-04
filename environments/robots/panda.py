@@ -7,6 +7,7 @@ import numpy as np
 import pybullet as p
 import pybullet_data as pd
 from gym import spaces
+import environments.domain_randomization_config as dr_conf
 
 import os
 from numpy.random import RandomState
@@ -61,15 +62,28 @@ class Panda(gym.Env):
             5: Joint(1., (-0.0175, 3.7525), 2.6100, 12),
             6: Joint(0.707, (-2.8973, 2.8973), 2.6100, 12),
 
-            # hand
+            # finger 1 & 2
             8: Joint(0.035, (0.0, 0.04), 0.05, 70),
             9: Joint(0.035, (0.0, 0.04), 0.05, 70),
         }
 
-        for joint_id, joint in self.joints.items():
-            self.bullet_client.changeDynamics(self.robot, joint_id,
-                                              linearDamping=0,
-                                              angularDamping=0)
+        Link = namedtuple("Link", ["mass", "linear_damping"])
+
+        self.links = {
+            0: Link(2.7, 0.04),
+            1: Link(2.73, 0.04),
+            2: Link(2.04, 0.04),
+            3: Link(2.08, 0.04),
+            4: Link(3.0, 0.04),
+            5: Link(1.3, 0.04),
+            6: Link(0.2, 0.04),
+            7: Link(0.81, 0.04),
+            8: Link(0.1, 0.04),
+            9: Link(0.1, 0.04),
+            10: Link(0.0, 0.04),
+        }
+
+        self.standard()
 
         # define controllable parameters
         if self.dof == 2:
@@ -247,6 +261,39 @@ class Panda(gym.Env):
     def get_position_tcp(self):
 
         return self.bullet_client.getLinkState(self.robot, 10)[0]
+
+    def randomize(self):
+        # https://storage.googleapis.com/groundai-web-prod/media%2Fusers%2Fuser_298341%2Fproject_399407%2Fimages%2Ffigures%2Ffranka_kp_overlay_640x480.png
+        # https://docs.google.com/document/d/10sXEhzFRSnvFcl3XxNGhnD4N2SedqwdAvK3dsihxVUA/edit#heading=h.e27vav9dy7v6
+        # links connected by joints
+        # getDynamicsInfo -> links, connectors between the joints, rigid
+        # getJointInfo    -> joints, damping and friction
+        #
+        # print()
+        num_joints = self.bullet_client.getNumJoints(1)
+        print(num_joints)
+        for i in range(0,num_joints):
+            a = self.bullet_client.getDynamicsInfo(1,i)
+            #b = self.bullet_client.getJointInfo(1,i)
+            print("\n\n",i,
+                  #"\n", b)
+                  '\n', a)
+        time.sleep(1)
+        exit()
+
+        for link_id, link in self.links.items():
+            linear_damping = max(0, np.random.normal(dr_conf.linear_damping_mean,
+                                                     dr_conf.linear_damping_std))
+            self.bullet_client.changeDynamics(self.robot, link_id,
+                                              linearDamping=linear_damping,
+                                              angularDamping=0)
+
+    def standard(self):
+        # for link_id, link in self.links.items():
+        #     self.bullet_client.changeDynamics(self.robot, link_id,
+        #                                       linearDamping=0,
+        #                                       angularDamping=0)
+        pass
 
 
 if __name__ == "__main__":

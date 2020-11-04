@@ -23,6 +23,8 @@ log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
 class Trainer:
     @staticmethod
     def get_initial_state(random: bool, env_id=None):
+        # return None for random sampling of initial state
+
         # initial_state = {
         #     'robot': self.env_orchestrator.observation_dict['state'][
         #         'robot'].sample(),
@@ -111,8 +113,8 @@ class Trainer:
             if func == "reset":
                 if type(data) == AssertionError:
                     requests.append((env_id, "reset",
-                                     self.get_initial_state(mode != "test",
-                                                            env_id)))
+                                     (self.get_initial_state(mode != "test",
+                                                            env_id), self.domain_randomize)))
                 else:
                     self.trajectories.pop(env_id, None)
                     self.trajectories[env_id].append(data)
@@ -137,7 +139,7 @@ class Trainer:
 
                     requests.append(
                         (env_id, "reset",
-                         self.get_initial_state(mode != "test", env_id)))
+                         (self.get_initial_state(mode != "test", env_id), self.domain_randomize)))
 
                 self.steps[env_id] += 1
             else:
@@ -194,6 +196,7 @@ class Trainer:
         # get environment
         number_envs = training_config["number_envs"]
         env_config = training_config["env_config"]
+        self.domain_randomize = training_config['domain_randomization']
 
         self.env_orchestrator = Orchestrator(env_config, number_envs)
 
@@ -367,7 +370,7 @@ if __name__ == "__main__":
             #     "experiment": "20200513-145010",
             #     "agent": 0,
             # },
-
+            "domain_randomization": True,
             "algorithm": "sac",
             "agent_config": {
                 "learning_rate_critic": learning_rate_critic,
@@ -387,7 +390,7 @@ if __name__ == "__main__":
                 "critic_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth
             },
-            "number_envs": 4 * cpu_count(),
+            "number_envs": 1,
             "env_config": {
                 "environment": "robot",
                 "render": False,

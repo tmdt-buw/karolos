@@ -8,7 +8,6 @@ from gym import spaces
 from environments.robots import get_robot
 from environments.tasks import get_task
 
-
 class Environment(gym.Env):
 
     def __init__(self, task_config, robot_config, render=False,
@@ -43,10 +42,19 @@ class Environment(gym.Env):
             'goal': self.task.goal_space
         })
 
-    def reset(self, desired_state=None):
+    def reset(self, params=None):
         """Reset the environment and return new state
         """
 
+        desired_state = params[0]
+        domain_randomization = params[1]
+
+        # call domain randomization before reset
+        if domain_randomization:
+            self._domain_randomize()
+        else:
+            # for test runs
+            self._domain_standard()
 
         try:
             if desired_state is not None:
@@ -99,6 +107,15 @@ class Environment(gym.Env):
 
         return state, goal, done
 
+    def _domain_randomize(self):
+
+        self.robot.randomize()
+        self.task.randomize()
+
+    def _domain_standard(self):
+
+        self.robot.standard()
+        self.task.standard()
 
 if __name__ == "__main__":
 
@@ -131,14 +148,14 @@ if __name__ == "__main__":
 
         done = False
 
-        desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, .01, .01],
+        desired_states = {"robot": [-1, 1, 1, 1, 1, 1, 1, .01, .01],
                          "task": np.array([.5, .5, .5, .5, .5, .5, 0])}
 
 
         # desired_state = {"robot": env1.robot.observation_space.sample(),
         #                  "task": env1.task.observation_space.sample()}
 
-        obs = env1.reset(desired_state=None)
+        obs = env1.reset(params=None)
 
 
         action1 = env1.action_space.sample()

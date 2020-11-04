@@ -1,5 +1,5 @@
 import numpy as np
-
+import environments.domain_randomization_config as dr_conf
 
 class Task(object):
 
@@ -74,3 +74,11 @@ class Task(object):
 
     def get_observation(self):
         raise NotImplementedError()
+
+    def randomize(self):
+        gravity_z = np.random.normal(dr_conf.gravity_z_mean, dr_conf.gravity_z_std)
+        self.bullet_client.setGravity(0, 0, gravity_z)
+        print('reach_dr_grav:', gravity_z)
+
+    def standard(self):
+        self.bullet_client.setGravity(0, 0, -9.81)

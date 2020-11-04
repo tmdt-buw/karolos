@@ -95,7 +95,7 @@ class Orchestrator(object):
 
         assert len(desired_states) == len(self.pipes)
 
-        self.send([(env_id, "reset", desired_state) for env_id, desired_state
+        self.send([(env_id, "reset", (desired_state, False)) for env_id, desired_state
                    in zip(self.pipes.keys(), desired_states)])
 
         responses = []
