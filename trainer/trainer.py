@@ -402,7 +402,7 @@ if __name__ == "__main__":
                     "max_steps": 25,
                     "domain_randomization": {
                         "gravity": {
-                            'mean': -900.81,
+                            'mean': -9.81,
                             'std': 0.3,
                         }
                     }

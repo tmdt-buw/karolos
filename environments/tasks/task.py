@@ -81,7 +81,6 @@ class Task(object):
         gravity_z = np.random.normal(self.domain_randomization['gravity']['mean'],
                                      self.domain_randomization['gravity']['std'])
         self.bullet_client.setGravity(0, 0, gravity_z)
-        print('reach_dr_grav:', gravity_z)
 
     def standard(self):
         self.bullet_client.setGravity(0, 0, self.domain_randomization['gravity']['mean'])
