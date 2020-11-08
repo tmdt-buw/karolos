@@ -6,7 +6,6 @@ class Task(object):
     def __init__(self,
                  bullet_client,
                  gravity=(0, 0, -9.81),
-                 domain_randomization=None,
                  offset=(0, 0, 0),
                  max_steps=100,
                  domain_randomization=None):

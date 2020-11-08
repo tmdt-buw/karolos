@@ -7,6 +7,8 @@ import numpy as np
 import pybullet as p
 import pybullet_data as pd
 from gym import spaces
+
+import os
 from numpy.random import RandomState
 
 class Panda(gym.Env):
@@ -97,11 +99,12 @@ class Panda(gym.Env):
 
         self.standard()
 
-        # define controllable parameters
-        if self.dof == 2:
-            self.ids_controllable = np.array([1, 3, 5])
-        else:
-            self.ids_controllable = np.arange(7)
+        # todo introduce friction
+        self.bullet_client.setJointMotorControlArray(self.robot,
+                                                     self.joints_fingers,
+                                                     p.VELOCITY_CONTROL,
+                                                     forces=[0 * self.joints[idx].max_torque
+                                                         for idx in self.joints_fingers])
 
         self.bullet_client.stepSimulation()
 
@@ -236,6 +239,10 @@ class Panda(gym.Env):
                 self.observation_space[key].high)
 
         return observation
+
+    def get_position_tcp(self):
+
+        return self.bullet_client.getLinkState(self.robot, 10)[0]
 
     def randomize(self):
 
