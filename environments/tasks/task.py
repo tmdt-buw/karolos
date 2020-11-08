@@ -1,5 +1,4 @@
 import numpy as np
-import environments.domain_randomization_config as dr_conf
 
 class Task(object):
 

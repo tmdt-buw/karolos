@@ -390,7 +390,7 @@ if __name__ == "__main__":
                 "critic_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth
             },
-            "number_envs": 1,
+            "number_envs": 4 * cpu_count(),
             "env_config": {
                 "environment": "robot",
                 "render": False,

@@ -7,7 +7,6 @@ import numpy as np
 import pybullet as p
 import pybullet_data as pd
 from gym import spaces
-import environments.domain_randomization_config as dr_conf
 
 import os
 from numpy.random import RandomState
@@ -86,6 +85,12 @@ class Panda(gym.Env):
             9: Link(0.1, 0.01),
             10: Link(0.0, 0.01),
         }
+
+        for joint_id, joint in self.joints.items():
+            self.bullet_client.changeDynamics(self.robot, joint_id,
+                                              linearDamping=0)
+            self.bullet_client.changeDynamics(self.robot, joint_id,
+                                              angularDamping=0)
 
         self.standard()
 
