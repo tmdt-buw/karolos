@@ -74,7 +74,7 @@ class Panda(gym.Env):
         Link = namedtuple("Link", ["mass", "linear_damping"])
 
         self.links = {
-            0: Link(200.7, 0.01),
+            0: Link(2.7, 0.01),
             1: Link(2.73, 0.01),
             2: Link(2.04, 0.01),
             3: Link(2.08, 0.01),
@@ -267,24 +267,6 @@ class Panda(gym.Env):
         return self.bullet_client.getLinkState(self.robot, 10)[0]
 
     def randomize(self):
-        # https://storage.googleapis.com/groundai-web-prod/media%2Fusers%2Fuser_298341%2Fproject_399407%2Fimages%2Ffigures%2Ffranka_kp_overlay_640x480.png
-        # https://docs.google.com/document/d/10sXEhzFRSnvFcl3XxNGhnD4N2SedqwdAvK3dsihxVUA/edit#heading=h.e27vav9dy7v6
-        # links connected by joints
-        # getDynamicsInfo -> links, connectors between the joints, rigid
-        # getJointInfo    -> joints, damping and friction
-        #
-        # print()
-        num_joints = self.bullet_client.getNumJoints(1)
-        print(num_joints)
-        for i in range(0,num_joints):
-            a = self.bullet_client.getDynamicsInfo(1,i)
-            #b = self.bullet_client.getJointInfo(1,i)
-            print("\n\n",i,
-                  #"\n", b)
-                  '\n', a)
-        time.sleep(1)
-        exit()
-
 
         for link_id, link in self.links.items():
             if 'linear_damping' in self.domain_randomization.keys():
@@ -298,9 +280,8 @@ class Panda(gym.Env):
             else:
                 mass = link.mass
 
-            self.bullet_client.changeDynamics(self.robot, link_id,
-                                              linearDamping=linear_damping,
-                                              mass=mass)
+            self.bullet_client.changeDynamics(self.robot, link_id, linearDamping=linear_damping)
+            self.bullet_client.changeDynamics(self.robot, link_id, mass=mass)
 
     def standard(self):
 
@@ -310,20 +291,9 @@ class Panda(gym.Env):
                 linear_damping = self.domain_randomization['linear_damping']['mean']
             else:
                 linear_damping = link.linear_damping
-            print(link_id, link.linear_damping, link.mass)
-            self.bullet_client.changeDynamics(self.robot, link_id,
-                                              linearDamping=linear_damping,
-                                              angularDamping=0,
-                                              mass=link.mass)
-            self.bullet_client.stepSimulation()
-        for i in range(0,len(self.links)):
-            a = self.bullet_client.getDynamicsInfo(1,i)
-            #b = self.bullet_client.getJointInfo(1,i)
-            print("\n\n",i,
-                  #"\n", b)
-                  '\n', a)
-        time.sleep(1)
-        exit()
+
+            self.bullet_client.changeDynamics(self.robot, link_id, linearDamping=linear_damping)
+            self.bullet_client.changeDynamics(self.robot, link_id, mass=link.mass)
 
 
 if __name__ == "__main__":
