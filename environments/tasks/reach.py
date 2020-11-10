@@ -30,7 +30,7 @@ class Reach(Task):
             # "tcp_velocity": spaces.Box(-1, 1, shape=(3,))
         })
 
-        self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
+        self.target = self.bullet_client.loadURDF("objects/cube.urdf",
                                                   useFixedBase=True)
 
         self.random = RandomState(

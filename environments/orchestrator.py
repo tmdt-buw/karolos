@@ -2,7 +2,6 @@ import multiprocessing as mp
 import random
 
 import numpy as np
-from gym import spaces
 
 from environments import get_env
 
@@ -25,6 +24,10 @@ class Orchestrator(object):
                            args=(env_config, pipe_env),
                            daemon=True)
             p.start()
+
+    def __del__(self):
+
+        self.send([(env_id, "close", None) for env_id in self.pipes.keys()])
 
     def run(self, env_config, pipe):
 
@@ -58,23 +61,18 @@ class Orchestrator(object):
     def send(self, actions=()):
 
         for env_id, func, params in actions:
+            try:
+                self.pipes[env_id].send([func, params])
+            except TypeError:
+                ...
 
-            if func == "step":
-                if not self.action_space.contains(params):
-                    print(params)
-
-            # print("send", [func, params])
-
-            self.pipes[env_id].send([func, params])
 
     def receive(self):
         responses = []
 
         for env_id, pipe in self.pipes.items():
-
             if pipe.poll():
                 response = pipe.recv()
-
                 responses.append((env_id, response))
 
         return responses

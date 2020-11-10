@@ -58,13 +58,14 @@ class Trainer:
         goal_desired = unwind_dict_values(goal["desired"])
 
         goal_distance = np.linalg.norm(goal_achieved - goal_desired)
-        return goal_distance < 0.05
+        return goal_distance < 0.01
 
     @classmethod
-    def trajectory2experiences(cls, trajectory):
+    def trajectory2experiences(cls, trajectory, her_ratio=0.):
         assert len(trajectory) % 2
 
         experiences = []
+        experiences_her = []
 
         trajectory_length = len(trajectory) // 2
 
@@ -94,7 +95,43 @@ class Trainer:
 
             experiences.append(experience)
 
-        return experiences
+        for _ in range(int(her_ratio * len(trajectory) // 2)):
+            # sample random step
+            trajectory_step = np.random.randint(len(trajectory) // 2)
+
+            state, _ = trajectory[trajectory_step * 2]
+            action = trajectory[trajectory_step * 2 + 1]
+            next_state, goal = trajectory[trajectory_step * 2 + 2]
+            done = trajectory_step == len(trajectory) // 2 - 1
+
+            # sample future goal
+            goal_step = np.random.randint(trajectory_step,
+                                          len(trajectory) // 2)
+            _, future_goal = trajectory[goal_step * 2]
+
+            goal = goal.copy()
+            goal["desired"] = future_goal["achieved"]
+
+            reward = cls.reward_function(state=state, action=action,
+                                         next_state=next_state, done=done,
+                                         goal=goal)
+
+            state = unwind_dict_values(state)
+            goal = unwind_dict_values(goal["desired"])
+            next_state = unwind_dict_values(next_state)
+
+            experience = {
+                "state": state,
+                "goal": goal,
+                "action": action,
+                "reward": reward,
+                "next_state": next_state,
+                "done": done
+            }
+
+            experiences_her.append(experience)
+
+        return experiences, experiences_her
 
     @staticmethod
     def similar_config(config_1, config_2):
@@ -136,12 +173,14 @@ class Trainer:
                 done |= self.success_criterion(goal)
 
                 if done:
-                    experiences = self.trajectory2experiences(self.trajectories.pop(env_id))
+                    experiences, experiences_her = self.trajectory2experiences(
+                        self.trajectories.pop(env_id), self.her_ratio)
 
                     reward = sum(
                         [experience["reward"] for experience in experiences])
 
                     self.agent.add_experiences(experiences)
+                    self.agent.add_experiences(experiences_her)
 
                     self.writer.add_scalar(
                         f'{mode} reward episode', reward,
@@ -260,6 +299,7 @@ class Trainer:
 
         number_tests = training_config["number_tests"]
         test_interval = training_config["test_interval"]
+        self.her_ratio = training_config.get("her_ratio", 0)
         next_test_timestep = 0
 
         best_success_ratio = 0.0
@@ -351,6 +391,8 @@ class Trainer:
             pbar.update(sum(self.steps.values()) - pbar.n)
             pbar.refresh()
 
+        del self.env_orchestrator
+
 
 if __name__ == "__main__":
     experiment_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -360,17 +402,18 @@ if __name__ == "__main__":
     network_depths = [8]
     entropy_regularization_learning_rates = [5e-5]
     taus = [0.0025]
+    her_ratios = [0.2]
 
     import itertools
 
     for params in itertools.product(learning_rates, hidden_layer_sizes,
                                     network_depths,
                                     entropy_regularization_learning_rates,
-                                    taus):
+                                    taus, her_ratios):
         experiment_name = experiment_date + "/" + "_".join(
             list(map(str, params)))
 
-        learning_rates, hidden_layer_size, network_depth, entropy_regularization_learning_rate, tau = params
+        learning_rates, hidden_layer_size, network_depth, entropy_regularization_learning_rate, tau, her_ratio = params
 
         learning_rate_policy, learning_rate_critic = learning_rates
 
@@ -378,6 +421,7 @@ if __name__ == "__main__":
             "total_timesteps": 5_000_000,
             "test_interval": 500_000,
             "number_tests": 100,
+            "her_ratio": her_ratio,
             # "base_experiment": {
             #     "experiment": "20200513-145010",
             #     "agent": 0,
@@ -401,7 +445,7 @@ if __name__ == "__main__":
                 "critic_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth
             },
-            "number_envs": 4 * cpu_count(),
+            "number_envs": cpu_count(),
             "env_config": {
                 "environment": "robot",
                 "render": False,
