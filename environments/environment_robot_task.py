@@ -8,6 +8,7 @@ from gym import spaces
 from environments.robots import get_robot
 from environments.tasks import get_task
 
+
 class Environment(gym.Env):
 
     def __init__(self, task_config, robot_config, render=False,
@@ -73,13 +74,12 @@ class Environment(gym.Env):
             'robot': observation_robot
         }
 
-        achieved_goal, desired_goal, goal_reached, done = \
+        achieved_goal, desired_goal, done = \
             self.task.get_status(self.robot)
 
         goal = {
             'achieved': achieved_goal,
-            'desired': desired_goal,
-            'reached': goal_reached
+            'desired': desired_goal
         }
 
         return state, goal
@@ -91,7 +91,7 @@ class Environment(gym.Env):
         observation_robot = self.robot.step(action)
         observation_task = self.task.step(self.robot)
 
-        achieved_goal, desired_goal, goal_reached, done = \
+        achieved_goal, desired_goal, done = \
             self.task.get_status(self.robot)
 
         state = {
@@ -102,7 +102,6 @@ class Environment(gym.Env):
         goal = {
             'achieved': achieved_goal,
             'desired': desired_goal,
-            'reached': goal_reached
         }
 
         return state, goal, done
@@ -148,7 +147,7 @@ if __name__ == "__main__":
 
         done = False
 
-        desired_states = {"robot": [-1, 1, 1, 1, 1, 1, 1, .01, .01],
+        desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, .01, .01],
                          "task": np.array([.5, .5, .5, .5, .5, .5, 0])}
 
 

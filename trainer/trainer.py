@@ -8,13 +8,14 @@ from collections import defaultdict
 import datetime
 from environments.orchestrator import Orchestrator
 import json
-from multiprocessing import cpu_count
 import numpy as np
 import os
 import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
 from functools import partial
+from utils import unwind_dict_values
+from multiprocessing import cpu_count
 
 log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
                                  "../results")
@@ -36,18 +37,28 @@ class Trainer:
 
         return initial_state
 
-    @staticmethod
-    def reward_function(done, goal, **kwargs):
-        if goal["reached"]:
+    @classmethod
+    def reward_function(cls, done, goal, **kwargs):
+        if cls.success_criterion(goal):
             reward = 1.
         elif done:
             reward = -1.
         else:
-            reward = np.exp(-5 * np.linalg.norm(goal["achieved"] -
-                                                goal["desired"])) - 1
-            reward /= 25
+            goal_achieved = unwind_dict_values(goal["achieved"])
+            goal_desired = unwind_dict_values(goal["desired"])
+
+            reward = np.exp(
+                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
 
         return reward
+
+    @staticmethod
+    def success_criterion(goal):
+        goal_achieved = unwind_dict_values(goal["achieved"])
+        goal_desired = unwind_dict_values(goal["desired"])
+
+        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
+        return goal_distance < 0.05
 
     @classmethod
     def trajectory2experiences(cls, trajectory):
@@ -55,23 +66,22 @@ class Trainer:
 
         experiences = []
 
-        for trajectory_step in range(len(trajectory) // 2):
+        trajectory_length = len(trajectory) // 2
+
+        for trajectory_step in range(trajectory_length):
             state, _ = trajectory[trajectory_step * 2]
-
             action = trajectory[trajectory_step * 2 + 1]
-
             next_state, goal = trajectory[trajectory_step * 2 + 2]
-
             done = trajectory_step == len(trajectory) // 2 - 1
-
             reward = cls.reward_function(state=state, action=action,
                                          next_state=next_state, done=done,
                                          goal=goal)
 
-            state = np.concatenate([state["robot"], state["task"]], axis=-1)
-            goal = goal["desired"]
-            next_state = np.concatenate(
-                [next_state["robot"], next_state["task"]], axis=-1)
+            reward /= trajectory_length
+
+            state = unwind_dict_values(state)
+            goal = unwind_dict_values(goal["desired"])
+            next_state = unwind_dict_values(next_state)
 
             experience = {
                 "state": state,
@@ -123,6 +133,8 @@ class Trainer:
                 state, goal, done = data
                 self.trajectories[env_id].append((state, goal))
 
+                done |= self.success_criterion(goal)
+
                 if done:
                     experiences = self.trajectory2experiences(self.trajectories.pop(env_id))
 
@@ -136,7 +148,7 @@ class Trainer:
                         sum(self.steps.values()) + 1
                     )
 
-                    results_episodes.append(goal["reached"])
+                    results_episodes.append(self.success_criterion(goal))
 
                     requests.append(
                         (env_id, "reset",
@@ -163,8 +175,8 @@ class Trainer:
                 for env_id in required_predictions:
                     state, goal = self.trajectories[env_id][-1]
 
-                    state = np.concatenate([state["robot"], state["task"]])
-                    goal = goal["desired"]
+                    state = unwind_dict_values(state)
+                    goal = unwind_dict_values(goal["desired"])
 
                     states.append(state)
                     goals.append(goal)
@@ -343,7 +355,6 @@ class Trainer:
 if __name__ == "__main__":
     experiment_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    # 0.0005
     learning_rates = [(0.0005, 0.0005)]
     hidden_layer_sizes = [32]
     network_depths = [8]

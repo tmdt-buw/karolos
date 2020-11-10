@@ -95,11 +95,11 @@ class Pick_Place(Task):
             else:
                 continue
 
-            if robot:
-                contact_points = self.bullet_client.getContactPoints(
-                    robot.robot, self.target)
-            else:
-                contact_points = False
+                if robot:
+                    contact_points = self.bullet_client.getContactPoints(
+                        robot.robot, self.object)
+                else:
+                    contact_points = False
 
         return self.get_observation()
 
@@ -116,83 +116,35 @@ class Pick_Place(Task):
         position_object, _ = self.bullet_client.getBasePositionAndOrientation(
             self.object)
 
-        position_object = np.array(position_object )
+        position_object = np.array(position_object)
 
         return position_object
 
-    def get_goals(self, robot, success=True):
-        if success:
-            achieved_goal = self.get_object()
-        else:
-            achieved_goal = None
-
-        desired_goal = self.get_target()
-        return achieved_goal, desired_goal
-
-    # def get_gripped(self, robot):
-    #     # only called by get_object -> get_object = current state of task
-    #     # object has to be between gripper
-    #     grip = False
-    #     assert robot is not None, "provide robot to check if object is gripped"
-    #     grip_pos_1, _, _, _ = self.bullet_client.getJointState(robot.robot, 8)
-    #     grip_pos_2, _, _, _ = self.bullet_client.getJointState(robot.robot, 9)
-    #
-    #     position_object, _ = self.bullet_client.getBasePositionAndOrientation(
-    #         self.object)
-    #
-    #     position_tcp = robot.get_position_tcp()
-    #
-    #     print('#'*20,'gripped', grip_pos_1, '-', grip_pos_2, '-', position_object)
-    #     print('#'*20,'    tcp', position_tcp)
-    #
-    #     return grip
-
     def get_observation(self):
+        position_object, _ = self.bullet_client.getBasePositionAndOrientation(
+            self.object)
 
-        position_target = self.get_target()
-        position_object = self.get_object()
+        position_object = np.array(position_object)
 
-        observation_object = [np.interp(position, limits, [-1, 1])
-                              for position, limits in
-                              zip(position_object, self.limits)]
-
-        observation_target = [np.interp(position, limits, [-1, 1])
-                              for position, limits in
-                              zip(position_target, self.limits)]
-
-        observation = np.concatenate((observation_object, observation_target))
-        #print('#'*20,'observations', observation, observation_object, observation_target)
-        observation = observation.clip(self.observation_space.low,
-                                       self.observation_space.high)
+        observation = {"position": position_object}
 
         return observation
 
-    def compute_reward(self, achieved_goal, desired_goal):
+    def get_status(self, robot):
+        position_object, _ = self.bullet_client.getBasePositionAndOrientation(
+            self.object)
 
-        if achieved_goal is not None:
-            distance = np.linalg.norm(achieved_goal - desired_goal)
+        position_object = np.array(position_object)
 
-            #gripped_state = achieved_goal[-1]
-            #assert gripped_state in [0, 1], f'gripped state in reward not 0/1: {achieved_goal}'
+        position_object_desired, _ = \
+            self.bullet_client.getBasePositionAndOrientation(self.target)
 
-            goal_reached = distance < 0.05
-            done = goal_reached or self.step_counter >= self.max_steps
+        position_object_desired = np.array(position_object_desired)
 
-            if goal_reached:
-                reward = 1.
-            else:
-                if self.sparse_reward:
-                    reward = -1
+        achieved_goal = {"position": position_object}
 
-                else:
-                    reward = np.exp(-distance * 3.5) * 2 - 1
-                    reward /= self.max_steps
-                    #reward += int(gripped_state) - 1 # either -1 or 0 reward
-        else:
-            reward = -1.
-            goal_reached = False
-            done = True
+        desired_goal = {"position": position_object_desired}
 
-        reward = np.clip(reward, -1, 1)
+        done = self.step_counter >= self.max_steps
 
-        return reward, done, goal_reached
+        return achieved_goal, desired_goal, done
