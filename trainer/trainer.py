@@ -420,11 +420,8 @@ if __name__ == "__main__":
                 },
                 "robot_config": {
                     "name": "panda",
-                    "dof": 3,
                     "sim_time": .1,
                     "scale": .1,
-                    "use_gripper": True,
-                    "mirror_finger_control": True,
                     "domain_randomization": {
                         "linear_damping": {
                             'mean': 0.04,
@@ -434,7 +431,7 @@ if __name__ == "__main__":
                             'std_factor': 0.05,
                         }
                     }
-                },
+                }
             }
         }
 

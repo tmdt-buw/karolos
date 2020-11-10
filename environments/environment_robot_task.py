@@ -25,9 +25,11 @@ class Environment(gym.Env):
 
             bullet_client.setAdditionalSearchPath(pd.getDataPath())
 
-            time_step = 1. / 60.
+            time_step = 1. / 300.
             bullet_client.setTimeStep(time_step)
             bullet_client.setRealTimeSimulation(0)
+
+        bullet_client.loadURDF("plane.urdf")
 
         self.bullet_client = bullet_client
 
@@ -118,49 +120,82 @@ class Environment(gym.Env):
 
 if __name__ == "__main__":
 
-    env_kwargs1 = {
+    env_kwargs = {
         "render": True,
-        "task_config": {"name": "pick_place",
-                        "dof": 3,
-                        "only_positive": False,
-                        "max_steps": 50,
-                        },
+        "task_config": {
+            "name": "pick_place",
+            "max_steps": 25
+        },
         "robot_config": {
-            "use_gripper": True,
-            "mirror_finger_control": True,
             "name": "panda",
-            "dof": 3,
-            "sim_time": .1,
-            "scale": .1
+            "scale": .1,
+            "sim_time": .1
         }
     }
 
-    env1 = Environment(**env_kwargs1)
+    env = Environment(**env_kwargs)
 
-    action1 = np.zeros_like(env1.action_space.sample())
-    action1[0] = 1
+    while False:
+        observation, goal = env.reset()
+        goal_positiom = np.random.random(9)
 
-    action2 = np.zeros_like(env1.action_space.sample())
-    action2[0] = -1
+        for tt in np.arange(
+                2 / p.getPhysicsEngineParameters()["fixedTimeStep"]):
+
+            positions_joints = observation["robot"]["joint_positions"]
+            velocities_joints = observation["robot"]["joint_velocities"]
+
+            action = (goal_positiom - positions_joints) * (
+                    1 + 2 * (1 - np.abs(velocities_joints)))
+
+            action = np.clip(action, env.action_space.low,
+                             env.action_space.high)
+
+            observation, goal, done = env.step(action)
+
+            if np.all((goal_positiom - positions_joints) < 0.1):
+                print(tt)
+                break
+
+    time_step = env_kwargs["robot_config"]["sim_time"]
+
+    actions = []
+
+    action = np.zeros_like(env.action_space.sample())
+    action[1] = 1
+    action[-1] = 1
+
+    for _ in np.arange(.2 / time_step):
+        actions.append(action)
+
+    action = np.zeros_like(env.action_space.sample())
+    action[-1] = -1
+
+    for _ in np.arange(.2 / time_step):
+        actions.append(action)
+
+    action = np.zeros_like(env.action_space.sample())
+    action[1] = -1
+    action[-1] = -1
+
+    for _ in np.arange(.5 / time_step):
+        actions.append(action)
+
+    p.resetDebugVisualizerCamera(cameraDistance=1.5,
+                                 cameraYaw=70,
+                                 cameraPitch=-27,
+                                 cameraTargetPosition=(0, 0, 0)
+                                 )
 
     while True:
+        desired_state = {"robot": [0, 0.2, 0, -0.3, 0, .3, .2, 1, 1],
+                         "task": np.array([.7, 0, -.9, -.5, .0, .3])}
 
-        done = False
+        # observation = env.reset(desired_state=desired_state)
+        obs = env.reset(params=None)
 
-        desired_state = {"robot": [-1, 1, 1, 1, 1, 1, 1, .01, .01],
-                         "task": np.array([.5, .5, .5, .5, .5, .5, 0])}
+        for action in actions:
+            observation, goal, done = env.step(action)
 
-
-        # desired_state = {"robot": env1.robot.observation_space.sample(),
-        #                  "task": env1.task.observation_space.sample()}
-
-        obs = env1.reset(params=None)
-
-
-        action1 = env1.action_space.sample()
-
-        for i in range(25):
-            observation, goal, done = env1.step(action1)
-
-        for i in range(25):
-            observation, goal, done = env1.step(action2)
+            print(np.linalg.norm(
+                goal["desired"]["position"] - goal["achieved"]["position"]))
