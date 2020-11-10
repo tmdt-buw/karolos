@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections import namedtuple
 
@@ -7,8 +8,6 @@ import numpy as np
 import pybullet as p
 import pybullet_data as pd
 from gym import spaces
-
-import os
 from numpy.random import RandomState
 
 class Panda(gym.Env):
@@ -86,15 +85,14 @@ class Panda(gym.Env):
                     (self.ids_controllable, [8, 9]))
 
         # define spaces
-        self.action_space = spaces.Box(-1., 1., shape=
-                                self.ids_controllable.shape)
+        self.action_space = spaces.Box(-1., 1., shape=(len(self.joints_arm) + 1,))
 
-        if state_mode == 'full':
-            self.observation_space = spaces.Box(-1., 1., shape=(
-                2 * len(self.joints) + 3,))
-        elif state_mode == 'reduced':
-            self.observation_space = spaces.Box(-1., 1., shape=(
-                2 * len(self.ids_controllable) + 3,))
+        self.observation_space = spaces.Dict({
+            "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints),)),
+            "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints),)),
+            "tcp_position": spaces.Box(-1., 1., shape=(3,)),
+            # "tcp_velocity": spaces.Box(-1., 1., shape=(3,)),
+        })
 
         # reset to initial position
         self.reset()
@@ -220,33 +218,39 @@ class Panda(gym.Env):
         return observation
 
     def get_observation(self):
-        positions, velocities = [], []
+        joint_positions, joint_velocities = [], []
 
         for joint_id, joint in self.joints.items():
-            if self.state_mode == 'reduced' and joint_id not in self.ids_controllable:
-                continue
-
-            position, velocity, _, _ = self.bullet_client.getJointState(
+            joint_position, joint_velocity, _, _ = self.bullet_client.getJointState(
                 self.robot, joint_id)
 
-            positions.append(np.interp(position, joint.limits, [-1, 1]))
-            velocities.append(
-                np.interp(velocity, [-joint.max_velocity, joint.max_velocity],
+            joint_positions.append(np.interp(joint_position, joint.limits, [-1, 1]))
+            joint_velocities.append(
+                np.interp(joint_velocity, [-joint.max_velocity, joint.max_velocity],
                           [-1, 1]))
 
-        positions = np.array(positions)
-        velocities = np.array(velocities)
-        position_tcp = self.get_position_tcp()
+        tcp_position, _, _, _, _, _, tcp_velocity, _ = \
+            self.bullet_client.getLinkState(self.robot, 10,
+                                            computeLinkVelocity=True)
 
-        observation = np.concatenate((positions, velocities, position_tcp))
+        joint_positions = np.array(joint_positions)
+        joint_velocities = np.array(joint_velocities)
+        tcp_position = np.array(tcp_position)
+        # tcp_velocity = np.array(tcp_velocity)
 
-        observation = observation.clip(self.observation_space.low,
-                                       self.observation_space.high)
+        observation = {
+            "joint_positions": joint_positions,
+            "joint_velocities": joint_velocities,
+            "tcp_position": tcp_position,
+            # "tcp_velocity": tcp_velocity
+        }
+
+        for key in observation:
+            observation[key] = observation[key].clip(
+                self.observation_space[key].low,
+                self.observation_space[key].high)
+
         return observation
-
-    def get_position_tcp(self):
-
-        return self.bullet_client.getLinkState(self.robot, 10)[0]
 
 
 if __name__ == "__main__":

@@ -47,7 +47,6 @@ class Environment(gym.Env):
         """Reset the environment and return new state
         """
 
-
         try:
             if desired_state is not None:
                 observation_robot = self.robot.reset(desired_state["robot"])
@@ -65,13 +64,12 @@ class Environment(gym.Env):
             'robot': observation_robot
         }
 
-        achieved_goal, desired_goal, goal_reached, done = \
+        achieved_goal, desired_goal, done = \
             self.task.get_status(self.robot)
 
         goal = {
             'achieved': achieved_goal,
-            'desired': desired_goal,
-            'reached': goal_reached
+            'desired': desired_goal
         }
 
         return state, goal
@@ -83,7 +81,7 @@ class Environment(gym.Env):
         observation_robot = self.robot.step(action)
         observation_task = self.task.step(self.robot)
 
-        achieved_goal, desired_goal, goal_reached, done = \
+        achieved_goal, desired_goal, done = \
             self.task.get_status(self.robot)
 
         state = {
@@ -94,7 +92,6 @@ class Environment(gym.Env):
         goal = {
             'achieved': achieved_goal,
             'desired': desired_goal,
-            'reached': goal_reached
         }
 
         return state, goal, done

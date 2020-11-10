@@ -24,7 +24,10 @@ class Reach(Task):
         ])
 
         self.observation_space = spaces.Box(-1, 1, shape=(0,))
-        self.goal_space = spaces.Box(-1, 1, shape=(3,))
+        self.goal_space = spaces.Dict({
+            "tcp_position": spaces.Box(-1, 1, shape=(3,)),
+            # "tcp_velocity": spaces.Box(-1, 1, shape=(3,))
+        })
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
                                                   useFixedBase=True)
@@ -63,16 +66,8 @@ class Reach(Task):
 
         while contact_points:
 
-            target_position = np.random.uniform(-1, 1, 3)
-
-            for dimension in range(self.dof):
-                if self.only_positive:
-                    target_position[dimension] = self.random.uniform(0,
-                                                                   self.limits[
-                                                                       dimension, 1])
-                else:
-                    target_position[dimension] = self.random.uniform(
-                        *self.limits[dimension])
+            target_position = np.random.uniform(self.limits[:, 0],
+                                                self.limits[:, 1])
 
             if np.linalg.norm(target_position) < 0.8:
                 target_position += self.offset
@@ -94,19 +89,26 @@ class Reach(Task):
         return np.array([])
 
     def get_status(self, robot):
-        achieved_goal = robot.get_position_tcp()
+        observation = robot.get_observation()
+        achieved_goal = {
+            "position": observation["tcp_position"],
+            # "velocity": observation["tcp_velocity"]
+        }
 
-        desired_goal, _ = self.bullet_client.getBasePositionAndOrientation(
+        position_desired, _ = self.bullet_client.getBasePositionAndOrientation(
             self.target)
+        position_desired = np.array(position_desired)
 
-        desired_goal = np.array(desired_goal)
+        # velocity_desired = np.zeros_like(observation["tcp_velocity"])
 
-        distance_tcp_object = np.linalg.norm(achieved_goal - desired_goal)
-        goal_reached = distance_tcp_object < 0.05
+        desired_goal = {
+            "position": position_desired,
+            # "velocity": velocity_desired
+        }
 
-        done = goal_reached or self.step_counter >= self.max_steps
+        done = self.step_counter >= self.max_steps
 
-        return achieved_goal, desired_goal, goal_reached, done
+        return achieved_goal, desired_goal, done
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from agents.utils.replay_buffer import ReplayBuffer
-
+from utils import unwind_space_shapes
 
 class Agent:
 
@@ -15,10 +15,9 @@ class Agent:
         self.observation_space = observation_space
         self.action_space = action_space
 
-        self.state_dim = (
-            sum(map(np.product, [observation_space["robot"].shape,
-                                 observation_space["task"].shape,
-                                 observation_space["goal"].shape])),)
+        observation_shapes = unwind_space_shapes(observation_space)
+
+        self.state_dim = (sum(map(np.product, observation_shapes)),)
         self.action_dim = self.action_space.shape
 
         assert len(self.state_dim) == 1
