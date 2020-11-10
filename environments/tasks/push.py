@@ -32,7 +32,7 @@ class Push(Task):
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
                                                   useFixedBase=True)
-        self.object = self.bullet_client.loadURDF("objects/box.urdf")
+        self.object = self.bullet_client.loadURDF("objects/cube.urdf")
 
         # self.bullet_client.changeDynamics(self.object, -1, mass=0)
         self.random = RandomState(
