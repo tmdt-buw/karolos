@@ -411,11 +411,8 @@ if __name__ == "__main__":
                 },
                 "robot_config": {
                     "name": "panda",
-                    "dof": 3,
                     "sim_time": .1,
                     "scale": .1,
-                    "use_gripper": True,
-                    "mirror_finger_control": True,
                 }
             }
         }

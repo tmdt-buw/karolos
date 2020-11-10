@@ -14,25 +14,18 @@ class Panda(gym.Env):
     tolerance_joint_rotation = np.pi / 180
     tolerance_joint_linear = 0.001
 
-    def __init__(self, bullet_client, dof=3, state_mode='full',
-                 use_gripper=False, mirror_finger_control=False, offset=(0, 0, 0), time_step=1. / 240.,
-                 sim_time=.1, scale=0.1):
+    def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
-        assert dof in [2, 3]
-        self.dof = dof
-        assert state_mode in ['full', 'reduced', 'tcp']
-        if mirror_finger_control:
-            assert use_gripper, 'cannot mirror control if not using gripper'
+        self.time_step = bullet_client.getPhysicsEngineParameters()["fixedTimeStep"]
 
-        self.state_mode = state_mode
-        self.use_gripper = use_gripper
-        self.mirror_finger = mirror_finger_control
-        self.time_step = time_step
+        if not sim_time:
+            sim_time = self.time_step
+
         self.scale = scale
 
-        self.max_steps = int(sim_time / time_step)
+        self.max_steps = int(sim_time / self.time_step)
 
         self.offset = offset
 
@@ -49,7 +42,7 @@ class Panda(gym.Env):
 
         Joint = namedtuple("Joint",
                            ["initial_position", "limits", "max_velocity",
-                            "torque"])
+                            "max_torque"])
 
         self.joints = {
             0: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
@@ -61,35 +54,28 @@ class Panda(gym.Env):
             6: Joint(0.707, (-2.8973, 2.8973), 2.6100, 12),
 
             # hand
-            8: Joint(0.035, (0.0, 0.04), 0.05, 70),
-            9: Joint(0.035, (0.0, 0.04), 0.05, 70),
+            8: Joint(0.035, (0.0, 0.04), 0.05, 20),
+            9: Joint(0.035, (0.0, 0.04), 0.05, 20),
         }
 
-        for joint_id, joint in self.joints.items():
-            self.bullet_client.changeDynamics(self.robot, joint_id,
-                                              linearDamping=0,
-                                              angularDamping=0)
+        self.joints_arm = list(range(7))
+        self.joints_fingers = list(range(8, 10))
 
-        # define controllable parameters
-        if self.dof == 2:
-            self.ids_controllable = np.array([1, 3, 5])
-        else:
-            self.ids_controllable = np.arange(7)
+        # todo introduce friction
+        self.bullet_client.setJointMotorControlArray(self.robot,
+                                                     self.joints_fingers,
+                                                     p.VELOCITY_CONTROL,
+                                                     forces=[0 * self.joints[idx].max_torque
+                                                         for idx in self.joints_fingers])
 
-        if use_gripper:
-            if self.mirror_finger:
-                self.ids_controllable = np.concatenate(
-                    (self.ids_controllable, [8]))
-            else:
-                self.ids_controllable = np.concatenate(
-                    (self.ids_controllable, [8, 9]))
+        self.bullet_client.stepSimulation()
 
         # define spaces
         self.action_space = spaces.Box(-1., 1., shape=(len(self.joints_arm) + 1,))
 
         self.observation_space = spaces.Dict({
-            "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints),)),
-            "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints),)),
+            "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints_arm) + len(self.joints_fingers),)),
+            "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints_arm) + len(self.joints_fingers),)),
             "tcp_position": spaces.Box(-1., 1., shape=(3,)),
             # "tcp_velocity": spaces.Box(-1., 1., shape=(3,)),
         })
@@ -107,17 +93,8 @@ class Panda(gym.Env):
             desired_state = list(desired_state)
 
             for joint_id, joint in self.joints.items():
-                if joint_id in self.ids_controllable:
-                    joint_position = np.interp(desired_state.pop(0), [-1, 1],
-                                               joint.limits)
-                else:
-
-                    if self.mirror_finger and joint_id == 9:
-                        self.bullet_client.resetJointState(self.robot, joint_id,
-                                                           joint_position)
-                        continue
-
-                    joint_position = joint.initial_position
+                joint_position = np.interp(desired_state.pop(0), [-1, 1],
+                                           joint.limits)
 
                 self.bullet_client.resetJointState(self.robot, joint_id,
                                                    joint_position)
@@ -130,17 +107,7 @@ class Panda(gym.Env):
         while contact_points:
 
             for joint_id, joint in self.joints.items():
-
-                if joint_id in self.ids_controllable:
-                    joint_position = self.random.uniform(*joint.limits)
-                else:
-
-                    if self.mirror_finger and joint_id == 9:
-                        self.bullet_client.resetJointState(self.robot, joint_id,
-                                                           joint_position)
-                        continue
-
-                    joint_position = joint.initial_position
+                joint_position = self.random.uniform(*joint.limits)
 
                 self.bullet_client.resetJointState(self.robot, joint_id,
                                                    joint_position)
@@ -156,61 +123,44 @@ class Panda(gym.Env):
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
 
-        action = list(action * self.scale)
+        action_arm = action[:7]
+        action_fingers = action[-1]
 
-        # duplicate action
-        if self.mirror_finger:
-            action.append(action[-1])
+        action_arm = list(action_arm * self.scale) # / self.max_steps)
 
-        for joint_id, joint in self.joints.items():
+        target_arm_positions = []
+        torques_arm = []
 
-            if joint_id in self.ids_controllable:
-                position, _, _, _ = self.bullet_client.getJointState(
-                    self.robot, joint_id)
+        for joint_id, action_joint in zip(self.joints_arm, action_arm):
 
-                action_joint = action.pop(0)
+            position, _, _, _ = self.bullet_client.getJointState(self.robot, joint_id)
 
-                normalized_joint_position = np.interp(position, joint.limits,
-                                                      [-1, 1])
-                normalized_target_joint_position = normalized_joint_position + action_joint
-                normalized_target_joint_position = np.clip(
-                    normalized_target_joint_position, -1, 1)
-                target_joint_position = np.interp(
-                    normalized_target_joint_position, [-1, 1], joint.limits)
+            normalized_joint_position = np.interp(position, self.joints[joint_id].limits, [-1, 1])
+            normalized_target_joint_position = np.clip(normalized_joint_position + action_joint, -1, 1)
+            target_joint_position = np.interp(normalized_target_joint_position, [-1, 1], self.joints[joint_id].limits)
 
-            else:
+            target_arm_positions.append(target_joint_position)
+            torques_arm.append(self.joints[joint_id].max_torque)
 
-                if self.mirror_finger and joint_id == 9:
-                    position, _, _, _ = self.bullet_client.getJointState(
-                        self.robot, joint_id)
-                    action_joint = action.pop(0)
-                    normalized_joint_position = np.interp(position,
-                                                          joint.limits,
-                                                          [-1, 1])
-                    normalized_target_joint_position = normalized_joint_position + action_joint
-                    normalized_target_joint_position = np.clip(
-                        normalized_target_joint_position, -1, 1)
-                    target_joint_position = np.interp(
-                        normalized_target_joint_position, [-1, 1],
-                        joint.limits)
-                    self.bullet_client.setJointMotorControl2(self.robot,
-                                                             joint_id,
-                                                             self.bullet_client.POSITION_CONTROL,
-                                                             target_joint_position,
-                                                             force=joint.torque)
-                    continue
+        self.bullet_client.setJointMotorControlArray(self.robot,
+                                                     self.joints_arm,
+                                                     p.POSITION_CONTROL,
+                                                     targetPositions=target_arm_positions,
+                                                     forces=torques_arm
+                                                     )
 
-                target_joint_position = joint.initial_position
-
-            self.bullet_client.setJointMotorControl2(self.robot, joint_id,
-                                                     self.bullet_client.POSITION_CONTROL,
-                                                     target_joint_position,
-                                                     force=joint.torque)
+        torques_fingers = [action_fingers * self.joints[joint_id].max_torque for joint_id in self.joints_fingers]
 
         for step in range(self.max_steps):
+
+            self.bullet_client.setJointMotorControlArray(self.robot,
+                                                         self.joints_fingers,
+                                                         p.TORQUE_CONTROL,
+                                                         forces=torques_fingers)
+
             self.bullet_client.stepSimulation()
-            if self.bullet_client.getConnectionInfo()[
-                "connectionMethod"] == p.GUI:
+
+            if self.bullet_client.getConnectionInfo()["connectionMethod"] == p.GUI:
                 time.sleep(self.time_step)
 
         observation = self.get_observation()
@@ -257,22 +207,25 @@ if __name__ == "__main__":
     p.connect(p.GUI)
     p.setAdditionalSearchPath(pd.getDataPath())
 
-    time_step = 1. / 60.
-    p.setTimeStep(time_step)
+    p.resetDebugVisualizerCamera(cameraDistance=1.5,
+                                 cameraYaw=70,
+                                 cameraPitch=-27,
+                                 cameraTargetPosition=(0, 0, 0)
+                                 )
+
     p.setRealTimeSimulation(0)
 
-    robot = Panda(p, dof=3, time_step=time_step, sim_time=.1, scale=.1)
+    p.setGravity(0, 0, -9.81)
 
-    initial_pose = np.ones(8)
+    robot = Panda(p, sim_time=.1, scale=.1)
 
     while True:
-        # action = robot.action_space.sample()
+        observation = robot.reset()
 
-        robot.reset(initial_pose)
+        action = -np.ones_like(robot.action_space.sample())
 
-        for i in range(50):
-            action = -np.ones_like(robot.action_space.sample())
+        for _ in range(25):
+            observation = robot.step(action)
 
-            obs = robot.step(action)
-
-            # print(min(obs[9:]), max(obs[9:]))
+        for _ in range(25):
+            observation = robot.step(-action)
