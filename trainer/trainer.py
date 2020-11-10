@@ -404,9 +404,6 @@ if __name__ == "__main__":
                 "render": False,
                 "task_config": {
                     "name": "reach",
-                    "dof": 3,
-                    "only_positive": False,
-                    "sparse_reward": False,
                     "max_steps": 25
                 },
                 "robot_config": {

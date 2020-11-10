@@ -7,15 +7,12 @@ from numpy.random import RandomState
 class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 dof=1, only_positive=False, sparse_reward=False,
                  max_steps=100):
 
         super(Reach, self).__init__(bullet_client=bullet_client,
                                     gravity=[0, 0, 0],
                                     offset=offset,
-                                    dof=dof,
-                                    only_positive=only_positive,
-                                    sparse_reward=sparse_reward)
+                                    max_steps=max_steps)
 
         self.limits = np.array([
             (-.8, .8),
@@ -34,8 +31,6 @@ class Reach(Task):
 
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))
-
-        self.max_steps = max_steps
 
     def reset(self, robot=None, desired_state=None):
 
@@ -119,19 +114,10 @@ if __name__ == "__main__":
     p.connect(p.GUI)
     p.setAdditionalSearchPath(pd.getDataPath())
 
-    time_step = 1. / 60.
-    p.setTimeStep(time_step)
-    p.setRealTimeSimulation(0)
-
-    task = Reach(p, dof=3)
+    task = Reach(p)
 
     while True:
-        p.stepSimulation()
-
-        time.sleep(time_step)
-
-        success = True
-
         obs = task.reset()
-
         p.stepSimulation()
+
+        time.sleep(p.getPhysicsEngineParameters()["fixedTimeStep"])

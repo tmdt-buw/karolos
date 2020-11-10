@@ -11,8 +11,6 @@ from gym import spaces
 from numpy.random import RandomState
 
 class Panda(gym.Env):
-    tolerance_joint_rotation = np.pi / 180
-    tolerance_joint_linear = 0.001
 
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.):
 

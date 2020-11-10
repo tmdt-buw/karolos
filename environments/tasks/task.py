@@ -5,23 +5,20 @@ class Task(object):
 
     def __init__(self,
                  bullet_client,
-                 gravity,
+                 gravity=(0, 0, -9.81),
                  offset=(0, 0, 0),
-                 dof=1,
-                 only_positive=False, sparse_reward=False):
+                 max_steps=100):
 
-        assert dof in [1, 2, 3]
         assert len(gravity) == 3
 
         self.bullet_client = bullet_client
         self.offset = offset
-        self.dof = dof
-        self.only_positive = only_positive
-        self.sparse_reward = sparse_reward
 
         bullet_client.setGravity(*gravity)
 
         self.step_counter = 0
+
+        self.max_steps = max_steps
 
     def reset(self):
 
@@ -32,14 +29,7 @@ class Task(object):
             obstacles = []
 
         while True:
-            new_target_position = np.zeros(3)
-
-            for dd in range(self.dof):
-
-                new_target_position[dd] = np.random.uniform(0, 1)
-
-                if not self.only_positive:
-                    new_target_position[dd] *= np.random.choice([1, -1])
+            new_target_position = np.random.uniform(-1, 1, 3)
 
             if np.linalg.norm(new_target_position) < 0.8:
 
