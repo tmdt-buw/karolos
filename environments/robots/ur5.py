@@ -10,13 +10,9 @@ import pybullet_data as pd
 from gym import spaces
 from numpy.random import RandomState
 
-class Panda(gym.Env):
 
-    def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
-                 domain_randomization=None):
-
-        if domain_randomization is None:
-            domain_randomization = {}
+class UR5(gym.Env):
+    def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -26,7 +22,6 @@ class Panda(gym.Env):
             sim_time = self.time_step
 
         self.scale = scale
-        self.domain_randomization = domain_randomization
 
         self.max_steps = int(sim_time / self.time_step)
 
@@ -38,7 +33,7 @@ class Panda(gym.Env):
             int.from_bytes(os.urandom(4), byteorder='little'))
 
         # load robot in simulation
-        self.robot = bullet_client.loadURDF("robots/panda/panda.urdf",
+        self.robot = bullet_client.loadURDF("robots/ur5/ur5.urdf",
                                             np.array([0, 0, 0]) + self.offset,
                                             useFixedBase=True,
                                             flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
@@ -48,61 +43,27 @@ class Panda(gym.Env):
                             "max_torque"])
 
         self.joints = {
-            0: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
-            1: Joint(0.5, (-1.7628, 1.7628), 2.1750, 87),
-            2: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
-            3: Joint(-0.5, (-3.0718, -0.0698), 2.1750, 87),
-            4: Joint(0, (-2.8973, 2.8973), 2.6100, 12),
-            5: Joint(1., (-0.0175, 3.7525), 2.6100, 12),
-            6: Joint(0.707, (-2.8973, 2.8973), 2.6100, 12),
+            0: Joint(0, (-6.2831, 6.2831), 3.15, 300),
+            1: Joint(0, (-2.3561, 2.3561), 3.15, 150),
+            2: Joint(0, (-3.1415, 3.1415), 3.15, 150),
+            3: Joint(0, (-2.3561, 2.3561), 3.2, 28),
+            4: Joint(0, (-6.2831, 6.2831), 3.2, 28),
+            5: Joint(0, (-6.2831, 6.2831), 3.2, 28),
 
-            # finger 1 & 2
+            # hand
+            7: Joint(0.035, (0.0, 0.04), 0.05, 20),
             8: Joint(0.035, (0.0, 0.04), 0.05, 20),
-            9: Joint(0.035, (0.0, 0.04), 0.05, 20),
         }
 
-        self.joints_arm = list(range(7))
-        self.joints_fingers = list(range(8, 10))
+        self.joints_arm = list(range(6))
+        self.joints_fingers = list(range(7, 9))
 
         # todo introduce friction
         self.bullet_client.setJointMotorControlArray(self.robot,
                                                      self.joints_fingers,
                                                      p.VELOCITY_CONTROL,
-                                                     forces=[0 * self.joints[
-                                                         idx].max_torque
-                                                             for idx in
-                                                             self.joints_fingers])
-
-        Link = namedtuple("Link", ["mass", "linear_damping"])
-
-        self.links = {
-            0: Link(2.7, 0.01),
-            1: Link(2.73, 0.01),
-            2: Link(2.04, 0.01),
-            3: Link(2.08, 0.01),
-            4: Link(3.0, 0.01),
-            5: Link(1.3, 0.01),
-            6: Link(0.2, 0.01),
-            7: Link(0.81, 0.01),
-            8: Link(0.1, 0.01),
-            9: Link(0.1, 0.01),
-            10: Link(0.0, 0.01),
-        }
-
-        # todo: still valid?
-        for joint_id, joint in self.joints.items():
-            self.bullet_client.changeDynamics(self.robot, joint_id,
-                                              linearDamping=0)
-            self.bullet_client.changeDynamics(self.robot, joint_id,
-                                              angularDamping=0)
-
-        self.standard()
-
-        # define controllable parameters
-        if self.dof == 2:
-            self.ids_controllable = np.array([1, 3, 5])
-        else:
-            self.ids_controllable = np.arange(7)
+                                                     forces=[0 * self.joints[idx].max_torque
+                                                         for idx in self.joints_fingers])
 
         self.bullet_client.stepSimulation()
 
@@ -159,7 +120,7 @@ class Panda(gym.Env):
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
 
-        action_arm = action[:7]
+        action_arm = action[:6]
         action_fingers = action[-1]
 
         action_arm = list(action_arm * self.scale) # / self.max_steps)
@@ -216,7 +177,7 @@ class Panda(gym.Env):
                           [-1, 1]))
 
         tcp_position, _, _, _, _, _, tcp_velocity, _ = \
-            self.bullet_client.getLinkState(self.robot, 10,
+            self.bullet_client.getLinkState(self.robot, 9,
                                             computeLinkVelocity=True)
 
         joint_positions = np.array(joint_positions)
@@ -238,35 +199,6 @@ class Panda(gym.Env):
 
         return observation
 
-    def randomize(self):
-
-        for link_id, link in self.links.items():
-            if 'linear_damping' in self.domain_randomization.keys():
-                linear_damping = max(0, np.random.normal(self.domain_randomization['linear_damping']['mean'],
-                                                         self.domain_randomization['linear_damping']['std']))
-            else:
-                linear_damping = link.linear_damping
-
-            if 'mass' in self.domain_randomization.keys():
-                mass = np.random.normal(link.mass, link.mass * self.domain_randomization['mass']['std_factor'])
-            else:
-                mass = link.mass
-
-            self.bullet_client.changeDynamics(self.robot, link_id, linearDamping=linear_damping)
-            self.bullet_client.changeDynamics(self.robot, link_id, mass=mass)
-
-    def standard(self):
-
-        for link_id, link in self.links.items():
-
-            if 'linear_damping' in self.domain_randomization.keys():
-                linear_damping = self.domain_randomization['linear_damping']['mean']
-            else:
-                linear_damping = link.linear_damping
-
-            self.bullet_client.changeDynamics(self.robot, link_id, linearDamping=linear_damping)
-            self.bullet_client.changeDynamics(self.robot, link_id, mass=link.mass)
-
 
 if __name__ == "__main__":
     p.connect(p.GUI)
@@ -284,7 +216,7 @@ if __name__ == "__main__":
 
     p.setGravity(0, 0, -9.81)
 
-    robot = Panda(p, sim_time=.1, scale=.1)
+    robot = UR5(p, sim_time=.1, scale=.1)
 
     while True:
         observation = robot.reset()
