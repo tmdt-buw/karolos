@@ -445,10 +445,10 @@ if __name__ == "__main__":
                 "critic_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth
             },
-            "number_envs": cpu_count(),
+            "number_envs": 1, # cpu_count(),
             "env_config": {
                 "environment": "robot",
-                "render": False,
+                "render": True,
                 "task_config": {
                     "name": "reach",
                     "max_steps": 25,
@@ -460,18 +460,18 @@ if __name__ == "__main__":
                     }
                 },
                 "robot_config": {
-                    "name": "panda",
+                    "name": "ur5",
                     "sim_time": .1,
                     "scale": .1,
-                    "domain_randomization": {
-                        "linear_damping": {
-                            'mean': 0.04,
-                            'std': 0.01,
-                        },
-                        "mass": {
-                            'std_factor': 0.05,
-                        }
-                    }
+                    # "domain_randomization": {
+                    #     "linear_damping": {
+                    #         'mean': 0.04,
+                    #         'std': 0.01,
+                    #     },
+                    #     "mass": {
+                    #         'std_factor': 0.05,
+                    #     }
+                    # }
                 }
             }
         }

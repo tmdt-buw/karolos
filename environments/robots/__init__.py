@@ -1,5 +1,5 @@
 from .panda import Panda
-from .ur5 import ur5
+from .ur5 import UR5
 
 def get_robot(robot_config, bullet_client):
     robot_name = robot_config.pop("name")
@@ -7,7 +7,7 @@ def get_robot(robot_config, bullet_client):
     if robot_name == 'panda':
         robot = Panda(bullet_client, **robot_config)
     elif robot_name == 'ur5':
-        robot = ur5(bullet_client, **robot_config)
+        robot = UR5(bullet_client, **robot_config)
     else:
         raise ValueError(f"Unknown robot: {robot_name}")
 

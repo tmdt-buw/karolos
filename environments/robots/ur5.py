@@ -10,11 +10,17 @@ import pybullet_data as pd
 from gym import spaces
 from numpy.random import RandomState
 
+# todo implement domain randomization
 
 class UR5(gym.Env):
-    def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.):
+    def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
+                 domain_randomization=None):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
+
+        if domain_randomization is not None:
+            logging.warning("Domain randomization not implemented for UR5")
+            raise NotImplementedError()
 
         self.time_step = bullet_client.getPhysicsEngineParameters()["fixedTimeStep"]
 
@@ -199,6 +205,11 @@ class UR5(gym.Env):
 
         return observation
 
+    def randomize(self):
+        logging.warning("Domain randomization not implemented for UR5")
+
+    def standard(self):
+        pass
 
 if __name__ == "__main__":
     p.connect(p.GUI)

@@ -63,8 +63,6 @@ class Panda(gym.Env):
 
         self.joints_arm = list(range(7))
         self.joints_fingers = list(range(8, 10))
-        self.joints_arm = list(range(7))
-        self.joints_fingers = list(range(8, 10))
 
         # todo introduce friction
         self.bullet_client.setJointMotorControlArray(self.robot,
