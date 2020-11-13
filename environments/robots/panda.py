@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections import namedtuple
 
@@ -7,8 +8,6 @@ import numpy as np
 import pybullet as p
 import pybullet_data as pd
 from gym import spaces
-
-import os
 from numpy.random import RandomState
 
 class Panda(gym.Env):
@@ -62,6 +61,8 @@ class Panda(gym.Env):
             9: Joint(0.035, (0.0, 0.04), 0.05, 20),
         }
 
+        self.joints_arm = list(range(7))
+        self.joints_fingers = list(range(8, 10))
         self.joints_arm = list(range(7))
         self.joints_fingers = list(range(8, 10))
 
@@ -239,10 +240,6 @@ class Panda(gym.Env):
                 self.observation_space[key].high)
 
         return observation
-
-    def get_position_tcp(self):
-
-        return self.bullet_client.getLinkState(self.robot, 10)[0]
 
     def randomize(self):
 
