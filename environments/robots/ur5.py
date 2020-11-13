@@ -10,8 +10,8 @@ import pybullet_data as pd
 from gym import spaces
 from numpy.random import RandomState
 
-class Panda(gym.Env):
 
+class UR5(gym.Env):
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
@@ -33,7 +33,7 @@ class Panda(gym.Env):
             int.from_bytes(os.urandom(4), byteorder='little'))
 
         # load robot in simulation
-        self.robot = bullet_client.loadURDF("robots/panda/panda.urdf",
+        self.robot = bullet_client.loadURDF("robots/ur5/ur5.urdf",
                                             np.array([0, 0, 0]) + self.offset,
                                             useFixedBase=True,
                                             flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
@@ -43,21 +43,20 @@ class Panda(gym.Env):
                             "max_torque"])
 
         self.joints = {
-            0: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
-            1: Joint(0.5, (-1.7628, 1.7628), 2.1750, 87),
-            2: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
-            3: Joint(-0.5, (-3.0718, -0.0698), 2.1750, 87),
-            4: Joint(0, (-2.8973, 2.8973), 2.6100, 12),
-            5: Joint(1., (-0.0175, 3.7525), 2.6100, 12),
-            6: Joint(0.707, (-2.8973, 2.8973), 2.6100, 12),
+            0: Joint(0, (-6.2831, 6.2831), 3.15, 300),
+            1: Joint(0, (-2.3561, 2.3561), 3.15, 150),
+            2: Joint(0, (-3.1415, 3.1415), 3.15, 150),
+            3: Joint(0, (-2.3561, 2.3561), 3.2, 28),
+            4: Joint(0, (-6.2831, 6.2831), 3.2, 28),
+            5: Joint(0, (-6.2831, 6.2831), 3.2, 28),
 
             # hand
+            7: Joint(0.035, (0.0, 0.04), 0.05, 20),
             8: Joint(0.035, (0.0, 0.04), 0.05, 20),
-            9: Joint(0.035, (0.0, 0.04), 0.05, 20),
         }
 
-        self.joints_arm = list(range(7))
-        self.joints_fingers = list(range(8, 10))
+        self.joints_arm = list(range(6))
+        self.joints_fingers = list(range(7, 9))
 
         # todo introduce friction
         self.bullet_client.setJointMotorControlArray(self.robot,
@@ -121,7 +120,7 @@ class Panda(gym.Env):
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
 
-        action_arm = action[:7]
+        action_arm = action[:6]
         action_fingers = action[-1]
 
         action_arm = list(action_arm * self.scale) # / self.max_steps)
@@ -178,7 +177,7 @@ class Panda(gym.Env):
                           [-1, 1]))
 
         tcp_position, _, _, _, _, _, tcp_velocity, _ = \
-            self.bullet_client.getLinkState(self.robot, 10,
+            self.bullet_client.getLinkState(self.robot, 9,
                                             computeLinkVelocity=True)
 
         joint_positions = np.array(joint_positions)
@@ -217,7 +216,7 @@ if __name__ == "__main__":
 
     p.setGravity(0, 0, -9.81)
 
-    robot = Panda(p, sim_time=.1, scale=.1)
+    robot = UR5(p, sim_time=.1, scale=.1)
 
     while True:
         observation = robot.reset()
