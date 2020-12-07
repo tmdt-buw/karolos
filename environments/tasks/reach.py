@@ -3,6 +3,7 @@ from gym import spaces
 import os
 from environments.tasks.task import Task
 from numpy.random import RandomState
+from utils import unwind_dict_values
 
 class Reach(Task):
 
@@ -35,6 +36,29 @@ class Reach(Task):
 
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))
+
+    @classmethod
+    def reward_function(cls, done, goal, **kwargs):
+        if cls.success_criterion(goal):
+            reward = 1.
+        elif done:
+            reward = -1.
+        else:
+            goal_achieved = unwind_dict_values(goal["achieved"])
+            goal_desired = unwind_dict_values(goal["desired"])
+
+            reward = np.exp(
+                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
+
+        return reward
+
+    @staticmethod
+    def success_criterion(goal):
+        goal_achieved = unwind_dict_values(goal["achieved"])
+        goal_desired = unwind_dict_values(goal["desired"])
+
+        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
+        return goal_distance < 0.05
 
     def reset(self, robot=None, desired_state=None):
 

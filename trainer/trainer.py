@@ -37,31 +37,7 @@ class Trainer:
 
         return initial_state
 
-    @classmethod
-    def reward_function(cls, done, goal, **kwargs):
-        if cls.success_criterion(goal):
-            reward = 1.
-        elif done:
-            reward = -1.
-        else:
-            goal_achieved = unwind_dict_values(goal["achieved"])
-            goal_desired = unwind_dict_values(goal["desired"])
-
-            reward = np.exp(
-                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
-
-        return reward
-
-    @staticmethod
-    def success_criterion(goal):
-        goal_achieved = unwind_dict_values(goal["achieved"])
-        goal_desired = unwind_dict_values(goal["desired"])
-
-        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
-        return goal_distance < 0.01
-
-    @classmethod
-    def trajectory2experiences(cls, trajectory, her_ratio=0.):
+    def trajectory2experiences(self, trajectory, her_ratio=0.):
         assert len(trajectory) % 2
 
         experiences = []
@@ -74,7 +50,7 @@ class Trainer:
             action = trajectory[trajectory_step * 2 + 1]
             next_state, goal = trajectory[trajectory_step * 2 + 2]
             done = trajectory_step == len(trajectory) // 2 - 1
-            reward = cls.reward_function(state=state, action=action,
+            reward = self.reward_function(state=state, action=action,
                                          next_state=next_state, done=done,
                                          goal=goal)
 
@@ -112,9 +88,11 @@ class Trainer:
             goal = goal.copy()
             goal["desired"] = future_goal["achieved"]
 
-            reward = cls.reward_function(state=state, action=action,
+            reward = self.reward_function(state=state, action=action,
                                          next_state=next_state, done=done,
                                          goal=goal)
+
+            reward /= trajectory_length
 
             state = unwind_dict_values(state)
             goal = unwind_dict_values(goal["desired"])
@@ -251,6 +229,9 @@ class Trainer:
         env_config = training_config["env_config"]
 
         self.env_orchestrator = Orchestrator(env_config, number_envs)
+
+        self.reward_function = self.env_orchestrator.reward_function
+        self.success_criterion = self.env_orchestrator.success_criterion
 
         # get agents
         agent_config = training_config["agent_config"]

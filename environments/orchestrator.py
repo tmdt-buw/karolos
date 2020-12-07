@@ -13,7 +13,8 @@ class Orchestrator(object):
         self.pipes = {}
         self.action_space_ = None
         self.observation_space_ = None
-        self.observation_dict_ = None
+        self.reward_function_ = None
+        self.success_criterion_ = None
 
         for ee in range(number_envs):
             pipe_orchestrator, pipe_env = mp.Pipe()
@@ -51,6 +52,10 @@ class Orchestrator(object):
                 pipe.send(("action space", env.action_space))
             elif func == "observation space":
                 pipe.send(("observation space", env.observation_space))
+            elif func == "reward function":
+                pipe.send(("reward function", env.task.reward_function))
+            elif func == "success criterion":
+                pipe.send(("success criterion", env.task.success_criterion))
             else:
                 raise NotImplementedError(func)
 
@@ -138,6 +143,26 @@ class Orchestrator(object):
             assert func == "observation space", f"'{func}' istead of 'observation space'"
 
         return self.observation_space_
+
+    @property
+    def reward_function(self):
+        if self.reward_function_ is None:
+            self.pipes[0].send(["reward function", None])
+            func, self.reward_function_ = self.pipes[0].recv()
+
+            assert func == "reward function", f"'{func}' istead of 'reward function'"
+
+        return self.reward_function_
+
+    @property
+    def success_criterion(self):
+        if self.success_criterion_ is None:
+            self.pipes[0].send(["success criterion", None])
+            func, self.success_criterion_ = self.pipes[0].recv()
+
+            assert func == "success criterion", f"'{func}' istead of 'success criterion'"
+
+        return self.success_criterion_
 
 
 if __name__ == "__main__":
