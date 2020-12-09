@@ -138,8 +138,8 @@ class Trainer:
             if func == "reset":
                 if type(data) == AssertionError:
                     requests.append((env_id, "reset",
-                                     (self.get_initial_state(mode != "test",
-                                                            env_id), True)
+                                     self.get_initial_state(mode != "test",
+                                                            env_id)
                                      ))
                 else:
                     self.trajectories.pop(env_id, None)
@@ -169,7 +169,7 @@ class Trainer:
 
                     requests.append(
                         (env_id, "reset",
-                         (self.get_initial_state(mode != "test", env_id), True)
+                         self.get_initial_state(mode != "test", env_id)
                          ))
 
                 self.steps[env_id] += 1

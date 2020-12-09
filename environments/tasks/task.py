@@ -5,24 +5,33 @@ class Task(object):
 
     def __init__(self,
                  bullet_client,
-                 gravity=(0, 0, -9.81),
                  offset=(0, 0, 0),
                  max_steps=100,
-                 domain_randomization=None):
+                 parameter_distributions=None):
 
-        assert len(gravity) == 3
+        if parameter_distributions is None:
+            parameter_distributions = {}
 
         self.bullet_client = bullet_client
         self.offset = offset
-        self.domain_randomization = domain_randomization
-
-        bullet_client.setGravity(*gravity)
+        self.parameter_distributions = parameter_distributions
 
         self.step_counter = 0
 
         self.max_steps = max_steps
 
     def reset(self):
+        if "gravity" in self.parameter_distributions:
+
+            mean = self.parameter_distributions["gravity"].get("mean", (0, 0, -9.81))
+            std = self.parameter_distributions["gravity"].get("std", (0, 0, 0))
+
+            assert len(mean) == 3
+            assert len(std) == 3
+
+            gravity = np.random.normal(mean, std)
+
+            self.bullet_client.setGravity(*gravity)
 
         self.step_counter = 0
 

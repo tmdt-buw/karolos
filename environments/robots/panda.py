@@ -10,13 +10,14 @@ import pybullet_data as pd
 from gym import spaces
 from numpy.random import RandomState
 
+
 class Panda(gym.Env):
 
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
-                 domain_randomization=None):
+                 parameter_distributions=None):
 
-        if domain_randomization is None:
-            domain_randomization = {}
+        if parameter_distributions is None:
+            parameter_distributions = {}
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -26,7 +27,7 @@ class Panda(gym.Env):
             sim_time = self.time_step
 
         self.scale = scale
-        self.domain_randomization = domain_randomization
+        self.parameter_distributions = parameter_distributions
 
         self.max_steps = int(sim_time / self.time_step)
 
@@ -73,7 +74,7 @@ class Panda(gym.Env):
                                                              for idx in
                                                              self.joints_fingers])
 
-        Link = namedtuple("Link", ["mass", "linear_damping"])
+        Link = namedtuple("Link", ["mass", "linearDamping"])
 
         self.links = {
             0: Link(2.7, 0.01),
@@ -96,7 +97,11 @@ class Panda(gym.Env):
             self.bullet_client.changeDynamics(self.robot, joint_id,
                                               angularDamping=0)
 
-        self.standard()
+        for link_id, link in self.links.items():
+            self.bullet_client.changeDynamics(self.robot, link_id,
+                                              linearDamping=link.linearDamping)
+            self.bullet_client.changeDynamics(self.robot, link_id,
+                                              mass=link.mass)
 
         # todo introduce friction
         self.bullet_client.setJointMotorControlArray(self.robot,
@@ -122,6 +127,19 @@ class Panda(gym.Env):
 
     def reset(self, desired_state=None):
         """Reset robot to initial pose and return new state."""
+
+        for parameter, distribution in self.parameter_distributions.items():
+
+            std = distribution.get("std", 0)
+
+            for link_id, link in self.links.items():
+                mean = distribution.get("mean", getattr(link, parameter))
+
+                parameter_value = np.random.normal(mean, std)
+
+                self.bullet_client.changeDynamics(self.robot, link_id,
+                                                  **{
+                                                      parameter: parameter_value})
 
         contact_points = True
 
@@ -238,35 +256,6 @@ class Panda(gym.Env):
                 self.observation_space[key].high)
 
         return observation
-
-    def randomize(self):
-
-        for link_id, link in self.links.items():
-            if 'linear_damping' in self.domain_randomization.keys():
-                linear_damping = max(0, np.random.normal(self.domain_randomization['linear_damping']['mean'],
-                                                         self.domain_randomization['linear_damping']['std']))
-            else:
-                linear_damping = link.linear_damping
-
-            if 'mass' in self.domain_randomization.keys():
-                mass = np.random.normal(link.mass, link.mass * self.domain_randomization['mass']['std_factor'])
-            else:
-                mass = link.mass
-
-            self.bullet_client.changeDynamics(self.robot, link_id, linearDamping=linear_damping)
-            self.bullet_client.changeDynamics(self.robot, link_id, mass=mass)
-
-    def standard(self):
-
-        for link_id, link in self.links.items():
-
-            if 'linear_damping' in self.domain_randomization.keys():
-                linear_damping = self.domain_randomization['linear_damping']['mean']
-            else:
-                linear_damping = link.linear_damping
-
-            self.bullet_client.changeDynamics(self.robot, link_id, linearDamping=linear_damping)
-            self.bullet_client.changeDynamics(self.robot, link_id, mass=link.mass)
 
 
 if __name__ == "__main__":

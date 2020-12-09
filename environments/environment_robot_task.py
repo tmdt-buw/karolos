@@ -45,19 +45,10 @@ class Environment(gym.Env):
             'goal': self.task.goal_space
         })
 
-    def reset(self, params=None, domain_randomization=None):
-        """Reset the environment and return new state
+    def reset(self, desired_state=None):
         """
-
-        desired_state = params[0]
-        domain_randomization = params[1]
-
-        # call domain randomization before reset
-        if domain_randomization:
-            self._domain_randomize()
-        else:
-            # for test runs
-            self._domain_standard()
+        Reset the environment and return new state
+        """
 
         try:
             if desired_state is not None:
@@ -108,15 +99,6 @@ class Environment(gym.Env):
 
         return state, goal, done
 
-    def _domain_randomize(self):
-
-        self.robot.randomize()
-        self.task.randomize()
-
-    def _domain_standard(self):
-
-        self.robot.standard()
-        self.task.standard()
 
 if __name__ == "__main__":
 

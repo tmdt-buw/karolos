@@ -8,14 +8,10 @@ from utils import unwind_dict_values
 class Reach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 max_steps=100, domain_randomization=None):
-
-        if domain_randomization is None:
-            domain_randomization = {}
+                 max_steps=100, parameter_distributions=None):
 
         super(Reach, self).__init__(bullet_client=bullet_client,
-                                    gravity=[0, 0, 0],
-                                    domain_randomization=domain_randomization,
+                                    parameter_distributions=parameter_distributions,
                                     offset=offset,
                                     max_steps=max_steps)
 

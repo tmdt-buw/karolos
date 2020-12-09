@@ -9,9 +9,10 @@ from environments.tasks.task import Task
 
 class Pick_Place(Task):
 
-    def __init__(self, bullet_client, offset=(0, 0, 0), max_steps=100):
+    def __init__(self, bullet_client, offset=(0, 0, 0), max_steps=100, parameter_distributions=None):
 
         super(Pick_Place, self).__init__(bullet_client=bullet_client,
+                                         parameter_distributions=parameter_distributions,
                                          offset=offset, max_steps=max_steps)
 
         self.limits = np.array([
