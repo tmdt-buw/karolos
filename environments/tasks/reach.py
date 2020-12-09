@@ -111,8 +111,7 @@ class Reach(Task):
     def get_observation(self):
         return np.array([])
 
-    def get_status(self, robot):
-        observation = robot.get_observation()
+    def get_status(self, observation):
         achieved_goal = {
             "position": observation["tcp_position"],
             # "velocity": observation["tcp_velocity"]

@@ -77,7 +77,7 @@ class Environment(gym.Env):
         }
 
         achieved_goal, desired_goal, done = \
-            self.task.get_status(self.robot)
+            self.task.get_status(observation_robot)
 
         goal = {
             'achieved': achieved_goal,
@@ -94,7 +94,7 @@ class Environment(gym.Env):
         observation_task = self.task.step(self.robot)
 
         achieved_goal, desired_goal, done = \
-            self.task.get_status(self.robot)
+            self.task.get_status(observation_robot)
 
         state = {
             'task': observation_task,

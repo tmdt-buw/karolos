@@ -120,7 +120,7 @@ class Pick_Place(Task):
 
         return observation
 
-    def get_status(self, robot):
+    def get_status(self, observation):
         position_object, _ = self.bullet_client.getBasePositionAndOrientation(
             self.object)
 
