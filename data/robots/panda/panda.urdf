@@ -258,7 +258,7 @@
       </geometry>
       <material name="panda_white"/>
     </collision>
-     <contact> <stiffness value="100"/> <damping value="10"/></contact>
+     <contact> <stiffness value="10000"/> <damping value="10"/></contact>
   </link>
   <link name="panda_rightfinger">
   	<inertial>
@@ -280,7 +280,7 @@
       </geometry>
       <material name="panda_white"/>
     </collision>
-     <contact> <stiffness value="100"/> <damping value="10"/></contact>
+     <contact> <stiffness value="10000"/> <damping value="10"/></contact>
   </link>
   <joint name="panda_finger_joint1" type="prismatic">
     <parent link="panda_hand"/>
