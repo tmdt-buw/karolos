@@ -174,7 +174,7 @@ if __name__ == "__main__":
                          "task": np.array([.7, 0, -.9, -.5, .0, .3])}
 
         # observation = env.reset(desired_state=desired_state)
-        obs = env.reset(params=None)
+        obs = env.reset(desired_state)
 
         for action in actions:
             observation, goal, done = env.step(action)
