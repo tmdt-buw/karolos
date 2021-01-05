@@ -14,11 +14,11 @@ from numpy.random import RandomState
 
 class UR5(gym.Env):
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
-                 domain_randomization=None):
+                 parameter_distributions=None):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
-        if domain_randomization is not None:
+        if parameter_distributions is not None:
             logging.warning("Domain randomization not implemented for UR5")
             raise NotImplementedError()
 

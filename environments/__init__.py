@@ -2,7 +2,7 @@ def get_env(env_config):
 
     environment = env_config.pop("environment")
 
-    if environment == "robot":
+    if environment == "karolos":
         from environments.environment_robot_task import Environment
         env = Environment(**env_config)
     else:
