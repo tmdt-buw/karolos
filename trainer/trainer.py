@@ -425,33 +425,34 @@ if __name__ == "__main__":
                 "critic_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth
             },
-            "number_envs": 1, # cpu_count(),
+            "number_processes": 1, # cpu_count(),
+            "number_threads": 1, # cpu_count(),
             "env_config": {
-                "environment": "robot",
-                "render": True,
+                "environment": "karolos",
+                "render": False,
                 "task_config": {
                     "name": "reach",
                     "max_steps": 25,
-                    "domain_randomization": {
+                    "parameter_distributions": {
                         "gravity": {
-                            'mean': -9.81,
-                            'std': 0.3,
+                            'mean': (0., 0., -9.81),
+                            'std': (0., 0., 0.3),
                         }
                     }
                 },
                 "robot_config": {
-                    "name": "ur5",
+                    "name": "panda",
                     "sim_time": .1,
                     "scale": .1,
-                    # "domain_randomization": {
-                    #     "linear_damping": {
-                    #         'mean': 0.04,
-                    #         'std': 0.01,
-                    #     },
-                    #     "mass": {
-                    #         'std_factor': 0.05,
-                    #     }
-                    # }
+                    "parameter_distributions": {
+                        "linearDamping": {
+                            'mean': 0.04,
+                            'std': 0.01,
+                        },
+                        "mass": {
+                            'std_factor': 0.05,
+                        }
+                    }
                 }
             }
         }
