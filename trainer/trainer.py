@@ -224,155 +224,154 @@ class Trainer:
         with open(osp.join(experiment_dir, 'config.json'), 'w') as f:
             json.dump(training_config, f)
 
-        # get environment
-        number_envs = training_config["number_envs"]
         env_config = training_config["env_config"]
+        number_processes = training_config["number_processes"]
+        number_threads = training_config.get("number_threads", 1)
 
-        self.env_orchestrator = Orchestrator(env_config, number_envs)
+        with Orchestrator(env_config, number_processes, number_threads) as self.orchestrator:
 
-        self.reward_function = self.env_orchestrator.reward_function
-        self.success_criterion = self.env_orchestrator.success_criterion
+            self.reward_function = self.orchestrator.reward_function
+            self.success_criterion = self.orchestrator.success_criterion
 
-        # get agents
-        agent_config = training_config["agent_config"]
+            # get agents
+            agent_config = training_config["agent_config"]
 
-        algorithm = training_config["algorithm"]
-        self.agent = get_agent(algorithm, agent_config,
-                               self.env_orchestrator.observation_space,
-                               self.env_orchestrator.action_space,
-                               experiment_dir)
+            algorithm = training_config["algorithm"]
+            self.agent = get_agent(algorithm, agent_config,
+                                   self.orchestrator.observation_space,
+                                   self.orchestrator.action_space,
+                                   experiment_dir)
 
-        models_dir = osp.join(experiment_dir, "models")
+            models_dir = osp.join(experiment_dir, "models")
 
-        base_experiment = training_config.pop('base_experiment', None)
+            base_experiment = training_config.pop('base_experiment', None)
 
-        if base_experiment is not None:
+            if base_experiment is not None:
 
-            base_experiment_dir = osp.join(log_dir,
-                                           base_experiment["experiment"])
+                base_experiment_dir = osp.join(log_dir,
+                                               base_experiment["experiment"])
 
-            with open(osp.join(base_experiment_dir, 'config.json'), 'r') as f:
-                base_experiment_config = json.load(f)
+                with open(osp.join(base_experiment_dir, 'config.json'), 'r') as f:
+                    base_experiment_config = json.load(f)
 
-            if self.similar_config(env_config, base_experiment_config[
-                "env_config"]) and self.similar_config(agent_config,
-                                                       base_experiment_config[
-                                                           "agent_config"]):
+                if self.similar_config(env_config, base_experiment_config[
+                    "env_config"]) and self.similar_config(agent_config,
+                                                           base_experiment_config[
+                                                               "agent_config"]):
 
-                base_experiment_models_dir = osp.join(base_experiment_dir,
-                                                      "models")
+                    base_experiment_models_dir = osp.join(base_experiment_dir,
+                                                          "models")
 
-                agent_id = base_experiment.get("agent", max(
-                    os.listdir(base_experiment_models_dir)))
+                    agent_id = base_experiment.get("agent", max(
+                        os.listdir(base_experiment_models_dir)))
 
-                self.agent.load(osp.join(base_experiment_models_dir, agent_id))
-            else:
-                raise ValueError("Configurations do not match!")
-
-        self.writer = SummaryWriter(experiment_dir, 'trainer')
-
-        # reset all
-        env_responses = self.env_orchestrator.reset_all(
-            partial(self.get_initial_state, random=True))
-
-        self.steps = defaultdict(int)
-        self.trajectories = defaultdict(list)
-
-        number_tests = training_config["number_tests"]
-        test_interval = training_config["test_interval"]
-        self.her_ratio = training_config.get("her_ratio", 0)
-        next_test_timestep = 0
-
-        best_success_ratio = 0.0
-
-        pbar = tqdm(total=training_config["total_timesteps"])
-
-        mode = "train"
-
-        while sum(self.steps.values()) < training_config["total_timesteps"]:
-
-            # Test
-            if sum(self.steps.values()) >= next_test_timestep:
-
-                next_test_timestep = (sum(self.steps.values()) //
-                                      test_interval + 1) * test_interval
-
-                if sum(self.steps.values()):
-                    mode = "test"
+                    self.agent.load(osp.join(base_experiment_models_dir, agent_id))
                 else:
-                    mode = "random"
+                    raise ValueError("Configurations do not match!")
 
-                # reset all
-                env_responses = self.env_orchestrator.reset_all(
-                    partial(self.get_initial_state, random=False))
+            self.writer = SummaryWriter(experiment_dir, 'trainer')
 
-                # subtract tests already launched in each environment
-                tests_to_run = number_tests - number_envs
+            # reset all
+            env_responses = self.orchestrator.reset_all(
+                partial(self.get_initial_state, random=True))
 
-                # remove excessive tests
-                while tests_to_run < 0:
-                    excessive_tests = min(abs(tests_to_run), len(env_responses))
+            self.steps = defaultdict(int)
+            self.trajectories = defaultdict(list)
 
-                    tests_to_run += excessive_tests
-                    env_responses = env_responses[:-excessive_tests]
+            number_tests = training_config["number_tests"]
+            test_interval = training_config["test_interval"]
+            self.her_ratio = training_config.get("her_ratio", 0)
+            next_test_timestep = 0
 
-                    env_responses += self.env_orchestrator.receive()
+            best_success_ratio = 0.0
 
-                concluded_tests = []
+            pbar = tqdm(total=training_config["total_timesteps"])
 
-                while len(concluded_tests) < number_tests:
+            mode = "train"
 
-                    for response in env_responses:
-                        func, data = response[1]
+            while sum(self.steps.values()) < training_config["total_timesteps"]:
 
-                        if func == "reset" and type(data) == AssertionError:
-                            tests_to_run += 1
+                # Test
+                if sum(self.steps.values()) >= next_test_timestep:
 
-                    requests, results_episodes = self.process_responses(
-                        env_responses, mode=mode)
-                    concluded_tests += results_episodes
+                    next_test_timestep = (sum(self.steps.values()) //
+                                          test_interval + 1) * test_interval
 
-                    for ii in reversed(range(len(requests))):
-                        if requests[ii][1] == "reset":
-                            if tests_to_run:
-                                tests_to_run -= 1
-                            else:
-                                del requests[ii]
+                    if sum(self.steps.values()):
+                        mode = "test"
+                    else:
+                        mode = "random"
 
-                    env_responses = self.env_orchestrator.send_receive(
-                        requests)
+                    # reset all
+                    env_responses = self.orchestrator.reset_all(
+                        partial(self.get_initial_state, random=False))
 
-                # evaluate test
-                success_ratio = np.mean(concluded_tests)
+                    # subtract tests already launched in each environment
+                    tests_to_run = number_tests - len(self.orchestrator)
 
-                self.writer.add_scalar('test success ratio',
-                                       success_ratio,
-                                       sum(self.steps.values()) + 1
-                                       )
+                    # remove excessive tests
+                    while tests_to_run < 0:
+                        excessive_tests = min(abs(tests_to_run), len(env_responses))
 
-                if success_ratio >= best_success_ratio:
-                    best_success_ratio = success_ratio
-                    self.agent.save(os.path.join(models_dir,
-                                                 f"{sum(self.steps.values()) + 1}_"
-                                                 f"{success_ratio:.3f}"))
+                        tests_to_run += excessive_tests
+                        env_responses = env_responses[:-excessive_tests]
 
-                # reset all
-                env_responses = self.env_orchestrator.reset_all(
-                    partial(self.get_initial_state, random=True))
+                        env_responses += self.orchestrator.receive()
 
-                mode = "train"
+                    concluded_tests = []
 
-            # Train
-            requests, _ = self.process_responses(env_responses, mode=mode)
+                    while len(concluded_tests) < number_tests:
 
-            env_responses = self.env_orchestrator.send_receive(requests)
+                        for response in env_responses:
+                            func, data = response[1]
 
-            self.agent.learn(sum(self.steps.values()) + 1)
+                            if func == "reset" and type(data) == AssertionError:
+                                tests_to_run += 1
 
-            pbar.update(sum(self.steps.values()) - pbar.n)
-            pbar.refresh()
+                        requests, results_episodes = self.process_responses(
+                            env_responses, mode=mode)
+                        concluded_tests += results_episodes
 
-        del self.env_orchestrator
+                        for ii in reversed(range(len(requests))):
+                            if requests[ii][1] == "reset":
+                                if tests_to_run:
+                                    tests_to_run -= 1
+                                else:
+                                    del requests[ii]
+
+                        env_responses = self.orchestrator.send_receive(
+                            requests)
+
+                    # evaluate test
+                    success_ratio = np.mean(concluded_tests)
+
+                    self.writer.add_scalar('test success ratio',
+                                           success_ratio,
+                                           sum(self.steps.values()) + 1
+                                           )
+
+                    if success_ratio >= best_success_ratio:
+                        best_success_ratio = success_ratio
+                        self.agent.save(os.path.join(models_dir,
+                                                     f"{sum(self.steps.values()) + 1}_"
+                                                     f"{success_ratio:.3f}"))
+
+                    # reset all
+                    env_responses = self.orchestrator.reset_all(
+                        partial(self.get_initial_state, random=True))
+
+                    mode = "train"
+
+                # Train
+                requests, _ = self.process_responses(env_responses, mode=mode)
+
+                env_responses = self.orchestrator.send_receive(requests)
+
+                self.agent.learn(sum(self.steps.values()) + 1)
+
+                pbar.update(sum(self.steps.values()) - pbar.n)
+                pbar.refresh()
+
 
 
 if __name__ == "__main__":

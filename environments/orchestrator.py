@@ -1,63 +1,116 @@
 import multiprocessing as mp
 import random
-
-import numpy as np
+import threading
+from copy import deepcopy
+from multiprocessing import Lock
 
 from environments import get_env
 
 
-class Orchestrator(object):
+class Orchestrator:
 
-    def __init__(self, env_config, number_envs):
+    def __init__(self, env_config, number_processes, number_threads=1):
 
         self.pipes = {}
+        self.locks = {}
+
         self.action_space_ = None
         self.observation_space_ = None
         self.reward_function_ = None
         self.success_criterion_ = None
 
-        for ee in range(number_envs):
-            pipe_orchestrator, pipe_env = mp.Pipe()
+        self.number_processes = number_processes
+        self.number_threads = number_threads
 
-            self.pipes[ee] = pipe_orchestrator
+        for iprocess in range(number_processes):
 
-            p = mp.Process(target=self.run,
-                           args=(env_config, pipe_env),
+            pipes_process = []
+            locks_process = []
+
+            for ithread in range(number_threads):
+                env_id = iprocess * number_threads + ithread
+
+                pipe_main, pipe_process = mp.Pipe()
+                lock = Lock()
+
+                self.pipes[env_id] = pipe_main
+                self.locks[env_id] = lock
+
+                pipes_process.append(pipe_process)
+                locks_process.append(lock)
+
+            p = mp.Process(target=self.run_process,
+                           args=(env_config, pipes_process, locks_process),
                            daemon=True)
             p.start()
 
-    def __del__(self):
+    def __len__(self):
+        return len(self.pipes)
 
-        self.send([(env_id, "close", None) for env_id in self.pipes.keys()])
+    def __enter__(self):
+        return self
 
-    def run(self, env_config, pipe):
+    def __exit__(self, exc_type, exc_val, exc_tb):
 
-        env = get_env(env_config)
+        for env_id in list(self.pipes.keys()):
+            pipe = self.pipes.pop(env_id)
+            lock = self.locks.pop(env_id)
 
-        while True:
+            pipe.send(("close", None))
 
-            func, params = pipe.recv()
+            with lock:
+                # wait until env lock is acquired, meaning that the env was shutdown
+                pass
 
-            if func == "close":
-                break
-            if func == "ping":
-                pipe.send(("ping", params))
-            elif func == "reset":
-                pipe.send(("reset", env.reset(params)))
-            elif func == "step":
-                pipe.send(("step", env.step(params)))
-            elif func == "render":
-                pipe.send(("render", env.render(params)))
-            elif func == "action space":
-                pipe.send(("action space", env.action_space))
-            elif func == "observation space":
-                pipe.send(("observation space", env.observation_space))
-            elif func == "reward function":
-                pipe.send(("reward function", env.task.reward_function))
-            elif func == "success criterion":
-                pipe.send(("success criterion", env.task.success_criterion))
-            else:
-                raise NotImplementedError(func)
+    def run_process(self, env_config, pipes, locks):
+
+        if len(pipes) > 1:
+
+            threads = []
+
+            for pipe, lock in zip(pipes, locks):
+                thread = threading.Thread(target=self.run,
+                                          args=(deepcopy(env_config), pipe, lock),
+                                          daemon=True)
+                thread.start()
+                threads.append(thread)
+
+            for thread in threads:
+                thread.join()
+
+        else:
+            self.run(env_config, pipes.pop(), locks.pop())
+
+    def run(self, env_config, pipe, lock):
+
+        with lock:
+
+            env = get_env(env_config)
+
+            while True:
+                func, params = pipe.recv()
+
+                if func == "close":
+                    break
+                if func == "ping":
+                    pipe.send(("ping", params))
+                elif func == "reset":
+                    pipe.send(("reset", env.reset(params)))
+                elif func == "step":
+                    pipe.send(("step", env.step(params)))
+                elif func == "render":
+                    pipe.send(("render", env.render(params)))
+                elif func == "action space":
+                    pipe.send(("action space", env.action_space))
+                elif func == "observation space":
+                    pipe.send(("observation space", env.observation_space))
+                elif func == "reward function":
+                    pipe.send(("reward function", env.task.reward_function))
+                elif func == "success criterion":
+                    pipe.send(
+                        ("success criterion", env.task.success_criterion))
+                else:
+                    raise NotImplementedError(func)
 
     def send_receive(self, actions=()):
         self.send(actions)
@@ -70,7 +123,6 @@ class Orchestrator(object):
                 self.pipes[env_id].send([func, params])
             except TypeError:
                 ...
-
 
     def receive(self):
         responses = []
@@ -166,48 +218,42 @@ class Orchestrator(object):
 
 
 if __name__ == "__main__":
+    import time
 
     env_config = {
 
-        "base_pkg": "robot-task-rl",
+        "environment": "karolos",
         "render": False,
-        "task_config": {"name": "reach",
-                        "dof": 3,
-                        "only_positive": False
-                        },
+        "task_config": {
+            "name": "reach",
+        },
         "robot_config": {
             "name": "panda",
-            "dof": 3
         }
 
     }
 
-    nb_envs = 3
+    for number_processes in [1]:
+        for number_threads in [1, 5, 10]:
+            with Orchestrator(env_config, number_processes,
+                              number_threads) as orchestrator:
 
-    orchestrator = Orchestrator(env_config, nb_envs)
+                env_responses = orchestrator.reset_all()
 
-    env_responses = orchestrator.reset_all()
+                t0 = time.time()
+                total_responses = 0
 
-    desired_state = {
-        'robot': orchestrator.observation_dict['state']['robot'].sample(),
-        'task': np.ones_like(
-            orchestrator.observation_dict['state']['task'].sample())
-    }
+                while total_responses < 1e4:
+                    requests = []
+                    for env_id, response in env_responses:
+                        func, data = response
 
-    print(desired_state)
+                        requests.append((env_id, "reset", None))
 
-    while True:
-        requests = []
-        for env_id, response in env_responses:
-            func, data = response
+                    env_responses = orchestrator.send_receive(requests)
+                    total_responses += len(env_responses)
 
-            # print(type(data))
+                duration = time.time() - t0
 
-            # print(env_id, func, data)
-            requests.append((env_id, "reset", desired_state))
-
-        env_responses = orchestrator.send_receive(requests)
-        # result = orchestrator.send_receive(
-        #     [(ee, "reset", None) for ee in range(nb_envs)])
-
-        # print(len(result))
+                print(number_processes, number_threads, duration,
+                      duration / (number_processes * number_threads))
