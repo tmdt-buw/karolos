@@ -1,4 +1,5 @@
 import numpy as np
+from utils import unwind_dict_values
 
 
 class Task(object):
@@ -7,7 +8,8 @@ class Task(object):
                  bullet_client,
                  offset=(0, 0, 0),
                  max_steps=100,
-                 parameter_distributions=None):
+                 parameter_distributions=None,
+                 gravity=(0,0,0)):
 
         if parameter_distributions is None:
             parameter_distributions = {}
@@ -17,9 +19,11 @@ class Task(object):
         self.parameter_distributions = parameter_distributions
 
         self.step_counter = 0
+        self.bullet_client.setGravity(*gravity)
 
         self.max_steps = max_steps
 
+    # TODO should we pass robot into method? What if gravity not in self.parameter distirbutions?
     def reset(self):
         if "gravity" in self.parameter_distributions:
 
@@ -35,34 +39,36 @@ class Task(object):
 
         self.step_counter = 0
 
-    def reset_object(self, task_object, obstacles=None):
-        if obstacles is None:
-            obstacles = []
+    # todo we dont need reset_object as it is already different for push/pick&place task
+    # def reset_object(self, task_object, obstacles=None):
+    #     if obstacles is None:
+    #         obstacles = []
+    #
+    #     while True:
+    #         new_target_position = np.random.uniform(-1, 1, 3)
+    #
+    #         if np.linalg.norm(new_target_position) < 0.8:
+    #
+    #             new_target_position += self.offset
+    #             self.bullet_client.resetBasePositionAndOrientation(
+    #                 task_object, new_target_position, [0, 0, 0, 1])
+    #
+    #             for obstacle in obstacles:
+    #                 points_contact = self.bullet_client.getContactPoints(
+    #                     obstacle, task_object)
+    #
+    #                 if len(points_contact):
+    #                     continue
+    #
+    #             break
 
-        while True:
-            new_target_position = np.random.uniform(-1, 1, 3)
-
-            if np.linalg.norm(new_target_position) < 0.8:
-
-                new_target_position += self.offset
-                self.bullet_client.resetBasePositionAndOrientation(
-                    task_object, new_target_position, [0, 0, 0, 1])
-
-                for obstacle in obstacles:
-                    points_contact = self.bullet_client.getContactPoints(
-                        obstacle, task_object)
-
-                    if len(points_contact):
-                        continue
-
-                break
-
-    def step(self, robot=None):
+    def step(self, observation_robot):
         self.step_counter += 1
 
-        observation = self.get_observation()
+        observation_task = self.get_observation()
+        achieved_goal, desired_goal, done = self.get_status(observation_robot)
 
-        return observation
+        return observation_task, achieved_goal, desired_goal, done
 
     def convert_intervals(self, value, interval_origin, interval_target):
 
@@ -73,13 +79,13 @@ class Task(object):
 
         return value_mapped
 
-    def get_observation(self):
+    def reward_function(self, done, goal, **kwargs):
         raise NotImplementedError()
 
-    def randomize(self):
-        gravity_z = np.random.normal(self.domain_randomization['gravity']['mean'],
-                                     self.domain_randomization['gravity']['std'])
-        self.bullet_client.setGravity(0, 0, gravity_z)
+    @staticmethod
+    def success_criterion(goal):
+        goal_achieved = unwind_dict_values(goal["achieved"])
+        goal_desired = unwind_dict_values(goal["desired"])
 
-    def standard(self):
-        self.bullet_client.setGravity(0, 0, self.domain_randomization['gravity']['mean'])
+        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
+        return goal_distance < 0.01

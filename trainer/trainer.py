@@ -287,8 +287,6 @@ class Trainer:
 
             pbar = tqdm(total=training_config["total_timesteps"])
 
-            mode = "train"
-
             while sum(self.steps.values()) < training_config["total_timesteps"]:
 
                 # Test
@@ -296,11 +294,6 @@ class Trainer:
 
                     next_test_timestep = (sum(self.steps.values()) //
                                           test_interval + 1) * test_interval
-
-                    if sum(self.steps.values()):
-                        mode = "test"
-                    else:
-                        mode = "random"
 
                     # reset all
                     env_responses = self.orchestrator.reset_all(
@@ -329,7 +322,7 @@ class Trainer:
                                 tests_to_run += 1
 
                         requests, results_episodes = self.process_responses(
-                            env_responses, mode=mode)
+                            env_responses, mode="test")
                         concluded_tests += results_episodes
 
                         for ii in reversed(range(len(requests))):
@@ -360,16 +353,15 @@ class Trainer:
                     env_responses = self.orchestrator.reset_all(
                         partial(self.get_initial_state, random=True))
 
-                    mode = "train"
-
                 # Train
-                requests, _ = self.process_responses(env_responses, mode=mode)
+                requests, _ = self.process_responses(env_responses, mode="train")
 
                 env_responses = self.orchestrator.send_receive(requests)
 
                 self.agent.learn(sum(self.steps.values()) + 1)
 
                 pbar.update(sum(self.steps.values()) - pbar.n)
+                pbar.set_postfix({'num_envs': len(env_responses)})
                 pbar.refresh()
 
 

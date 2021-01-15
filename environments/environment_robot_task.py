@@ -45,6 +45,9 @@ class Environment(gym.Env):
             'goal': self.task.goal_space
         })
 
+        self.reward_function = self.task.reward_function
+        self.success_criterion = self.task.success_criterion
+
     def reset(self, desired_state=None):
         """
         Reset the environment and return new state
@@ -67,7 +70,7 @@ class Environment(gym.Env):
             'robot': observation_robot
         }
 
-        achieved_goal, desired_goal, done = \
+        achieved_goal, desired_goal, _ = \
             self.task.get_status(observation_robot)
 
         goal = {
@@ -82,10 +85,7 @@ class Environment(gym.Env):
 
     def step(self, action):
         observation_robot = self.robot.step(action)
-        observation_task = self.task.step(self.robot)
-
-        achieved_goal, desired_goal, done = \
-            self.task.get_status(observation_robot)
+        observation_task, achieved_goal, desired_goal, done = self.task.step(observation_robot)
 
         state = {
             'task': observation_task,
@@ -101,6 +101,7 @@ class Environment(gym.Env):
 
 
 if __name__ == "__main__":
+    import time
 
     env_kwargs = {
         "render": True,
@@ -117,67 +118,23 @@ if __name__ == "__main__":
 
     env = Environment(**env_kwargs)
 
-    while False:
-        observation, goal = env.reset()
-        goal_positiom = np.random.random(9)
-
-        for tt in np.arange(
-                2 / p.getPhysicsEngineParameters()["fixedTimeStep"]):
-
-            positions_joints = observation["robot"]["joint_positions"]
-            velocities_joints = observation["robot"]["joint_velocities"]
-
-            action = (goal_positiom - positions_joints) * (
-                    1 + 2 * (1 - np.abs(velocities_joints)))
-
-            action = np.clip(action, env.action_space.low,
-                             env.action_space.high)
-
-            observation, goal, done = env.step(action)
-
-            if np.all((goal_positiom - positions_joints) < 0.1):
-                print(tt)
-                break
-
-    time_step = env_kwargs["robot_config"]["sim_time"]
-
-    actions = []
-
-    action = np.zeros_like(env.action_space.sample())
-    action[1] = 1
-    action[-1] = 1
-
-    for _ in np.arange(.2 / time_step):
-        actions.append(action)
-
-    action = np.zeros_like(env.action_space.sample())
-    action[-1] = -1
-
-    for _ in np.arange(.2 / time_step):
-        actions.append(action)
-
-    action = np.zeros_like(env.action_space.sample())
-    action[1] = -1
-    action[-1] = -1
-
-    for _ in np.arange(.5 / time_step):
-        actions.append(action)
-
     p.resetDebugVisualizerCamera(cameraDistance=1.5,
                                  cameraYaw=70,
                                  cameraPitch=-27,
                                  cameraTargetPosition=(0, 0, 0)
                                  )
+    time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
+
+    action = np.zeros_like(env.action_space.sample())
 
     while True:
-        desired_state = {"robot": [0, 0.2, 0, -0.3, 0, .3, .2, 1, 1],
-                         "task": np.array([.7, 0, -.9, -.5, .0, .3])}
+        obs = env.reset()
 
-        # observation = env.reset(desired_state=desired_state)
-        obs = env.reset(desired_state)
+        for _ in np.arange(1. / time_step):
+            p.stepSimulation()
 
-        for action in actions:
+            time.sleep(time_step)
+
             observation, goal, done = env.step(action)
 
-            print(np.linalg.norm(
-                goal["desired"]["position"] - goal["achieved"]["position"]))
+            reward = env.reward_function(False, goal)
