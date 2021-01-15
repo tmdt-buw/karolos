@@ -5,7 +5,30 @@ from environments.tasks.task import Task
 from numpy.random import RandomState
 from utils import unwind_dict_values
 
+
 class Reach(Task):
+
+    @staticmethod
+    def success_criterion(goal):
+        goal_achieved = unwind_dict_values(goal["achieved"])
+        goal_desired = unwind_dict_values(goal["desired"])
+
+        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
+        return goal_distance < 0.05
+
+    def reward_function(self, done, goal, **kwargs):
+        if self.success_criterion(goal):
+            reward = 1.
+        elif done:
+            reward = -1.
+        else:
+            goal_achieved = unwind_dict_values(goal["achieved"])
+            goal_desired = unwind_dict_values(goal["desired"])
+
+            reward = np.exp(
+                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
+
+        return reward
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
                  max_steps=100, parameter_distributions=None):
@@ -32,29 +55,6 @@ class Reach(Task):
 
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))
-
-    @classmethod
-    def reward_function(cls, done, goal, **kwargs):
-        if cls.success_criterion(goal):
-            reward = 1.
-        elif done:
-            reward = -1.
-        else:
-            goal_achieved = unwind_dict_values(goal["achieved"])
-            goal_desired = unwind_dict_values(goal["desired"])
-
-            reward = np.exp(
-                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
-
-        return reward
-
-    @staticmethod
-    def success_criterion(goal):
-        goal_achieved = unwind_dict_values(goal["achieved"])
-        goal_desired = unwind_dict_values(goal["desired"])
-
-        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
-        return goal_distance < 0.05
 
     def reset(self, robot=None, desired_state=None):
 
@@ -137,10 +137,17 @@ if __name__ == "__main__":
     p.connect(p.GUI)
     p.setAdditionalSearchPath(pd.getDataPath())
 
+    p.loadURDF("plane.urdf")
+
     task = Reach(p)
+
+    time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
 
     while True:
         obs = task.reset()
-        p.stepSimulation()
 
-        time.sleep(p.getPhysicsEngineParameters()["fixedTimeStep"])
+        for _ in np.arange(1. / time_step):
+            p.stepSimulation()
+
+            time.sleep(time_step)
+
