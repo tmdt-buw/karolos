@@ -32,4 +32,4 @@ Paper will be added soon.
 
 ## Trivia
 
-The name is inspired by the karolus monogram (which is used in the logo), which was the signature of Charles the Great. 
+The name is inspired by the karolus monogram (used in the logo), which was the signature of Charles the Great. 
