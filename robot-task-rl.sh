@@ -7,8 +7,8 @@ if [[ ! -f trainer/trainer.py ]]; then
     exit 1
 fi
 
-#latest_master_commit_hash=$(git ls-remote https://git.uni-wuppertal.de/scheiderer/robot-task-rl.git | \
-#   grep refs/heads/master | cut -f 1)
+latest_master_commit_hash=$(git ls-remote https://git.uni-wuppertal.de/scheiderer/robot-task-rl.git | \
+   grep refs/heads/master | cut -f 1)
 
 latest_master_commit_hash="master"
 
