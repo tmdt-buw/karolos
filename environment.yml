@@ -1,4 +1,4 @@
-name: robot_rl
+name: karolos
 channels:
   - pytorch
   - conda-canary
@@ -17,5 +17,5 @@ dependencies:
     - gym==0.17.0
     - pybullet==2.6.6
     - scipy==1.4.1
-prefix: C:\Users\christian\Anaconda3\envs\robot_rl
+prefix: C:\Users\christian\Anaconda3\envs\karolos
 

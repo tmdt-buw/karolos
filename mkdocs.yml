@@ -1,0 +1,25 @@
+site_name: KAROLOS
+site_url: http://epistasislab.github.io/tpot
+site_author: Randal S. Olson
+site_description: Documentation for KAROLOS, an open-source and modular robot-task simulation and reinforcement learning playground
+
+#repo_url:
+#edit_uri: edit/master/docs/
+docs_dir: docs/
+#site_dir: sources/
+
+copyright: Developed by <a href="https://www.tmdt.uni-wuppertal.de/de/team/christian-bitter.html">Christian Bitter</a> and others at the University of Wuppertal
+
+nav:
+- Home: index.md
+- Installation: installation.md
+- Getting Started: getting_started.md
+- Architecture: architecture.md
+- Robots: robots.md
+- Tasks: tasks.md
+- Agents: agents.md
+- Examples: examples.md
+- Contributing: contributing.md
+
+theme: readthedocs
+
