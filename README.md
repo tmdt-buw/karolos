@@ -18,13 +18,28 @@ git clone https://github.com/tmdt-buw/karolos
 cd karolos
 ```
 
-We recommend to use anaconda to install the dependencies using the `environment.yml`
+Install the dependencies using conda (recommended option)
+```
+conda env create -f environment.yml
+conda activate karolos
+```
+
+Alternatively, you can install the dependencies using pip
+```
+pip3 install -r requirements.txt
+```
+
+If you have CUDA installed, you will need to install the package `cudatoolkit` using the version which fits your system.
 
 
-## Become a Contibutor
+## Contribute to KAROLOS
 
 We welcome you to contribute to this project!
 Check out the issues to see what needs to be worked on or simply open a new issue if you have any ideas for improvement.
+
+## License
+
+This project is published under the MIT license.
 
 ## Citing KAROLOS
 
