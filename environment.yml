@@ -1,21 +1,15 @@
 name: karolos
 channels:
   - pytorch
-  - conda-canary
-  - soumith
-  - conda-forge
   - defaults
 dependencies:
-  - cudatoolkit=10.1.243
-  - numpy=1.18.1
-  - pip=20.0.2
-  - python=3.7.6
-  - pytorch=1.4.0
-  - tensorboard=1.15.0
-  - torchvision=0.5.0
+  - numpy=1.19.5
+  - pip=20.3.3
+  - python=3.8.6
+  - pytorch=1.7.1
+  - tensorboard=2.4.1
+  - tqdm=4.56.0
   - pip:
-    - gym==0.17.0
-    - pybullet==2.6.6
-    - scipy==1.4.1
-prefix: C:\Users\christian\Anaconda3\envs\karolos
-
+    - gym==0.18.0
+    - pybullet==3.0.8
+    - scipy==1.6.0
