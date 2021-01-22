@@ -25,17 +25,17 @@ class Task(object):
 
     # TODO should we pass robot into method? What if gravity not in self.parameter distirbutions?
     def reset(self):
-        if "gravity" in self.parameter_distributions:
+        gravity_distribution = self.parameter_distributions.get("gravity", {})
 
-            mean = self.parameter_distributions["gravity"].get("mean", (0, 0, -9.81))
-            std = self.parameter_distributions["gravity"].get("std", (0, 0, 0))
+        mean = gravity_distribution.get("mean", (0, 0, -9.81))
+        std = gravity_distribution.get("std", (0, 0, 0))
 
-            assert len(mean) == 3
-            assert len(std) == 3
+        assert len(mean) == 3
+        assert len(std) == 3
 
-            gravity = np.random.normal(mean, std)
+        gravity = np.random.normal(mean, std)
 
-            self.bullet_client.setGravity(*gravity)
+        self.bullet_client.setGravity(*gravity)
 
         self.step_counter = 0
 
