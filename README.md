@@ -24,12 +24,10 @@ conda env create -f environment.yml
 conda activate karolos
 ```
 
-Alternatively, you can install the dependencies using pip
-```
-pip3 install -r requirements.txt
-```
-
 If you have CUDA installed, you will need to install the package `cudatoolkit` using the version which fits your system.
+
+### Training agents
+
 
 
 ## Contribute to KAROLOS

@@ -1,4 +1,3 @@
-import gym
 import numpy as np
 import pybullet as p
 import pybullet_data as pd
@@ -9,7 +8,7 @@ from environments.robots import get_robot
 from environments.tasks import get_task
 
 
-class Environment(gym.Env):
+class Environment:
 
     def __init__(self, task_config, robot_config, render=False,
                  bullet_client=None, **kwargs):

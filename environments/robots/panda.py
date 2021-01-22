@@ -3,7 +3,6 @@ import os
 import time
 from collections import namedtuple
 
-import gym
 import numpy as np
 import pybullet as p
 import pybullet_data as pd
@@ -11,7 +10,7 @@ from gym import spaces
 from numpy.random import RandomState
 
 
-class Panda(gym.Env):
+class Panda:
 
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
                  parameter_distributions=None):

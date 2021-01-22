@@ -3,7 +3,6 @@ import os
 import time
 from collections import namedtuple
 
-import gym
 import numpy as np
 import pybullet as p
 import pybullet_data as pd
@@ -12,7 +11,7 @@ from numpy.random import RandomState
 
 # todo implement domain randomization
 
-class Kuka_iiwa(gym.Env):
+class Kuka_iiwa:
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
                  parameter_distributions=None):
 
