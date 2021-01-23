@@ -28,12 +28,20 @@ If you have CUDA installed, you will need to install the package `cudatoolkit` u
 
 ### Training agents
 
+Run `trainer/trainer.py` to launch the training of an agent in an experiment.
 
 
 ## Contribute to KAROLOS
 
 We welcome you to contribute to this project!
-Check out the issues to see what needs to be worked on or simply open a new issue if you have any ideas for improvement.
+
+1. You can help us by giving us constructive feedback by opening a new issue if you encountered any bugs or if you have ideas for improvement.
+
+2. We are always grateful for support with the development of KAROLOS.
+If you are interested, check out the issues to see what features need to be worked on.
+Once you have found an issue which you want to tackle, make sure that nobody else is working on it.
+For extensive issues make sure to start a discussion to clarify the scope and design choices of your solution.
+Communication is key!
 
 ## License
 
