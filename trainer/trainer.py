@@ -358,12 +358,12 @@ class Trainer:
 
                 env_responses = self.orchestrator.send_receive(requests)
 
-                self.agent.learn(sum(self.steps.values()) + 1)
+                self.agent.train(sum(self.steps.values()))
 
                 pbar.update(sum(self.steps.values()) - pbar.n)
-                pbar.set_postfix({'num_envs': len(env_responses)})
                 pbar.refresh()
 
+            self.agent.save(os.path.join(models_dir, f"final"))
 
 
 if __name__ == "__main__":
@@ -394,10 +394,6 @@ if __name__ == "__main__":
             "test_interval": 500_000,
             "number_tests": 100,
             "her_ratio": her_ratio,
-            # "base_experiment": {
-            #     "experiment": "20200513-145010",
-            #     "agent": 0,
-            # },
             "algorithm": "sac",
             "agent_config": {
                 "learning_rate_critic": learning_rate_critic,
@@ -411,6 +407,7 @@ if __name__ == "__main__":
                 "automatic_entropy_regularization": True,
                 "gradient_clipping": False,
                 "memory_size": 1_000_000,
+                "sample_training_ratio": 10,
                 "tau": tau,
                 "policy_structure": [('linear', hidden_layer_size),
                                      ('relu', None)] * network_depth,

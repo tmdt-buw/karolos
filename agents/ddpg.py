@@ -99,7 +99,7 @@ class AgentDDPG(Agent):
 
         self.criterion_critic = nn.MSELoss()
 
-    def learn(self, step):
+    def learn(self):
         self.policy.train()
         self.critic.train()
         self.target_critic.train()
@@ -118,10 +118,8 @@ class AgentDDPG(Agent):
             self.device)
 
         rewards *= self.reward_scale
-        self.writer.add_histogram('rewards', rewards, step)
 
         predicted_value = self.critic(states, goals, actions)
-        self.writer.add_histogram('predicted_value', predicted_value, step)
 
         predicted_next_action = self.policy(next_states, goals)
 
@@ -147,6 +145,12 @@ class AgentDDPG(Agent):
         # Update target
         self.update_target(self.critic, self.target_critic, self.tau)
 
+        if self.writer:
+            self.writer.add_histogram('rewards', rewards, self.learning_step)
+            self.writer.add_histogram('predicted_value', predicted_value, self.learning_step)
+
+        self.learning_step += self.sample_training_ratio
+
     def save(self, path):
         if not osp.exists(path):
             os.makedirs(path)
@@ -161,7 +165,7 @@ class AgentDDPG(Agent):
         torch.save(self.optimizer_critic.state_dict(),
                    osp.join(path, "optimizer_critic_1.pt"))
 
-    def load(self, path, train_mode=True):
+    def load(self, path):
         self.policy.load_state_dict(
             torch.load(osp.join(path, "policy.pt")))
         self.critic.load_state_dict(

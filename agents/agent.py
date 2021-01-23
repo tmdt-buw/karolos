@@ -35,6 +35,24 @@ class Agent:
         else:
             self.writer = None
 
+        self.sample_training_ratio = config["sample_training_ratio"]
+        self.learning_step = 0
+
+    def train(self, total_samples):
+        if self.sample_training_ratio:
+            # train once for every batch of newly collected samples (specified by `sample_training_ratio`)
+            learning_steps = (total_samples - self.learning_step) % self.sample_training_ratio
+
+            for _ in range(learning_steps):
+                self.learn()
+        else:
+            # train once, regardless of collected samples. In this case total_samples should be displayed on x-axis of performance plot
+            self.learning_step = total_samples
+            self.learn()
+
+    def learn(self):
+        raise NotImplementedError()
+
     def add_experiences(self, experiences):
         for experience in experiences:
             self.memory.add(experience)

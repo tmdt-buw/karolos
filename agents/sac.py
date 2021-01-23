@@ -140,7 +140,7 @@ class AgentSAC(Agent):
         self.criterion_critic_1 = nn.MSELoss()
         self.criterion_critic_2 = nn.MSELoss()
 
-    def learn(self, step):
+    def learn(self):
 
         self.policy.train()
         self.critic_1.train()
@@ -222,18 +222,19 @@ class AgentSAC(Agent):
         self.update_target(self.critic_2, self.target_critic_2, self.tau)
 
         if self.writer:
-            self.writer.add_scalar('entropy_regularization',
-                                   self.entropy_regularization, step)
-            self.writer.add_histogram('predicted_q1', predicted_value_1, step)
-            self.writer.add_histogram('predicted_q2', predicted_value_2, step)
-            self.writer.add_histogram('rewards', rewards, step)
+            self.writer.add_scalar('entropy_regularization', self.entropy_regularization)
+            self.writer.add_histogram('predicted_value_1', predicted_value_1, self.learning_step)
+            self.writer.add_histogram('predicted_value_2', predicted_value_2, self.learning_step)
+            self.writer.add_histogram('rewards', rewards, self.learning_step)
             self.writer.add_histogram('target_critic_min_1', target_critic_min,
-                                      step)
+                                      self.learning_step)
             self.writer.add_histogram('target_critic_min_2', target_critic_min,
-                                      step)
-            self.writer.add_histogram('target_q_value', target_q_value, step)
-            self.writer.add_scalar('q_val_loss1', q_val_loss_1.item(), step)
-            self.writer.add_scalar('q_val_loss2', q_val_loss_2.item(), step)
+                                      self.learning_step)
+            self.writer.add_histogram('target_q_value', target_q_value, self.learning_step)
+            self.writer.add_scalar('q_val_loss1', q_val_loss_1.item(), self.learning_step)
+            self.writer.add_scalar('q_val_loss2', q_val_loss_2.item(), self.learning_step)
+
+        self.learning_step += self.sample_training_ratio
 
     def save(self, path):
 
