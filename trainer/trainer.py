@@ -16,6 +16,7 @@ from tqdm import tqdm
 from functools import partial
 from utils import unwind_dict_values
 from multiprocessing import cpu_count
+import logging
 
 log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
                                  "../results")
@@ -215,6 +216,9 @@ class Trainer:
 
         global log_dir
 
+        logger = logging.getLogger("trainer")
+        logger.setLevel(logging.INFO)
+
         experiment_dir = osp.join(log_dir, experiment_name)
         models_dir = osp.join(experiment_dir, "models")
 
@@ -228,7 +232,8 @@ class Trainer:
         number_processes = training_config["number_processes"]
         number_threads = training_config.get("number_threads", 1)
 
-        with Orchestrator(env_config, number_processes, number_threads) as self.orchestrator:
+        with Orchestrator(env_config, number_processes,
+                          number_threads) as self.orchestrator:
 
             self.reward_function = self.orchestrator.reward_function
             self.success_criterion = self.orchestrator.success_criterion
@@ -236,8 +241,7 @@ class Trainer:
             # get agents
             agent_config = training_config["agent_config"]
 
-            algorithm = training_config["algorithm"]
-            self.agent = get_agent(algorithm, agent_config,
+            self.agent = get_agent(agent_config,
                                    self.orchestrator.observation_space,
                                    self.orchestrator.action_space,
                                    experiment_dir)
@@ -304,7 +308,8 @@ class Trainer:
 
                     # remove excessive tests
                     while tests_to_run < 0:
-                        excessive_tests = min(abs(tests_to_run), len(env_responses))
+                        excessive_tests = min(abs(tests_to_run),
+                                              len(env_responses))
 
                         tests_to_run += excessive_tests
                         env_responses = env_responses[:-excessive_tests]
@@ -318,7 +323,8 @@ class Trainer:
                         for response in env_responses:
                             func, data = response[1]
 
-                            if func == "reset" and type(data) == AssertionError:
+                            if func == "reset" and type(
+                                    data) == AssertionError:
                                 tests_to_run += 1
 
                         requests, results_episodes = self.process_responses(
@@ -354,7 +360,8 @@ class Trainer:
                         partial(self.get_initial_state, random=True))
 
                 # Train
-                requests, _ = self.process_responses(env_responses, mode="train")
+                requests, results_episodes = self.process_responses(
+                    env_responses, mode="train")
 
                 env_responses = self.orchestrator.send_receive(requests)
 

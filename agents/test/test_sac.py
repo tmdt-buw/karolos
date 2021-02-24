@@ -65,6 +65,7 @@ def test_sac_pendulum():
         "reward_scale": 1,
         "memory_size": 1_000_000,
         "tau": 5e-3,
+        "sample_training_ratio": 1,
         "policy_structure": [('linear', 256), ('relu', None)] * 2,
         "critic_structure": [('linear', 256), ('relu', None)] * 2,
         "automatic_entropy_regularization": True,
@@ -142,7 +143,7 @@ def test_sac_pendulum():
             agent.add_experiences([experience])
 
             episode_reward += reward
-            agent.learn(eps * max_steps + step)
+            agent.learn()
 
             state = next_state
 

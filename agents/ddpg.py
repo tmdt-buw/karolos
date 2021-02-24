@@ -60,7 +60,7 @@ class Critic(NeuralNetwork):
 
 class AgentDDPG(Agent):
     def __init__(self, config, observation_space, action_space,
-                 reward_function, experiment_dir="."):
+                 experiment_dir="."):
 
         super(AgentDDPG, self).__init__(config, observation_space,
                                         action_space, experiment_dir)

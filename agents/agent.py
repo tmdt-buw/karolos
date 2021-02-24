@@ -7,6 +7,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from agents.utils.replay_buffer import ReplayBuffer
 from utils import unwind_space_shapes
 
+
 class Agent:
 
     def __init__(self, config, observation_space, action_space,
@@ -40,8 +41,9 @@ class Agent:
 
     def train(self, total_samples):
         if self.sample_training_ratio:
-            # train once for every batch of newly collected samples (specified by `sample_training_ratio`)
-            learning_steps = (total_samples - self.learning_step) % self.sample_training_ratio
+            # train for every batch of newly collected samples (specified by `sample_training_ratio`)
+            learning_steps = (
+                                         total_samples - self.learning_step) // self.sample_training_ratio
 
             for _ in range(learning_steps):
                 self.learn()

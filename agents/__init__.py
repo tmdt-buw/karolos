@@ -1,5 +1,8 @@
-def get_agent(algorithm, agent_config, observation_space, action_space,
+def get_agent(agent_config, observation_space, action_space,
               experiment_dir):
+
+    algorithm = agent_config.pop("algorithm")
+
     if algorithm == "sac":
         from agents.sac import AgentSAC
         agent = AgentSAC(agent_config, observation_space, action_space,
