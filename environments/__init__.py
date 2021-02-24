@@ -5,9 +5,10 @@ def get_env(env_config):
     if environment == "karolos":
         from environments.environment_robot_task import Environment
         env = Environment(**env_config)
+    elif environment == "gym":
+        from environments.gym_environments import get_gym_env
+        env = get_gym_env(env_config)
     else:
-        import gym
-        from environments.gym_wrapper import GymWrapper
-        env = GymWrapper(gym.make(environment), **env_config)
+        raise ValueError(f"Unknown environment: {environment}")
 
     return env

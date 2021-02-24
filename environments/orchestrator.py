@@ -105,10 +105,10 @@ class Orchestrator:
                 elif func == "observation space":
                     pipe.send(("observation space", env.observation_space))
                 elif func == "reward function":
-                    pipe.send(("reward function", env.task.reward_function))
+                    pipe.send(("reward function", env.reward_function))
                 elif func == "success criterion":
                     pipe.send(
-                        ("success criterion", env.task.success_criterion))
+                        ("success criterion", env.success_criterion))
                 else:
                     raise NotImplementedError(func)
 
