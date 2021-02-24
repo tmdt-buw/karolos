@@ -26,9 +26,21 @@ conda activate karolos
 
 If you have CUDA installed, you will need to install the package `cudatoolkit` using the version which fits your system.
 
-### Training agents
+### Getting Started
 
-Run `trainer/trainer.py` to launch the training of an agent in an experiment.
+Run an experiment by launching a trainer
+
+```
+python trainer/trainer.py
+```
+
+You can monitor the progress of your experiment in real-time with a tensorboard
+
+```
+tensorboard --logdir results
+```
+
+
 
 
 ## Contribute to KAROLOS

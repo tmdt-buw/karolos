@@ -1,11 +1,16 @@
 # Installation
 
-## Prerequisites
+First, clone the repository
 
-venv recommended
+```
+git clone https://github.com/tmdt-buw/karolos
+cd karolos
+```
 
-torch (pytorch.com)
+Install the dependencies using conda (recommended option)
+```
+conda env create -f environment.yml
+conda activate karolos
+```
 
-python3
-
-pip install -r requirements.txt
+If you have CUDA installed, you will need to install the package `cudatoolkit` using the version which fits your system.
