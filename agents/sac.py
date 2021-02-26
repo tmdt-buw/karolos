@@ -86,21 +86,19 @@ class AgentSAC(Agent):
 
         super(AgentSAC, self).__init__(config, observation_space, action_space, experiment_dir)
 
-        self.learning_rate_critic = config["learning_rate_critic"]
-        self.learning_rate_policy = config["learning_rate_policy"]
-        self.learning_rate_entropy_regularization = config[
-            "learning_rate_entropy_regularization"]
-        self.entropy_regularization = config["entropy_regularization"]
-        self.weight_decay = config["weight_decay"]
-        self.batch_size = config['batch_size']
-        self.reward_discount = config.get('reward_discount', .99)
-        self.reward_scale = config.get('reward_scale', 1.)
-        self.tau = config['tau']
-        self.automatic_entropy_regularization = config[
-            'automatic_entropy_regularization']
+        self.learning_rate_critic = config.get("learning_rate_critic", 5e-4)
+        self.learning_rate_policy = config.get("learning_rate_policy", 5e-4)
+        self.learning_rate_entropy_regularization = config.get(
+            "learning_rate_entropy_regularization", 5e-5)
+        self.weight_decay = config.get("weight_decay", 1e-4)
+        self.tau = config.get('tau', 2.5e-3)
+        self.entropy_regularization = config.get("entropy_regularization", 1)
+        self.automatic_entropy_regularization = config.get(
+            'automatic_entropy_regularization', True)
 
-        self.policy_structure = config['policy_structure']
-        self.critic_structure = config['critic_structure']
+
+        self.policy_structure = config.get('policy_structure', [])
+        self.critic_structure = config.get('critic_structure', [])
 
         self.target_entropy = -1 * self.action_dim[0]
 
@@ -226,8 +224,11 @@ class AgentSAC(Agent):
             self.writer.add_histogram('predicted_value_1', predicted_value_1, self.learning_step)
             self.writer.add_histogram('predicted_value_2', predicted_value_2, self.learning_step)
             self.writer.add_histogram('rewards', rewards, self.learning_step)
-            self.writer.add_histogram('target_critic_min_1', target_critic_min,
-                                      self.learning_step)
+            try:
+                self.writer.add_histogram('target_critic_min_1', target_critic_min,
+                                          self.learning_step)
+            except:
+                raise
             self.writer.add_histogram('target_critic_min_2', target_critic_min,
                                       self.learning_step)
             self.writer.add_histogram('target_q_value', target_q_value, self.learning_step)

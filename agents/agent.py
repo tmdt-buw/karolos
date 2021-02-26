@@ -27,16 +27,21 @@ class Agent:
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.memory_size = config['memory_size']
+
+        self.batch_size = config.get('batch_size', 64)
+        self.reward_discount = config.get('reward_discount', .99)
+        self.reward_scale = config.get('reward_scale', 1.)
+
+        self.memory_size = config.get('memory_size', int(1e6))
         self.memory = ReplayBuffer(self.memory_size)
 
         if experiment_dir:
-            self.writer = SummaryWriter(os.path.join(experiment_dir, "debug"),
-                                        "debug")
+            self.writer = SummaryWriter(os.path.join(experiment_dir, "agent"),
+                                        "agent")
         else:
             self.writer = None
 
-        self.sample_training_ratio = config["sample_training_ratio"]
+        self.sample_training_ratio = config.get("sample_training_ratio", 0)
         self.learning_step = 0
 
     def train(self, total_samples):

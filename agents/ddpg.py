@@ -65,14 +65,10 @@ class AgentDDPG(Agent):
         super(AgentDDPG, self).__init__(config, observation_space,
                                         action_space, experiment_dir)
 
-        self.learning_rate_critic = config["learning_rate_critic"]
-        self.learning_rate_policy = config["learning_rate_policy"]
-        self.weight_decay = config["weight_decay"]
-        self.batch_size = config['batch_size']
-        self.reward_discount = config['reward_discount']
-        self.reward_scale = config.get('reward_scale')
-        self.memory_size = config['memory_size']
-        self.tau = config['tau']
+        self.learning_rate_critic = config.get("learning_rate_critic", 5e-4)
+        self.learning_rate_policy = config.get("learning_rate_policy", 5e-4)
+        self.weight_decay = config.get("weight_decay", 1e-4)
+        self.tau = config.get('tau', 2.5e-3)
 
         self.policy_structure = config['policy_structure']
         self.critic_structure = config['critic_structure']
