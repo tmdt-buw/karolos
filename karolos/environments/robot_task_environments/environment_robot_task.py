@@ -4,11 +4,16 @@ import pybullet_data as pd
 import pybullet_utils.bullet_client as bc
 from gym import spaces
 
-from environments.robots import get_robot
-from environments.tasks import get_task
+try:
+    from .. import Environment
+    from .robots import get_robot
+    from .tasks import get_task
+except ImportError:
+    from environments import Environment
+    from environments.robot_task_environments.robots import get_robot
+    from environments.robot_task_environments.tasks import get_task
 
-
-class Environment:
+class RobotTaskEnvironment(Environment):
 
     def __init__(self, task_config, robot_config, render=False,
                  bullet_client=None, **kwargs):
@@ -106,16 +111,16 @@ if __name__ == "__main__":
         "render": True,
         "task_config": {
             "name": "pick_place",
-            "max_steps": 25
+            # "max_steps": 25
         },
         "robot_config": {
             "name": "panda",
-            "scale": .1,
-            "sim_time": .1
+            # "scale": .1,
+            # "sim_time": .1
         }
     }
 
-    env = Environment(**env_kwargs)
+    env = RobotTaskEnvironment(**env_kwargs)
 
     p.resetDebugVisualizerCamera(cameraDistance=1.5,
                                  cameraYaw=70,
@@ -124,13 +129,12 @@ if __name__ == "__main__":
                                  )
     time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
 
-    action = np.zeros_like(env.action_space.sample())
 
     while True:
         obs = env.reset()
 
         for _ in np.arange(1. / time_step):
-            p.stepSimulation()
+            action = env.action_space.sample()
 
             time.sleep(time_step)
 

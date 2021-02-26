@@ -9,17 +9,16 @@ import pybullet_data as pd
 from gym import spaces
 from numpy.random import RandomState
 
-# todo implement domain randomization
 
-class UR5:
+class Panda:
+
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
                  parameter_distributions=None):
 
-        self.logger = logging.Logger(f"robot:panda:{bullet_client}")
+        if parameter_distributions is None:
+            parameter_distributions = {}
 
-        if parameter_distributions is not None:
-            logging.warning("Domain randomization not implemented for UR5")
-            raise NotImplementedError()
+        self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
         self.time_step = bullet_client.getPhysicsEngineParameters()["fixedTimeStep"]
 
@@ -27,6 +26,7 @@ class UR5:
             sim_time = self.time_step
 
         self.scale = scale
+        self.parameter_distributions = parameter_distributions
 
         self.max_steps = int(sim_time / self.time_step)
 
@@ -38,33 +38,72 @@ class UR5:
             int.from_bytes(os.urandom(4), byteorder='little'))
 
         # load robot in simulation
-        self.robot = bullet_client.loadURDF("robots/ur5/ur5.urdf",
-                                            np.array([0, 0, 0]) + self.offset,
-                                            useFixedBase=True,
-                                            flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
+        self.model_id = bullet_client.loadURDF("robots/panda/panda.urdf",
+                                               np.array([0, 0, 0]) + self.offset,
+                                               useFixedBase=True,
+                                               flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
         Joint = namedtuple("Joint",
                            ["initial_position", "limits", "max_velocity",
                             "max_torque"])
 
         self.joints = {
-            0: Joint(0, (-6.2831, 6.2831), 3.15, 300),
-            1: Joint(0, (-2.3561, 2.3561), 3.15, 150),
-            2: Joint(0, (-3.1415, 3.1415), 3.15, 150),
-            3: Joint(0, (-2.3561, 2.3561), 3.2, 28),
-            4: Joint(0, (-6.2831, 6.2831), 3.2, 28),
-            5: Joint(0, (-6.2831, 6.2831), 3.2, 28),
+            0: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
+            1: Joint(0.5, (-1.7628, 1.7628), 2.1750, 87),
+            2: Joint(0, (-2.8973, 2.8973), 2.1750, 87),
+            3: Joint(-0.5, (-3.0718, -0.0698), 2.1750, 87),
+            4: Joint(0, (-2.8973, 2.8973), 2.6100, 12),
+            5: Joint(1., (-0.0175, 3.7525), 2.6100, 12),
+            6: Joint(0.707, (-2.8973, 2.8973), 2.6100, 12),
 
-            # hand
-            7: Joint(0.035, (0.0, 0.04), 0.05, 20),
+            # finger 1 & 2
             8: Joint(0.035, (0.0, 0.04), 0.05, 20),
+            9: Joint(0.035, (0.0, 0.04), 0.05, 20),
         }
 
-        self.joints_arm = list(range(6))
-        self.joints_fingers = list(range(7, 9))
+        self.joints_arm = list(range(7))
+        self.joints_fingers = list(range(8, 10))
 
         # todo introduce friction
-        self.bullet_client.setJointMotorControlArray(self.robot,
+        self.bullet_client.setJointMotorControlArray(self.model_id,
+                                                     self.joints_fingers,
+                                                     p.VELOCITY_CONTROL,
+                                                     forces=[0 * self.joints[
+                                                         idx].max_torque
+                                                             for idx in
+                                                             self.joints_fingers])
+
+        Link = namedtuple("Link", ["mass", "linearDamping"])
+
+        self.links = {
+            0: Link(2.7, 0.01),
+            1: Link(2.73, 0.01),
+            2: Link(2.04, 0.01),
+            3: Link(2.08, 0.01),
+            4: Link(3.0, 0.01),
+            5: Link(1.3, 0.01),
+            6: Link(0.2, 0.01),
+            7: Link(0.81, 0.01),
+            8: Link(0.1, 0.01),
+            9: Link(0.1, 0.01),
+            10: Link(0.0, 0.01),
+        }
+
+        # todo: still valid?
+        for joint_id, joint in self.joints.items():
+            self.bullet_client.changeDynamics(self.model_id, joint_id,
+                                              linearDamping=0)
+            self.bullet_client.changeDynamics(self.model_id, joint_id,
+                                              angularDamping=0)
+
+        for link_id, link in self.links.items():
+            self.bullet_client.changeDynamics(self.model_id, link_id,
+                                              linearDamping=link.linearDamping)
+            self.bullet_client.changeDynamics(self.model_id, link_id,
+                                              mass=link.mass)
+
+        # todo introduce friction
+        self.bullet_client.setJointMotorControlArray(self.model_id,
                                                      self.joints_fingers,
                                                      p.VELOCITY_CONTROL,
                                                      forces=[0 * self.joints[idx].max_torque
@@ -82,11 +121,21 @@ class UR5:
             # "tcp_velocity": spaces.Box(-1., 1., shape=(3,)),
         })
 
-        # reset to initial position
-        self.reset()
-
     def reset(self, desired_state=None):
         """Reset robot to initial pose and return new state."""
+
+        for parameter, distribution in self.parameter_distributions.items():
+
+            std = distribution.get("std", 0)
+
+            for link_id, link in self.links.items():
+                mean = distribution.get("mean", getattr(link, parameter))
+
+                parameter_value = np.random.normal(mean, std)
+
+                self.bullet_client.changeDynamics(self.model_id, link_id,
+                                                  **{
+                                                      parameter: parameter_value})
 
         contact_points = True
 
@@ -98,12 +147,12 @@ class UR5:
                 joint_position = np.interp(desired_state.pop(0), [-1, 1],
                                            joint.limits)
 
-                self.bullet_client.resetJointState(self.robot, joint_id,
+                self.bullet_client.resetJointState(self.model_id, joint_id,
                                                    joint_position)
 
             self.bullet_client.stepSimulation()
-            contact_points = self.bullet_client.getContactPoints(self.robot,
-                                                                 self.robot)
+            contact_points = self.bullet_client.getContactPoints(self.model_id,
+                                                                 self.model_id)
 
         # reset until state is valid
         while contact_points:
@@ -111,12 +160,12 @@ class UR5:
             for joint_id, joint in self.joints.items():
                 joint_position = self.random.uniform(*joint.limits)
 
-                self.bullet_client.resetJointState(self.robot, joint_id,
+                self.bullet_client.resetJointState(self.model_id, joint_id,
                                                    joint_position)
 
             self.bullet_client.stepSimulation()
-            contact_points = self.bullet_client.getContactPoints(self.robot,
-                                                                 self.robot)
+            contact_points = self.bullet_client.getContactPoints(self.model_id,
+                                                                 self.model_id)
 
         observation = self.get_observation()
 
@@ -125,7 +174,7 @@ class UR5:
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
 
-        action_arm = action[:6]
+        action_arm = action[:7]
         action_fingers = action[-1]
 
         action_arm = list(action_arm * self.scale) # / self.max_steps)
@@ -135,7 +184,7 @@ class UR5:
 
         for joint_id, action_joint in zip(self.joints_arm, action_arm):
 
-            position, _, _, _ = self.bullet_client.getJointState(self.robot, joint_id)
+            position, _, _, _ = self.bullet_client.getJointState(self.model_id, joint_id)
 
             normalized_joint_position = np.interp(position, self.joints[joint_id].limits, [-1, 1])
             normalized_target_joint_position = np.clip(normalized_joint_position + action_joint, -1, 1)
@@ -144,7 +193,7 @@ class UR5:
             target_arm_positions.append(target_joint_position)
             torques_arm.append(self.joints[joint_id].max_torque)
 
-        self.bullet_client.setJointMotorControlArray(self.robot,
+        self.bullet_client.setJointMotorControlArray(self.model_id,
                                                      self.joints_arm,
                                                      p.POSITION_CONTROL,
                                                      targetPositions=target_arm_positions,
@@ -155,7 +204,7 @@ class UR5:
 
         for step in range(self.max_steps):
 
-            self.bullet_client.setJointMotorControlArray(self.robot,
+            self.bullet_client.setJointMotorControlArray(self.model_id,
                                                          self.joints_fingers,
                                                          p.TORQUE_CONTROL,
                                                          forces=torques_fingers)
@@ -174,7 +223,7 @@ class UR5:
 
         for joint_id, joint in self.joints.items():
             joint_position, joint_velocity, _, _ = self.bullet_client.getJointState(
-                self.robot, joint_id)
+                self.model_id, joint_id)
 
             joint_positions.append(np.interp(joint_position, joint.limits, [-1, 1]))
             joint_velocities.append(
@@ -182,7 +231,7 @@ class UR5:
                           [-1, 1]))
 
         tcp_position, _, _, _, _, _, tcp_velocity, _ = \
-            self.bullet_client.getLinkState(self.robot, 9,
+            self.bullet_client.getLinkState(self.model_id, 10,
                                             computeLinkVelocity=True)
 
         joint_positions = np.array(joint_positions)
@@ -204,11 +253,6 @@ class UR5:
 
         return observation
 
-    def randomize(self):
-        logging.warning("Domain randomization not implemented for UR5")
-
-    def standard(self):
-        pass
 
 if __name__ == "__main__":
     p.connect(p.GUI)
@@ -226,7 +270,7 @@ if __name__ == "__main__":
 
     p.setGravity(0, 0, -9.81)
 
-    robot = UR5(p, sim_time=.1, scale=.1)
+    robot = Panda(p, sim_time=.1, scale=.1)
 
     while True:
         observation = robot.reset()

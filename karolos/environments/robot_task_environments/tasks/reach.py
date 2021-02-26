@@ -1,7 +1,7 @@
 import numpy as np
 from gym import spaces
 import os
-from environments.tasks.task import Task
+from .task import Task
 from numpy.random import RandomState
 from utils import unwind_dict_values
 
@@ -50,7 +50,7 @@ class Reach(Task):
             # "tcp_velocity": spaces.Box(-1, 1, shape=(3,))
         })
 
-        self.target = self.bullet_client.loadURDF("objects/cube.urdf",
+        self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
                                                   useFixedBase=True)
 
         self.random = RandomState(
@@ -79,7 +79,7 @@ class Reach(Task):
 
             if robot:
                 contact_points = self.bullet_client.getContactPoints(
-                    robot.robot, self.target)
+                    robot.model_id, self.target)
             else:
                 contact_points = False
 
@@ -98,7 +98,7 @@ class Reach(Task):
 
             if robot:
                 contact_points = self.bullet_client.getContactPoints(
-                    robot.robot, self.target)
+                    robot.model_id, self.target)
             else:
                 contact_points = False
 

@@ -4,7 +4,7 @@ import threading
 from copy import deepcopy
 from multiprocessing import Lock
 
-from environments import get_env
+from . import get_env
 
 
 class Orchestrator:

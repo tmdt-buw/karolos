@@ -4,7 +4,7 @@ TODO dicuss if we can replace with pick_place task
 """
 
 
-from environments.tasks.task import Task
+from .task import Task
 import numpy as np
 import os
 from numpy.random import RandomState
@@ -108,7 +108,7 @@ class Push(Task):
 
             if robot:
                 contact_points = self.bullet_client.getContactPoints(
-                    robot.robot, self.target)
+                    robot.model_id, self.target)
             else:
                 contact_points = False
 
@@ -137,7 +137,7 @@ class Push(Task):
 
             if robot:
                 contact_points = self.bullet_client.getContactPoints(
-                    robot.robot, self.object)
+                    robot.model_id, self.object)
             else:
                 contact_points = False
 

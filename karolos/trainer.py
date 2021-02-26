@@ -18,10 +18,6 @@ from utils import unwind_dict_values
 from multiprocessing import cpu_count
 import logging
 
-log_dir = results_dir = osp.join(os.path.dirname(os.path.abspath(__file__)),
-                                 "../results")
-
-
 class Trainer:
     @staticmethod
     def get_initial_state(random: bool, env_id=None):
@@ -212,14 +208,30 @@ class Trainer:
 
         return requests, results_episodes
 
-    def __init__(self, training_config, experiment_name):
-
-        global log_dir
+    def __init__(self, training_config, results_dir="./results", experiment_name=None):
 
         logger = logging.getLogger("trainer")
         logger.setLevel(logging.INFO)
 
-        experiment_dir = osp.join(log_dir, experiment_name)
+        if not experiment_name:
+            experiment_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+            logger.warning(f"Experiment name not specified. "
+                           f"Using {experiment_name}.")
+
+        experiment_dir = osp.join(results_dir, experiment_name)
+
+        if os.path.exists(experiment_dir):
+            appendix = 1
+
+            while os.path.exists(f"{experiment_dir}_{appendix}"):
+                appendix += 1
+
+            logger.warning(f"Result directory already exists {experiment_dir}. "
+                           f"Using directory {experiment_dir}_{appendix} instead.")
+
+            experiment_dir += f"_{appendix}"
+
         models_dir = osp.join(experiment_dir, "models")
 
         os.makedirs(experiment_dir)
@@ -229,7 +241,7 @@ class Trainer:
             json.dump(training_config, f)
 
         env_config = training_config["env_config"]
-        number_processes = training_config["number_processes"]
+        number_processes = training_config.get("number_processes", 1)
         number_threads = training_config.get("number_threads", 1)
 
         with Orchestrator(env_config, number_processes,
@@ -289,7 +301,7 @@ class Trainer:
 
             best_success_ratio = 0.0
 
-            pbar = tqdm(total=training_config["total_timesteps"])
+            pbar = tqdm(total=training_config["total_timesteps"], desc="Progress")
 
             while sum(self.steps.values()) < training_config["total_timesteps"]:
 
@@ -318,6 +330,8 @@ class Trainer:
 
                     concluded_tests = []
 
+                    pbar_test = tqdm(total=number_tests, desc="Test", leave=False)
+
                     while len(concluded_tests) < number_tests:
 
                         for response in env_responses:
@@ -330,6 +344,7 @@ class Trainer:
                         requests, results_episodes = self.process_responses(
                             env_responses, mode="test")
                         concluded_tests += results_episodes
+                        pbar_test.update(len(results_episodes))
 
                         for ii in reversed(range(len(requests))):
                             if requests[ii][1] == "reset":
@@ -374,7 +389,6 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    experiment_date = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     learning_rates = [(0.0005, 0.0005)]
     hidden_layer_sizes = [32]
@@ -385,72 +399,52 @@ if __name__ == "__main__":
 
     import itertools
 
-    for params in itertools.product(learning_rates, hidden_layer_sizes,
-                                    network_depths,
-                                    entropy_regularization_learning_rates,
-                                    taus, her_ratios):
-        experiment_name = experiment_date + "/" + "_".join(
-            list(map(str, params)))
 
-        learning_rates, hidden_layer_size, network_depth, entropy_regularization_learning_rate, tau, her_ratio = params
 
-        learning_rate_policy, learning_rate_critic = learning_rates
+    training_config = {
+        "total_timesteps": 5_000_000,
+        "test_interval": 500_000,
+        "number_tests": 10,
 
-        training_config = {
-            "total_timesteps": 5_000_000,
-            "test_interval": 500_000,
-            "number_tests": 100,
-            "her_ratio": her_ratio,
+        "agent_config": {
             "algorithm": "sac",
-            "agent_config": {
-                "learning_rate_critic": learning_rate_critic,
-                "learning_rate_policy": learning_rate_policy,
-                "entropy_regularization": 1,
-                "learning_rate_entropy_regularization": entropy_regularization_learning_rate,
-                "weight_decay": 1e-4,
-                "batch_size": 512,
-                "reward_discount": 0.99,
-                "reward_scale": 100,
-                "automatic_entropy_regularization": True,
-                "gradient_clipping": False,
-                "memory_size": 1_000_000,
-                "sample_training_ratio": 10,
-                "tau": tau,
-                "policy_structure": [('linear', hidden_layer_size),
-                                     ('relu', None)] * network_depth,
-                "critic_structure": [('linear', hidden_layer_size),
-                                     ('relu', None)] * network_depth
+
+            "replay_buffer": {
+                "name": "priority"
             },
-            "number_processes": 1, # cpu_count(),
-            "number_threads": 1, # cpu_count(),
-            "env_config": {
-                "environment": "karolos",
-                "render": False,
-                "task_config": {
-                    "name": "reach",
-                    "max_steps": 25,
-                    "parameter_distributions": {
-                        "gravity": {
-                            'mean': (0., 0., -9.81),
-                            'std': (0., 0., 0.3),
-                        }
-                    }
-                },
-                "robot_config": {
-                    "name": "panda",
-                    "sim_time": .1,
-                    "scale": .1,
-                    "parameter_distributions": {
-                        "linearDamping": {
-                            'mean': 0.04,
-                            'std': 0.01,
-                        },
-                        "mass": {
-                            'std_factor': 0.05,
-                        }
-                    }
-                }
+
+            # "learning_rate_critic": 0.0005,
+            # "learning_rate_policy": 0.0005,
+            # "entropy_regularization": 1,
+            # "learning_rate_entropy_regularization": 5e-5,
+            # "weight_decay": 1e-4,
+            # "batch_size": 512,
+            # "reward_discount": 0.99,
+            # "reward_scale": 100,
+            # "automatic_entropy_regularization": True,
+            # "gradient_clipping": False,
+            # "memory_size": 1_000_000,
+            # "sample_training_ratio": 100,
+            # "tau": 0.0025,
+            "policy_structure": [('linear', 32),
+                                 ('relu', None)] * 8,
+            "critic_structure": [('linear', 32),
+                                 ('relu', None)] * 8
+        },
+        "env_config": {
+            "environment": "karolos",
+            # "render": True,
+            "task_config": {
+                "name": "reach",
+            },
+            "robot_config": {
+                "name": "panda",
+                # "sim_time": .1,
+                # "scale": .1,
             }
         }
+    }
 
-        trainer = Trainer(training_config, experiment_name)
+
+
+    trainer = Trainer(training_config, "../results", experiment_name="reach_sac_default")

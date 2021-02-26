@@ -4,7 +4,7 @@ import numpy as np
 from gym import spaces
 from numpy.random import RandomState
 
-from environments.tasks.task import Task
+from .task import Task
 from utils import unwind_dict_values
 
 
@@ -112,7 +112,7 @@ class Pick_Place(Task):
 
             if robot:
                 contact_points = self.bullet_client.getContactPoints(
-                    robot.robot, self.object)
+                    robot.model_id, self.object)
 
                 assert not contact_points, f"desired_state puts object and " \
                                            f"robot in collision"
@@ -142,7 +142,7 @@ class Pick_Place(Task):
 
                 if robot:
                     contact_points = self.bullet_client.getContactPoints(
-                        robot.robot, self.object)
+                        robot.model_id, self.object)
                 else:
                     contact_points = False
 
