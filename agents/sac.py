@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 
-from agents.agent import Agent
+from agents import Agent
 from agents.utils.nn import NeuralNetwork, Clamp, init_xavier_uniform
 
 
@@ -146,7 +146,7 @@ class AgentSAC(Agent):
         self.target_critic_1.train()
         self.target_critic_2.train()
 
-        experiences = self.memory.sample(self.batch_size)
+        experiences, indices = self.memory.sample(self.batch_size)
 
         states, goals, actions, rewards, next_states, dones = experiences
 
@@ -214,6 +214,10 @@ class AgentSAC(Agent):
         self.optimizer_policy.zero_grad()
         loss_policy.backward()
         self.optimizer_policy.step()
+
+        predicted_value_avg = (predicted_value_1 + predicted_value_2) / 2
+
+        self.update_priorities(indices, predicted_value_avg, target_q_value)
 
         # Update target
         self.update_target(self.critic_1, self.target_critic_1, self.tau)

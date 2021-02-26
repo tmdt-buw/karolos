@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 
-from agents.agent import Agent
+from agents import Agent
 from agents.utils.nn import NeuralNetwork, init_xavier_uniform
 
 
@@ -101,7 +101,7 @@ class AgentDDPG(Agent):
         self.target_critic.train()
         self.target_policy.train()
 
-        experiences = self.memory.sample(self.batch_size)
+        experiences, indices = self.memory.sample(self.batch_size)
 
         states, goals, actions, rewards, next_states, dones = experiences
 
@@ -137,6 +137,8 @@ class AgentDDPG(Agent):
         self.optimizer_policy.zero_grad()
         loss_policy.backward()
         self.optimizer_policy.step()
+
+        self.update_priorities(indices, predicted_value, target_value)
 
         # Update target
         self.update_target(self.critic, self.target_critic, self.tau)
