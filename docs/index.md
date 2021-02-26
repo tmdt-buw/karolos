@@ -16,4 +16,4 @@ This way, you spend less time on data collection and more time on training and p
 -  __modularization__: More and more research in reinforcement learning is looking into the transfer of agents from one environment to another.
 KAROLOS was developed to quickly generate environments with different robot-task combinations.
 
-KAROLOS is still under active development. We encourage you check back regularly 
+KAROLOS is still under active development. We encourage you check back regularly.

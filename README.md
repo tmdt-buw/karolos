@@ -7,6 +7,16 @@ __KAROLOS (Open-Source Robot-Task Learning Simulation) is an open-source simulat
 <img src="docs/images/logo.png" width="500">
 </p>
 
+KAROLOS was developed with a focus on:
+
+- __scalability__: As reinforcement learning algorithms require significant amounts of experience,
+KAROLOS enables the parallelization of environments.
+This way, you spend less time on data collection and more time on training and prototyping.
+
+-  __modularization__: More and more research in reinforcement learning is looking into the transfer of agents from one environment to another.
+KAROLOS was developed to quickly generate environments with different robot-task combinations.
+
+
 ## Getting started
 
 ### Installation

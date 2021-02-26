@@ -1,5 +1,9 @@
 # Architecture
 
+<p align="center">
+<img src="../images/architecture.png" width="500">
+</p>
+
 How components work together, mostly interfaces, no inner workings
 
 Set up an experiment by modifying the training config in trainer.py
