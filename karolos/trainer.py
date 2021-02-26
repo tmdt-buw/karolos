@@ -404,47 +404,24 @@ if __name__ == "__main__":
     training_config = {
         "total_timesteps": 5_000_000,
         "test_interval": 500_000,
-        "number_tests": 10,
+        "number_tests": 100,
 
         "agent_config": {
             "algorithm": "sac",
 
-            "replay_buffer": {
-                "name": "priority"
-            },
-
-            # "learning_rate_critic": 0.0005,
-            # "learning_rate_policy": 0.0005,
-            # "entropy_regularization": 1,
-            # "learning_rate_entropy_regularization": 5e-5,
-            # "weight_decay": 1e-4,
-            # "batch_size": 512,
-            # "reward_discount": 0.99,
-            # "reward_scale": 100,
-            # "automatic_entropy_regularization": True,
-            # "gradient_clipping": False,
-            # "memory_size": 1_000_000,
-            # "sample_training_ratio": 100,
-            # "tau": 0.0025,
-            "policy_structure": [('linear', 32),
-                                 ('relu', None)] * 8,
-            "critic_structure": [('linear', 32),
-                                 ('relu', None)] * 8
+            "policy_structure": [('linear', 32), ('relu', None)] * 8,
+            "critic_structure": [('linear', 32), ('relu', None)] * 8
         },
         "env_config": {
             "environment": "karolos",
-            # "render": True,
+            "render": True,
             "task_config": {
                 "name": "reach",
             },
             "robot_config": {
                 "name": "panda",
-                # "sim_time": .1,
-                # "scale": .1,
             }
         }
     }
-
-
 
     trainer = Trainer(training_config, "../results", experiment_name="reach_sac_default")
