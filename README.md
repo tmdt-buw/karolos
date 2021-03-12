@@ -38,10 +38,10 @@ If you have CUDA installed, you will need to install the package `cudatoolkit` u
 
 ### Getting Started
 
-Run an experiment by launching a trainer
+Run an experiment by launching a manager
 
 ```
-python trainer/trainer.py
+python manager/manager.py
 ```
 
 You can monitor the progress of your experiment in real-time with a tensorboard
