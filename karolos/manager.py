@@ -3,22 +3,22 @@ import sys
 
 sys.path.insert(0, os.path.abspath("."))
 
-from agents import get_agent
 from collections import defaultdict
 import datetime
-from environments.orchestrator import Orchestrator
+from functools import partial
 import json
+import logging
+from multiprocessing import cpu_count
 import numpy as np
-import os
 import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
-from functools import partial
-from utils import unwind_dict_values
-from multiprocessing import cpu_count
-import logging
 
-class Trainer:
+from agents import get_agent
+from environments.orchestrator import Orchestrator
+from utils import unwind_dict_values
+
+class Manager:
     @staticmethod
     def get_initial_state(random: bool, env_id=None):
         # return None for random sampling of initial state
@@ -397,10 +397,6 @@ if __name__ == "__main__":
     taus = [0.0025]
     her_ratios = [0.0]
 
-    import itertools
-
-
-
     training_config = {
         "total_timesteps": 5_000_000,
         "test_interval": 500_000,
@@ -424,4 +420,5 @@ if __name__ == "__main__":
         }
     }
 
-    trainer = Trainer(training_config, "../results", experiment_name="reach_sac_default")
+    trainer = Manager(training_config, "results",
+                      experiment_name="agreed_clip_1_5_v1")
