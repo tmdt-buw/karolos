@@ -1,34 +1,17 @@
-import numpy as np
 from gym import spaces
-import os
-from .task import Task
+import numpy as np
 from numpy.random import RandomState
-from utils import unwind_dict_values
+import os
+
+from karolos.utils import unwind_dict_values
+
+try:
+    from . import Task
+except:
+    from karolos.environments.robot_task_environments.tasks import Task
 
 
 class Reach(Task):
-
-    @staticmethod
-    def success_criterion(goal):
-        goal_achieved = unwind_dict_values(goal["achieved"])
-        goal_desired = unwind_dict_values(goal["desired"])
-
-        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
-        return goal_distance < 0.05
-
-    def reward_function(self, done, goal, **kwargs):
-        if self.success_criterion(goal):
-            reward = 1.
-        elif done:
-            reward = -1.
-        else:
-            goal_achieved = unwind_dict_values(goal["achieved"])
-            goal_desired = unwind_dict_values(goal["desired"])
-
-            reward = np.exp(
-                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
-
-        return reward
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
                  max_steps=100, parameter_distributions=None):
@@ -44,11 +27,7 @@ class Reach(Task):
             (0., .8)
         ])
 
-        self.observation_space = spaces.Box(-1, 1, shape=(0,))
-        self.goal_space = spaces.Dict({
-            "tcp_position": spaces.Box(-1, 1, shape=(3,)),
-            # "tcp_velocity": spaces.Box(-1, 1, shape=(3,))
-        })
+        self.observation_space = spaces.Box(-1, 1, shape=(3,))
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
                                                   useFixedBase=True)
@@ -56,7 +35,29 @@ class Reach(Task):
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))
 
-    def reset(self, robot=None, desired_state=None):
+    @staticmethod
+    def success_criterion(goal_info):
+        goal_achieved = unwind_dict_values(goal_info["achieved"])
+        goal_desired = unwind_dict_values(goal_info["desired"])
+
+        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
+        return goal_distance < 0.05
+
+    def reward_function(self, goal_info, done, **kwargs):
+        if self.success_criterion(goal_info):
+            reward = 1.
+        elif done:
+            reward = -1.
+        else:
+            goal_achieved = unwind_dict_values(goal_info["achieved"])
+            goal_desired = unwind_dict_values(goal_info["desired"])
+
+            reward = np.exp(
+                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
+
+        return reward
+
+    def reset(self, robot=None, observation_robot=None, desired_state=None):
 
         super(Reach, self).reset()
 
@@ -102,31 +103,39 @@ class Reach(Task):
             else:
                 contact_points = False
 
-        return self.get_observation()
+        return self.get_status(observation_robot)
 
-    def get_observation(self):
-        return np.array([])
-
-    def get_status(self, observation):
-        achieved_goal = {
-            "position": observation["tcp_position"],
-            # "velocity": observation["tcp_velocity"]
-        }
+    def get_status(self, observation_robot=None):
 
         position_desired, _ = self.bullet_client.getBasePositionAndOrientation(
             self.target)
         position_desired = np.array(position_desired)
 
-        # velocity_desired = np.zeros_like(observation["tcp_velocity"])
+        observation = {
+            "goal": {"position": position_desired}
+        }
+
+        if observation_robot is None:
+            achieved_goal = {"position": None}
+        else:
+            achieved_goal = {
+                "position": observation_robot["tcp_position"],
+                # "velocity": observation["tcp_velocity"]
+            }
 
         desired_goal = {
             "position": position_desired,
-            # "velocity": velocity_desired
+            # "velocity": np.zeros_like(observation["tcp_velocity"])
         }
 
         done = self.step_counter >= self.max_steps
 
-        return achieved_goal, desired_goal, done
+        goal_info = {
+            'achieved': achieved_goal,
+            'desired': desired_goal,
+        }
+
+        return observation, goal_info, done
 
 
 if __name__ == "__main__":
@@ -150,4 +159,3 @@ if __name__ == "__main__":
             p.stepSimulation()
 
             time.sleep(time_step)
-

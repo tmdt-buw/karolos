@@ -9,9 +9,10 @@ try:
     from .robots import get_robot
     from .tasks import get_task
 except ImportError:
-    from environments import Environment
-    from environments.robot_task_environments.robots import get_robot
-    from environments.robot_task_environments.tasks import get_task
+    from karolos.environments import Environment
+    from karolos.environments.robot_task_environments.robots import get_robot
+    from karolos.environments.robot_task_environments.tasks import get_task
+
 
 class RobotTaskEnvironment(Environment):
 
@@ -46,7 +47,6 @@ class RobotTaskEnvironment(Environment):
         self.observation_space = spaces.Dict({
             'robot': self.robot.observation_space,
             'task': self.task.observation_space,
-            'goal': self.task.goal_space
         })
 
         self.reward_function = self.task.reward_function
@@ -60,48 +60,35 @@ class RobotTaskEnvironment(Environment):
         try:
             if desired_state is not None:
                 observation_robot = self.robot.reset(desired_state["robot"])
-                observation_task = self.task.reset(self.robot,
-                                                   desired_state["task"])
+                observation_task, goal_info, _ = self.task.reset(self.robot,
+                                                                 observation_robot,
+                                                                 desired_state[
+                                                                     "task"])
             else:
                 observation_robot = self.robot.reset()
-                observation_task = self.task.reset(self.robot)
+                observation_task, goal_info, _ = self.task.reset(self.robot,
+                                                                 observation_robot)
 
         except AssertionError as e:
             return e
 
         state = {
-            'task': observation_task,
-            'robot': observation_robot
+            'robot': observation_robot,
+            'task': observation_task
         }
 
-        achieved_goal, desired_goal, _ = \
-            self.task.get_status(observation_robot)
-
-        goal = {
-            'achieved': achieved_goal,
-            'desired': desired_goal
-        }
-
-        return state, goal
-
-    def render(self, mode='human'):
-        ...
+        return state, goal_info
 
     def step(self, action):
         observation_robot = self.robot.step(action)
-        observation_task, achieved_goal, desired_goal, done = self.task.step(observation_robot)
+        observation_task, goal_info, done = self.task.step(observation_robot)
 
         state = {
-            'task': observation_task,
-            'robot': observation_robot
+            'robot': observation_robot,
+            'task': observation_task
         }
 
-        goal = {
-            'achieved': achieved_goal,
-            'desired': desired_goal,
-        }
-
-        return state, goal, done
+        return state, goal_info, done
 
 
 if __name__ == "__main__":
@@ -128,7 +115,6 @@ if __name__ == "__main__":
                                  cameraTargetPosition=(0, 0, 0)
                                  )
     time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
-
 
     while True:
         obs = env.reset()

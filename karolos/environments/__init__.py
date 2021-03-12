@@ -6,9 +6,6 @@ class Environment:
         """
         raise NotImplementedError()
 
-    def render(self, mode='human'):
-        ...
-
     def step(self, action):
         """
         Returns:

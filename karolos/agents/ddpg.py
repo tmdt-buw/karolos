@@ -103,10 +103,9 @@ class AgentDDPG(Agent):
 
         experiences, indices = self.memory.sample(self.batch_size)
 
-        states, goals, actions, rewards, next_states, dones = experiences
+        states, actions, rewards, next_states, dones = experiences
 
         states = torch.FloatTensor(states).to(self.device)
-        goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
@@ -115,14 +114,13 @@ class AgentDDPG(Agent):
 
         rewards *= self.reward_scale
 
-        predicted_value = self.critic(states, goals, actions)
+        predicted_value = self.critic(states, actions)
 
-        predicted_next_action = self.policy(next_states, goals)
+        predicted_next_action = self.policy(next_states)
 
         # Train critic
         target_value = rewards + (1 - dones) * self.reward_discount * \
-                       self.target_critic(next_states, goals,
-                                          predicted_next_action)
+                       self.target_critic(next_states, predicted_next_action)
 
         critic_loss = self.criterion_critic(predicted_value, target_value)
 
@@ -131,8 +129,8 @@ class AgentDDPG(Agent):
         self.optimizer_critic.step()
 
         # Training policy
-        predicted_action = self.policy(states, goals)
-        loss_policy = -self.critic(states, goals, predicted_action).mean()
+        predicted_action = self.policy(states)
+        loss_policy = -self.critic(states, predicted_action).mean()
 
         self.optimizer_policy.zero_grad()
         loss_policy.backward()
@@ -176,13 +174,12 @@ class AgentDDPG(Agent):
         self.optimizer_critic.load_state_dict(
             torch.load(osp.join(path, "optimizer_critic_1.pt")))
 
-    def predict(self, states, goals, deterministic=True):
+    def predict(self, states, deterministic=True):
         self.policy.eval()
 
         states = torch.tensor(states, dtype=torch.float).to(self.device)
-        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
-        action = self.policy(states, goals, deterministic=deterministic)
+        action = self.policy(states, deterministic=deterministic)
 
         action = action.detach().cpu().numpy()
 

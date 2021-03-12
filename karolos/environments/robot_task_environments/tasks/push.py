@@ -4,7 +4,7 @@ TODO dicuss if we can replace with pick_place task
 """
 
 
-from .task import Task
+from . import Task
 import numpy as np
 import os
 from numpy.random import RandomState

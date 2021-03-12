@@ -27,7 +27,6 @@ class Agent:
         self.device = torch.device(
             'cuda' if torch.cuda.is_available() else 'cpu')
 
-
         self.batch_size = config.get('batch_size', 64)
         self.reward_discount = config.get('reward_discount', .99)
         self.reward_scale = config.get('reward_scale', 1.)

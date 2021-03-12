@@ -11,8 +11,8 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 
-from agents import Agent
-from agents.utils.nn import NeuralNetwork, Clamp, init_xavier_uniform
+from . import Agent
+from .utils.nn import NeuralNetwork, Clamp, init_xavier_uniform
 
 
 class Policy(NeuralNetwork):
@@ -96,7 +96,6 @@ class AgentSAC(Agent):
         self.automatic_entropy_regularization = config.get(
             'automatic_entropy_regularization', True)
 
-
         self.policy_structure = config.get('policy_structure', [])
         self.critic_structure = config.get('critic_structure', [])
 
@@ -148,10 +147,9 @@ class AgentSAC(Agent):
 
         experiences, indices = self.memory.sample(self.batch_size)
 
-        states, goals, actions, rewards, next_states, dones = experiences
+        states, actions, rewards, next_states, dones = experiences
 
         states = torch.FloatTensor(states).to(self.device)
-        goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
@@ -160,12 +158,12 @@ class AgentSAC(Agent):
 
         rewards *= self.reward_scale
 
-        predicted_value_1 = self.critic_1(states, goals, actions)
-        predicted_value_2 = self.critic_2(states, goals, actions)
+        predicted_value_1 = self.critic_1(states, actions)
+        predicted_value_2 = self.critic_2(states, actions)
 
-        predicted_action, log_prob = self.policy(states, goals,
+        predicted_action, log_prob = self.policy(states,
                                                  deterministic=False)
-        predicted_next_action, next_log_prob = self.policy(next_states, goals,
+        predicted_next_action, next_log_prob = self.policy(next_states,
                                                            deterministic=False)
 
         if self.automatic_entropy_regularization is True:
@@ -181,8 +179,8 @@ class AgentSAC(Agent):
 
         # Train critic
         target_critic_min = torch.min(
-            self.target_critic_1(next_states, goals, predicted_next_action),
-            self.target_critic_2(next_states, goals, predicted_next_action))
+            self.target_critic_1(next_states, predicted_next_action),
+            self.target_critic_2(next_states, predicted_next_action))
 
         target_critic_min.sub_(self.entropy_regularization * next_log_prob)
 
@@ -206,8 +204,8 @@ class AgentSAC(Agent):
 
         # Training policy
         predicted_new_q_val = torch.min(
-            self.critic_1(states, goals, predicted_action),
-            self.critic_2(states, goals, predicted_action))
+            self.critic_1(states, predicted_action),
+            self.critic_2(states, predicted_action))
         loss_policy = (
                 self.entropy_regularization * log_prob - predicted_new_q_val).mean()
 
@@ -224,7 +222,7 @@ class AgentSAC(Agent):
         self.update_target(self.critic_2, self.target_critic_2, self.tau)
 
         if self.writer:
-            self.writer.add_scalar('entropy_regularization', self.entropy_regularization)
+            self.writer.add_scalar('entropy_regularization', self.entropy_regularization, self.learning_step)
             self.writer.add_histogram('predicted_value_1', predicted_value_1, self.learning_step)
             self.writer.add_histogram('predicted_value_2', predicted_value_2, self.learning_step)
             self.writer.add_histogram('rewards', rewards, self.learning_step)
@@ -280,14 +278,13 @@ class AgentSAC(Agent):
         self.optimizer_critic_2.load_state_dict(
             torch.load(osp.join(path, "optimizer_critic_2.pt")))
 
-    def predict(self, states, goals, deterministic=True):
+    def predict(self, states, deterministic=True):
 
         self.policy.eval()
 
         states = torch.tensor(states, dtype=torch.float).to(self.device)
-        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
-        action, _ = self.policy(states, goals, deterministic=deterministic)
+        action, _ = self.policy(states, deterministic=deterministic)
 
         action = action.detach().cpu().numpy()
 

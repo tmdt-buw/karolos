@@ -1,11 +1,14 @@
+from gym import spaces
+import numpy as np
+from numpy.random import RandomState
 import os
 
-import numpy as np
-from gym import spaces
-from numpy.random import RandomState
+from karolos.utils import unwind_dict_values
 
-from .task import Task
-from utils import unwind_dict_values
+try:
+    from . import Task
+except ImportError:
+    from karolos.environments.robot_task_environments.tasks import Task
 
 
 class Pick_Place(Task):
@@ -21,26 +24,26 @@ class Pick_Place(Task):
         # more error margin
         return goal_distance < 0.05
 
-    def reward_function(self, done, goal, **kwargs):
+    def reward_function(self, goal_info, done, **kwargs):
         # 0.2* dist(tcp, obj), 0.8*dist(obj,goal)
-        if self.success_criterion(goal):
+        if self.success_criterion(goal_info):
             reward = 1.
         elif done:
             reward = -1.
         else:
 
             goal_achieved_object = unwind_dict_values(
-                goal["achieved"]['object_position'])
+                goal_info["achieved"]['object_position'])
             goal_achieved_tcp = unwind_dict_values(
-                goal["achieved"]['tcp_position'])
+                goal_info["achieved"]['tcp_position'])
             goal_desired_object = unwind_dict_values(
-                goal["desired"]['object_position'])
+                goal_info["desired"]['object_position'])
             goal_desired_tcp = unwind_dict_values(
-                goal["desired"]['tcp_position'])
+                goal_info["desired"]['tcp_position'])
 
             # 0.8 * dist(obj, goal_obj), how close obj is to obj_goal
             reward_object = np.exp(-5 * np.linalg.norm(goal_desired_object -
-                                                    goal_achieved_object)) - 1
+                                                       goal_achieved_object)) - 1
 
             # 0.2 * dist(obj, tcp), how close tcp is to obj
             reward_tcp = np.exp(-5 * np.linalg.norm(goal_achieved_tcp -
@@ -66,10 +69,7 @@ class Pick_Place(Task):
 
         self.observation_space = spaces.Dict({
             "position": spaces.Box(-1, 1, shape=(3,)),
-        })
-        self.goal_space = spaces.Dict({
-            "object_position": spaces.Box(-1, 1, shape=(3,)),
-            "tcp_position": spaces.Box(-1, 1, shape=(3,))
+            "goal": spaces.Box(-1, 1, shape=(3,)),
         })
 
         self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
@@ -79,7 +79,7 @@ class Pick_Place(Task):
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))
 
-    def reset(self, robot=None, desired_state=None):
+    def reset(self, robot=None, observation_robot=None, desired_state=None):
 
         super(Pick_Place, self).reset()
 
@@ -146,7 +146,7 @@ class Pick_Place(Task):
                 else:
                     contact_points = False
 
-        return self.get_observation()
+        return self.get_status(observation_robot)
 
     def get_target(self):
 
@@ -157,18 +157,11 @@ class Pick_Place(Task):
 
         return position_target
 
-    def get_observation(self):
-        position_object, _ = self.bullet_client.getBasePositionAndOrientation(
-            self.object)
-
-        position_object = np.array(position_object)
-
-        observation = {"object_position": position_object}
-
-        return observation
-
-    def get_status(self, observation):
-        position_tcp = observation["tcp_position"]
+    def get_status(self, observation_robot=None):
+        if observation_robot is None:
+            position_tcp = None
+        else:
+            position_tcp = observation_robot["tcp_position"]
 
         position_object, _ = self.bullet_client.getBasePositionAndOrientation(
             self.object)
@@ -180,6 +173,11 @@ class Pick_Place(Task):
 
         position_object_desired = np.array(position_object_desired)
 
+        observation = {
+            "position": position_object,
+            "goal": position_object_desired
+        }
+
         achieved_goal = {
             "object_position": position_object,
             "tcp_position": position_tcp
@@ -190,9 +188,14 @@ class Pick_Place(Task):
             "tcp_position": position_object
         }
 
+        goal_info = {
+            'achieved': achieved_goal,
+            'desired': desired_goal,
+        }
+
         done = self.step_counter >= self.max_steps
 
-        return achieved_goal, desired_goal, done
+        return observation, goal_info, done
 
 
 if __name__ == "__main__":

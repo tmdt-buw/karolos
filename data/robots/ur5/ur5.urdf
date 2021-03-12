@@ -438,6 +438,8 @@
         <contact>
             <stiffness value="10000"/>
             <damping value="10"/>
+                     <lateral_friction value="100.0"/>
+
         </contact>
 
     </link>
@@ -517,6 +519,8 @@
         <contact>
             <stiffness value="10000"/>
             <damping value="10"/>
+                     <lateral_friction value="100.0"/>
+
         </contact>
 
     </link>

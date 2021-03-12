@@ -45,21 +45,15 @@ class Manager:
         for trajectory_step in range(trajectory_length):
             state, _ = trajectory[trajectory_step * 2]
             action = trajectory[trajectory_step * 2 + 1]
-            next_state, goal = trajectory[trajectory_step * 2 + 2]
+            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
             done = trajectory_step == len(trajectory) // 2 - 1
-            reward = self.reward_function(state=state, action=action,
-                                         next_state=next_state, done=done,
-                                         goal=goal)
-
-            reward /= trajectory_length
+            reward = self.reward_function(goal_info=goal_info, done=done)
 
             state = unwind_dict_values(state)
-            goal = unwind_dict_values(goal["desired"])
             next_state = unwind_dict_values(next_state)
 
             experience = {
                 "state": state,
-                "goal": goal,
                 "action": action,
                 "reward": reward,
                 "next_state": next_state,
@@ -74,30 +68,24 @@ class Manager:
 
             state, _ = trajectory[trajectory_step * 2]
             action = trajectory[trajectory_step * 2 + 1]
-            next_state, goal = trajectory[trajectory_step * 2 + 2]
+            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
             done = trajectory_step == len(trajectory) // 2 - 1
 
-            # sample future goal
+            # sample future goal_info
             goal_step = np.random.randint(trajectory_step,
                                           len(trajectory) // 2)
-            _, future_goal = trajectory[goal_step * 2]
+            _, future_goal_info = trajectory[goal_step * 2]
 
-            goal = goal.copy()
-            goal["desired"] = future_goal["achieved"]
+            goal_info = goal_info.copy()
+            goal_info["desired"] = future_goal_info["achieved"]
 
-            reward = self.reward_function(state=state, action=action,
-                                         next_state=next_state, done=done,
-                                         goal=goal)
-
-            reward /= trajectory_length
+            reward = self.reward_function(goal_info=goal_info, done=done)
 
             state = unwind_dict_values(state)
-            goal = unwind_dict_values(goal["desired"])
             next_state = unwind_dict_values(next_state)
 
             experience = {
                 "state": state,
-                "goal": goal,
                 "action": action,
                 "reward": reward,
                 "next_state": next_state,
@@ -142,10 +130,10 @@ class Manager:
                     self.trajectories.pop(env_id, None)
                     self.trajectories[env_id].append(data)
             elif func == "step":
-                state, goal, done = data
-                self.trajectories[env_id].append((state, goal))
+                state, goal_info, done = data
+                self.trajectories[env_id].append((state, goal_info))
 
-                done |= self.success_criterion(goal)
+                done |= self.success_criterion(goal_info)
 
                 if done:
                     experiences, experiences_her = self.trajectory2experiences(
@@ -162,7 +150,7 @@ class Manager:
                         sum(self.steps.values()) + 1
                     )
 
-                    results_episodes.append(self.success_criterion(goal))
+                    results_episodes.append(self.success_criterion(goal_info))
 
                     requests.append(
                         (env_id, "reset",
@@ -184,21 +172,17 @@ class Manager:
                                range(len(required_predictions))]
             else:
                 states = []
-                goals = []
 
                 for env_id in required_predictions:
-                    state, goal = self.trajectories[env_id][-1]
+                    state, _ = self.trajectories[env_id][-1]
 
                     state = unwind_dict_values(state)
-                    goal = unwind_dict_values(goal["desired"])
 
                     states.append(state)
-                    goals.append(goal)
 
                 states = np.stack(states)
-                goals = np.stack(goals)
 
-                predictions = self.agent.predict(states, goals,
+                predictions = self.agent.predict(states,
                                                  deterministic=mode == "test")
 
             for env_id, prediction in zip(required_predictions,
@@ -208,7 +192,8 @@ class Manager:
 
         return requests, results_episodes
 
-    def __init__(self, training_config, results_dir="./results", experiment_name=None):
+    def __init__(self, training_config, results_dir="./results",
+                 experiment_name=None):
 
         logger = logging.getLogger("trainer")
         logger.setLevel(logging.INFO)
@@ -227,8 +212,9 @@ class Manager:
             while os.path.exists(f"{experiment_dir}_{appendix}"):
                 appendix += 1
 
-            logger.warning(f"Result directory already exists {experiment_dir}. "
-                           f"Using directory {experiment_dir}_{appendix} instead.")
+            logger.warning(
+                f"Result directory already exists {experiment_dir}. "
+                f"Using directory {experiment_dir}_{appendix} instead.")
 
             experiment_dir += f"_{appendix}"
 
@@ -264,7 +250,7 @@ class Manager:
 
             if base_experiment is not None:
 
-                base_experiment_dir = osp.join(log_dir,
+                base_experiment_dir = osp.join(results_dir,
                                                base_experiment["experiment"])
 
                 with open(osp.join(base_experiment_dir, 'config.json'), 'r') as f:
@@ -355,6 +341,8 @@ class Manager:
 
                         env_responses = self.orchestrator.send_receive(
                             requests)
+
+                    pbar_test.close()
 
                     # evaluate test
                     success_ratio = np.mean(concluded_tests)

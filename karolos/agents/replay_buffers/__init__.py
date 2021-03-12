@@ -14,7 +14,7 @@ def get_replay_buffer(config):
     return buffer
 
 class ReplayBuffer:
-    experience_keys = ["state", "goal", "action", "reward", "next_state", "done"]
+    experience_keys = ["state", "action", "reward", "next_state", "done"]
 
     def __init__(self, buffer_size=None, uses_priority=False):
         if buffer_size is None:
