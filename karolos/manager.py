@@ -18,6 +18,7 @@ from agents import get_agent
 from environments.orchestrator import Orchestrator
 from utils import unwind_dict_values
 
+
 class Manager:
     @staticmethod
     def get_initial_state(random: bool, env_id=None):
@@ -33,68 +34,6 @@ class Manager:
         initial_state = None
 
         return initial_state
-
-    def trajectory2experiences(self, trajectory, her_ratio=0.):
-        assert len(trajectory) % 2
-
-        experiences = []
-        experiences_her = []
-
-        trajectory_length = len(trajectory) // 2
-
-        for trajectory_step in range(trajectory_length):
-            state, _ = trajectory[trajectory_step * 2]
-            action = trajectory[trajectory_step * 2 + 1]
-            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
-            done = trajectory_step == len(trajectory) // 2 - 1
-            reward = self.reward_function(goal_info=goal_info, done=done)
-
-            state = unwind_dict_values(state)
-            next_state = unwind_dict_values(next_state)
-
-            experience = {
-                "state": state,
-                "action": action,
-                "reward": reward,
-                "next_state": next_state,
-                "done": done
-            }
-
-            experiences.append(experience)
-
-        for _ in range(int(her_ratio * len(trajectory) // 2)):
-            # sample random step
-            trajectory_step = np.random.randint(len(trajectory) // 2)
-
-            state, _ = trajectory[trajectory_step * 2]
-            action = trajectory[trajectory_step * 2 + 1]
-            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
-            done = trajectory_step == len(trajectory) // 2 - 1
-
-            # sample future goal_info
-            goal_step = np.random.randint(trajectory_step,
-                                          len(trajectory) // 2)
-            _, future_goal_info = trajectory[goal_step * 2]
-
-            goal_info = goal_info.copy()
-            goal_info["desired"] = future_goal_info["achieved"]
-
-            reward = self.reward_function(goal_info=goal_info, done=done)
-
-            state = unwind_dict_values(state)
-            next_state = unwind_dict_values(next_state)
-
-            experience = {
-                "state": state,
-                "action": action,
-                "reward": reward,
-                "next_state": next_state,
-                "done": done
-            }
-
-            experiences_her.append(experience)
-
-        return experiences, experiences_her
 
     @staticmethod
     def similar_config(config_1, config_2):
@@ -136,17 +75,12 @@ class Manager:
                 done |= self.success_criterion(goal_info)
 
                 if done:
-                    experiences, experiences_her = self.trajectory2experiences(
-                        self.trajectories.pop(env_id), self.her_ratio)
+                    trajectory = self.trajectories.pop(env_id)
 
-                    reward = sum(
-                        [experience["reward"] for experience in experiences])
-
-                    self.agent.add_experiences(experiences)
-                    self.agent.add_experiences(experiences_her)
+                    rewards = self.agent.add_experience_trajectory(trajectory)
 
                     self.writer.add_scalar(
-                        f'{mode} reward episode', reward,
+                        f'{mode} reward episode', sum(rewards),
                         sum(self.steps.values()) + 1
                     )
 
@@ -242,6 +176,7 @@ class Manager:
             self.agent = get_agent(agent_config,
                                    self.orchestrator.observation_space,
                                    self.orchestrator.action_space,
+                                   self.reward_function,
                                    experiment_dir)
 
             models_dir = osp.join(experiment_dir, "models")
@@ -282,7 +217,6 @@ class Manager:
 
             number_tests = training_config["number_tests"]
             test_interval = training_config["test_interval"]
-            self.her_ratio = training_config.get("her_ratio", 0)
             next_test_timestep = 0
 
             best_success_ratio = 0.0

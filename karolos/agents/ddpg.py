@@ -60,10 +60,11 @@ class Critic(NeuralNetwork):
 
 class AgentDDPG(Agent):
     def __init__(self, config, observation_space, action_space,
-                 experiment_dir="."):
+                 reward_function, experiment_dir="."):
 
         super(AgentDDPG, self).__init__(config, observation_space,
-                                        action_space, experiment_dir)
+                                        action_space, reward_function,
+                                        experiment_dir)
 
         self.learning_rate_critic = config.get("learning_rate_critic", 5e-4)
         self.learning_rate_policy = config.get("learning_rate_policy", 5e-4)
