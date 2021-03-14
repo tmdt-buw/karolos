@@ -29,8 +29,15 @@ class Reach(Task):
 
         self.observation_space = spaces.Box(-1, 1, shape=(3,))
 
-        self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
-                                                  useFixedBase=True)
+        self.target = p.createMultiBody(
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE,
+                                                     radius=.03,
+                                                     rgbaColor=[0, 1, 1, 1],
+                                                     ),
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE,
+                                                           radius=.03,
+                                                           ),
+        )
 
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))

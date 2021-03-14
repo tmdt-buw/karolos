@@ -22,8 +22,8 @@ def get_env(env_config):
         from environments.robot_task_environments.environment_robot_task import RobotTaskEnvironment
         env = RobotTaskEnvironment(**env_config)
     elif environment == "gym":
-        from environments.gym_environments import get_gym_env
-        env = get_gym_env(env_config)
+        from environments.environment_wrappers.gym_wrapper import GymWrapper
+        env = GymWrapper(**env_config)
     else:
         raise ValueError(f"Unknown environment: {environment}")
 

@@ -1,9 +1,9 @@
-from gym import spaces
-import numpy as np
-from numpy.random import RandomState
 import os
 
+import numpy as np
+from gym import spaces
 from karolos.utils import unwind_dict_values
+from numpy.random import RandomState
 
 try:
     from . import Task
@@ -12,6 +12,50 @@ except ImportError:
 
 
 class Pick_Place(Task):
+
+    def __init__(self, bullet_client, offset=(0, 0, 0),
+                 max_steps=100, parameter_distributions=None):
+
+        super(Pick_Place, self).__init__(bullet_client=bullet_client,
+                                         parameter_distributions=parameter_distributions,
+                                         offset=offset, max_steps=max_steps,
+                                         gravity=(0, 0, -9.8))
+
+        self.limits = np.array([
+            (-.8, .8),
+            (-.8, .8),
+            (0., .8)
+        ])
+
+        self.observation_space = spaces.Dict({
+            "position": spaces.Box(-1, 1, shape=(3,)),
+            "goal": spaces.Box(-1, 1, shape=(3,)),
+        })
+
+        self.target = p.createMultiBody(
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE,
+                                                     radius=.03,
+                                                     rgbaColor=[0, 1, 1, 1],
+                                                     ),
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE,
+                                                           radius=.03,
+                                                           ),
+        )
+
+        self.object = p.createMultiBody(
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX,
+                                                     halfExtents=[.025] * 3,
+                                                     ),
+
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX,
+                                                           halfExtents=[
+                                                                           .025] * 3,
+                                                           ),
+            baseMass=.1,
+        )
+
+        self.random = RandomState(
+            int.from_bytes(os.urandom(4), byteorder='little'))
 
     @staticmethod
     def success_criterion(goal):
@@ -52,32 +96,6 @@ class Pick_Place(Task):
             # scale s.t. reward in [-1,1]
             reward = .8 * reward_object + .2 * reward_tcp
         return reward
-
-    def __init__(self, bullet_client, offset=(0, 0, 0),
-                 max_steps=100, parameter_distributions=None):
-
-        super(Pick_Place, self).__init__(bullet_client=bullet_client,
-                                         parameter_distributions=parameter_distributions,
-                                         offset=offset, max_steps=max_steps,
-                                         gravity=(0, 0, -9.8))
-
-        self.limits = np.array([
-            (-.8, .8),
-            (-.8, .8),
-            (0., .8)
-        ])
-
-        self.observation_space = spaces.Dict({
-            "position": spaces.Box(-1, 1, shape=(3,)),
-            "goal": spaces.Box(-1, 1, shape=(3,)),
-        })
-
-        self.target = self.bullet_client.loadURDF("objects/sphere.urdf",
-                                                  useFixedBase=True)
-        self.object = self.bullet_client.loadURDF("objects/cube.urdf")
-
-        self.random = RandomState(
-            int.from_bytes(os.urandom(4), byteorder='little'))
 
     def reset(self, robot=None, observation_robot=None, desired_state=None):
 
@@ -147,15 +165,6 @@ class Pick_Place(Task):
                     contact_points = False
 
         return self.get_status(observation_robot)
-
-    def get_target(self):
-
-        position_target, _ = self.bullet_client.getBasePositionAndOrientation(
-            self.target)
-
-        position_target = np.array(position_target)
-
-        return position_target
 
     def get_status(self, observation_robot=None):
         if observation_robot is None:
