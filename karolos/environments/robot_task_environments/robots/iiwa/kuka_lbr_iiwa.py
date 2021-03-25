@@ -3,6 +3,8 @@ import os
 import time
 from collections import namedtuple
 
+from pathlib import Path
+
 import numpy as np
 import pybullet as p
 import pybullet_data as pd
@@ -12,14 +14,14 @@ from numpy.random import RandomState
 
 # todo implement domain randomization
 
-class UR5:
+class IIWA:
     def __init__(self, bullet_client, offset=(0, 0, 0), sim_time=0., scale=1.,
                  parameter_distributions=None):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
         if parameter_distributions is not None:
-            logging.warning("Domain randomization not implemented for UR5")
+            logging.warning("Domain randomization not implemented for IIWA")
             raise NotImplementedError()
 
         self.time_step = bullet_client.getPhysicsEngineParameters()["fixedTimeStep"]
@@ -39,7 +41,9 @@ class UR5:
             int.from_bytes(os.urandom(4), byteorder='little'))
 
         # load robot in simulation
-        self.model_id = bullet_client.loadURDF("robots/ur5/ur5.urdf",
+        urdf_file = os.path.join(str(Path(__file__).absolute().parent), "iiwa.urdf")
+
+        self.model_id = bullet_client.loadURDF(urdf_file,
                                             np.array([0, 0, 0]) + self.offset,
                                             useFixedBase=True,
                                             flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
@@ -56,21 +60,31 @@ class UR5:
                            ["id", "initial_position", "limits", "max_velocity",
                             "max_torque"])
 
+        # self.joints = {
+        #     0: Joint(0, (-2.96705972839, 2.96705972839), 1.71042266695, 320),
+        #     1: Joint(0, (-2.09439510239, 2.09439510239), 1.71042266695, 320),
+        #     2: Joint(0, (-2.96705972839, 2.96705972839), 1.74532925199, 176),
+        #     3: Joint(0, (-2.09439510239, 2.09439510239), 2.26892802759, 176),
+        #     4: Joint(0, (-2.96705972839, 2.96705972839), 2.44346095279, 110),
+        #     5: Joint(0, (-2.09439510239, 2.09439510239), 3.14159265359, 40),
+        #     6: Joint(0, (-3.05432619099, 3.05432619099), 3.14159265359, 40),
+
         self.joints_arm = {
-            "shoulder_pan_joint": Joint(self.joint_name2id["shoulder_pan_joint"], 0, (-6.2831, 6.2831), 3.15, 300),
-            "shoulder_lift_joint": Joint(self.joint_name2id["shoulder_lift_joint"], 0, (-2.3561, 2.3561), 3.15, 150),
-            "elbow_joint": Joint(self.joint_name2id["elbow_joint"], 0, (-3.1415, 3.1415), 3.15, 150),
-            "wrist_1_joint": Joint(self.joint_name2id["wrist_1_joint"], 0, (-2.3561, 2.3561), 3.2, 28),
-            "wrist_2_joint": Joint(self.joint_name2id["wrist_2_joint"], 0, (-6.2831, 6.2831), 3.2, 28),
-            "wrist_3_joint": Joint(self.joint_name2id["wrist_3_joint"], 0, (-6.2831, 6.2831), 3.2, 28),
+            "lbr_iiwa_joint_1": Joint(self.joint_name2id["lbr_iiwa_joint_1"], 0, (-2.96705972839, 2.96705972839), 1.71042266695, 320),
+            "lbr_iiwa_joint_2": Joint(self.joint_name2id["lbr_iiwa_joint_2"], 0, (-2.09439510239, 2.09439510239), 1.71042266695, 320),
+            "lbr_iiwa_joint_3": Joint(self.joint_name2id["lbr_iiwa_joint_3"], 0, (-2.96705972839, 2.96705972839), 1.74532925199, 176),
+            "lbr_iiwa_joint_4": Joint(self.joint_name2id["lbr_iiwa_joint_4"], 0, (-2.09439510239, 2.09439510239), 2.26892802759, 176),
+            "lbr_iiwa_joint_5": Joint(self.joint_name2id["lbr_iiwa_joint_5"], 0, (-2.96705972839, 2.96705972839), 2.44346095279, 110),
+            "lbr_iiwa_joint_6": Joint(self.joint_name2id["lbr_iiwa_joint_6"], 0, (-2.09439510239, 2.09439510239), 3.14159265359, 40),
+            "lbr_iiwa_joint_7": Joint(self.joint_name2id["lbr_iiwa_joint_7"], 0, (-3.05432619099, 3.05432619099), 3.14159265359, 40),
         }
 
         self.joints_hand = {
             # hand
-            "left_outer_knuckle_joint": Joint(self.joint_name2id["left_outer_knuckle_joint"], 0.3, (0.0, 0.725), 2., 20),
-            "left_inner_knuckle_joint": Joint(self.joint_name2id["left_inner_knuckle_joint"], 0.3, (0.0, 0.8757), 2., 20),
-            "right_outer_knuckle_joint": Joint(self.joint_name2id["right_outer_knuckle_joint"], 0.3, (0.0, 0.725), 2., 20),
-            "right_inner_knuckle_joint": Joint(self.joint_name2id["right_inner_knuckle_joint"], 0.3, (0.0, 0.8757), 2., 20),
+            "left_outer_knuckle_joint": Joint(self.joint_name2id["left_outer_knuckle_joint"], 0.3, (0.0, 0.725), 2., 15),
+            "left_inner_knuckle_joint": Joint(self.joint_name2id["left_inner_knuckle_joint"], 0.3, (0.0, 0.8757), 2., 15),
+            "right_outer_knuckle_joint": Joint(self.joint_name2id["right_outer_knuckle_joint"], 0.3, (0.0, 0.725), 2., 15),
+            "right_inner_knuckle_joint": Joint(self.joint_name2id["right_inner_knuckle_joint"], 0.3, (0.0, 0.8757), 2., 15),
         }
 
         self.joints_passive = {
@@ -90,7 +104,7 @@ class UR5:
                                                          self.bullet_client.JOINT_POINT2POINT,
                                                          [0, 0, 0],
                                                          [0, 0, 0], [0, 0, 0])
-        self.bullet_client.changeConstraint(constraint, maxForce=1e6)
+        self.bullet_client.changeConstraint(constraint, maxForce=1e4)
 
         constraint = self.bullet_client.createConstraint(self.model_id,
                                                          self.joint_name2id[
@@ -101,12 +115,22 @@ class UR5:
                                                          self.bullet_client.JOINT_POINT2POINT,
                                                          [0, 0, 0],
                                                          [0, 0, 0], [0, 0, 0])
-        self.bullet_client.changeConstraint(constraint, maxForce=1e6)
+        self.bullet_client.changeConstraint(constraint, maxForce=1e4)
+
+        from itertools import chain, permutations
+
+        for linkA, linkB in permutations(chain(self.joints_hand.keys(), self.joints_passive.keys()), 2):
+            self.bullet_client.setCollisionFilterPair(self.model_id,
+                                                      self.model_id,
+                                                      self.joint_name2id[
+                                                          linkA],
+                                                      self.joint_name2id[linkB],
+                                                      False)
 
         self.bullet_client.setCollisionFilterPair(self.model_id, self.model_id,
                                                   self.joint_name2id[
                                                       "left_inner_finger_joint"],
-                                                  self.joint_name2id["right_inner_finger_joint"], True)
+                                                  self.joint_name2id["right_inner_finger_joint"], False)
 
         # todo introduce friction
         # self.bullet_client.setJointMotorControlArray(self.model_id,
@@ -321,32 +345,34 @@ if __name__ == "__main__":
 
     p.setRealTimeSimulation(0)
 
-    # p.setGravity(0, 0, -9.81)
+    p.setGravity(0, 0, -9.81)
 
-    robot = UR5(p, sim_time=.1, scale=.01)
+    robot = IIWA(p, sim_time=.1, scale=.02)
 
     cube = p.loadURDF(
         "objects/cube.urdf",
         flags=p.URDF_USE_SELF_COLLISION,
+        # globalScaling=.5
+        useFixedBase=True
     )
 
     while True:
         # observation = robot.reset(np.zeros_like(robot.observation_space["joint_positions"].sample()))
 
+        action = np.zeros_like(robot.action_space.sample())
+        action[-1] = -1.
 
-        action = np.ones_like(robot.action_space.sample())
-        # action = np.zeros_like(robot.action_space.sample())
-        # action[-1] = 0.
-
-        # p.resetBasePositionAndOrientation(
-        #     cube, observation["tcp_position"], [0, 0, 0, 1])
-
-        for _ in range(25):
+        for _ in range(3):
             observation = robot.step(action)
 
-        # p.resetBasePositionAndOrientation(
-        #     cube, observation["tcp_position"], [0, 0, 0, 1])
+        p.resetBasePositionAndOrientation(
+            cube, observation["tcp_position"], [0, 0, 0, 1])
 
-        for _ in range(25):
-            observation = robot.step(-action)
+        for _ in range(20):
+            action = robot.action_space.sample()  # * .1
+            action[-1] = 1.
 
+            observation = robot.step(action)
+
+        p.resetBasePositionAndOrientation(
+            cube, observation["tcp_position"], [0, 0, 0, 1])
