@@ -14,9 +14,9 @@ import os.path as osp
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
 
-from agents import get_agent
-from environments.orchestrator import Orchestrator
-from utils import unwind_dict_values
+from karolos.agents import get_agent
+from karolos.environments.orchestrator import Orchestrator
+from karolos.utils import unwind_dict_values
 
 
 class Manager:
@@ -342,5 +342,4 @@ if __name__ == "__main__":
         }
     }
 
-    trainer = Manager(training_config, "results",
-                      experiment_name="agreed_clip_1_5_v1")
+    trainer = Manager(training_config, "results")
