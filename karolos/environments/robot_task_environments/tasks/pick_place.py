@@ -1,9 +1,10 @@
-import os
-
-import numpy as np
 from gym import spaces
-from karolos.utils import unwind_dict_values
+import numpy as np
 from numpy.random import RandomState
+import os
+import pybullet as p
+
+from karolos.utils import unwind_dict_values
 
 try:
     from . import Task
@@ -32,22 +33,22 @@ class Pick_Place(Task):
             "goal": spaces.Box(-1, 1, shape=(3,)),
         })
 
-        self.target = p.createMultiBody(
-            baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE,
+        self.target = bullet_client.createMultiBody(
+            baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_SPHERE,
                                                      radius=.03,
                                                      rgbaColor=[0, 1, 1, 1],
                                                      ),
-            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE,
+            baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_SPHERE,
                                                            radius=.03,
                                                            ),
         )
 
-        self.object = p.createMultiBody(
-            baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX,
+        self.object = bullet_client.createMultiBody(
+            baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_BOX,
                                                      halfExtents=[.025] * 3,
                                                      ),
 
-            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX,
+            baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_BOX,
                                                            halfExtents=[
                                                                            .025] * 3,
                                                            ),
@@ -208,7 +209,6 @@ class Pick_Place(Task):
 
 
 if __name__ == "__main__":
-    import pybullet as p
     import pybullet_data as pd
     import time
 

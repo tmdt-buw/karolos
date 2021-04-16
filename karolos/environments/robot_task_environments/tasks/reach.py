@@ -2,6 +2,7 @@ from gym import spaces
 import numpy as np
 from numpy.random import RandomState
 import os
+import pybullet as p
 
 from karolos.utils import unwind_dict_values
 
@@ -29,12 +30,12 @@ class Reach(Task):
 
         self.observation_space = spaces.Box(-1, 1, shape=(3,))
 
-        self.target = p.createMultiBody(
-            baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE,
+        self.target = bullet_client.createMultiBody(
+            baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_SPHERE,
                                                      radius=.03,
                                                      rgbaColor=[0, 1, 1, 1],
                                                      ),
-            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE,
+            baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_SPHERE,
                                                            radius=.03,
                                                            ),
         )
@@ -146,7 +147,6 @@ class Reach(Task):
 
 
 if __name__ == "__main__":
-    import pybullet as p
     import pybullet_data as pd
     import time
 
