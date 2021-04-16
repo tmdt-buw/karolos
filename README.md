@@ -28,20 +28,24 @@ git clone https://github.com/tmdt-buw/karolos
 cd karolos
 ```
 
-Install the dependencies using conda (recommended option)
+Install the dependencies using [Anaconda](https://docs.anaconda.com/anaconda/install/).
 ```
 conda env create -f environment.yml
 conda activate karolos
 ```
 
-If you have CUDA installed, you will need to install the package `cudatoolkit` using the version which fits your system.
+Install pytorch according to the [official guide](https://pytorch.org/get-started/locally/).
+You don't need ``torchvision`` and ``torchaudio``.
+```
+conda install pytorch cudatoolkit=11.1 -c pytorch -c conda-forge
+```
 
 ### Getting Started
 
 Run an experiment by launching a manager
 
 ```
-python manager/manager.py
+python karolos/manager.py
 ```
 
 You can monitor the progress of your experiment in real-time with a tensorboard
@@ -49,9 +53,6 @@ You can monitor the progress of your experiment in real-time with a tensorboard
 ```
 tensorboard --logdir results
 ```
-
-
-
 
 ## Contribute to KAROLOS
 
