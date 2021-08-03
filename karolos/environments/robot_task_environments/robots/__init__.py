@@ -158,12 +158,7 @@ class RobotArm:
             position, _, _, _ = self.bullet_client.getJointState(self.model_id,
                                                                  joint.id)
 
-            normalized_joint_position = np.interp(position, joint.limits,
-                                                  [-1, 1])
-            normalized_target_joint_position = np.clip(
-                normalized_joint_position + action_hand, -1, 1)
-            target_joint_position = np.interp(normalized_target_joint_position,
-                                              [-1, 1], joint.limits)
+            target_joint_position = np.interp(action_hand, [-1, 1], joint.limits)
 
             joint_ids.append(joint.id)
             target_positions.append(target_joint_position)
@@ -175,7 +170,6 @@ class RobotArm:
                                                      joint_ids,
                                                      p.POSITION_CONTROL,
                                                      targetPositions=target_positions,
-                                                     # maxVelocities=maxVelocities,
                                                      forces=torques
                                                      )
 
