@@ -7,9 +7,9 @@ import pybullet as p
 import pybullet_data as pd
 
 try:
-    from .. import RobotArm, Joint, KeyPointMode
+    from .. import RobotArm, Joint
 except:
-    from karolos.environments.robot_task_environments.robots import RobotArm, Joint, KeyPointMode
+    from karolos.environments.robot_task_environments.robots import RobotArm, Joint
 
 
 # todo implement domain randomization
@@ -40,8 +40,6 @@ class UR5(RobotArm):
             "right_inner_finger_joint": (0.3, (-.0425, 0.), 2., 20),
         }
 
-
-
         super(UR5, self).__init__(bullet_client=bullet_client,
                                   urdf_file=urdf_file,
                                   joints_arm=joints_arm,
@@ -49,8 +47,7 @@ class UR5(RobotArm):
                                   offset=offset,
                                   sim_time=sim_time,
                                   scale=scale,
-                                  parameter_distributions=parameter_distributions,
-                                  key_point_mode=KeyPointMode.WORLD_LINK_FRAME)
+                                  parameter_distributions=parameter_distributions)
 
         # todo introduce friction
 
@@ -71,31 +68,11 @@ if __name__ == "__main__":
 
     p.setGravity(0, 0, -9.81)
 
-    robot = UR5(p, sim_time=.1, scale=.05)
-
-    kp_arm, kp_hand = robot.get_key_points()
-
-    for pos, ori in kp_arm:
-        kp = p.createMultiBody(
-            baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX,
-                                                     # halfExtents=[1,1,.001],
-                                                     halfExtents=[.5, .005,
-                                                                  .005],
-                                                     rgbaColor=[1, 0, 0, 1],
-                                                     ),
-            baseMass=0,
-        )
-
-        p.resetBasePositionAndOrientation(kp, pos, [0, 0, 0, 1])
-
-    while True:
-        robot.bullet_client.stepSimulation()
-
-    exit()
+    robot = UR5(p, sim_time=.1, scale=.02)
 
     cube = p.createMultiBody(
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX,
-                                                     halfExtents=[.02] * 3,
+                                                     halfExtents=[.025] * 3,
                                                                  rgbaColor=[1,
                                                                             0,
                                                                             0,
@@ -103,12 +80,10 @@ if __name__ == "__main__":
                                                                  ),
 
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX,
-                                                           halfExtents=[.01] * 3,
+                                                           halfExtents=[.025] * 3,
                                                            ),
             baseMass=.1,
         )
-
-    observation = None
 
     while True:
         # observation = robot.reset(np.zeros_like(robot.observation_space["joint_positions"].sample()))
@@ -116,20 +91,15 @@ if __name__ == "__main__":
         action = np.zeros_like(robot.action_space.sample())
         action[-1] = -1.
 
-        for _ in range(5):
+        for _ in range(1):
             observation = robot.step(action)
 
         p.resetBasePositionAndOrientation(
             cube, observation["tcp_position"], [0, 0, 0, 1])
 
-        action[-1] = .7
-
-        for _ in range(5):
-            observation = robot.step(action)
-
         for _ in range(25):
-            action = robot.action_space.sample() * .5
-            action[-1] = .7
+            action = robot.action_space.sample()  # * .1
+            action[-1] = 1.
 
             observation = robot.step(action)
 
