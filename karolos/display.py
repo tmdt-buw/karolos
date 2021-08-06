@@ -18,7 +18,16 @@ from karolos.environments import get_env
 
 # todo make experiment a parameter
 # experiments = os.listdir("results")
-experiment_folder = osp.join("../results", "results_folder")
+
+#
+experiment_folder = osp.join("./environments/shell_environment/results", "clip_1_1")
+
+# diagonal escape
+# experiment_folder = osp.join("./environments/shell_environment/results", "clip_4_5")
+
+# sliding trajectory
+experiment_folder = osp.join("./environments/shell_environment/results", "clip_4_6")
+
 
 print(experiment_folder)
 print(os.listdir(experiment_folder))
@@ -57,8 +66,6 @@ while True:
         state = unwind_dict_values(state)
 
         action = agent.predict([state], deterministic=True)[0]
-
-        action[3:] = 0
 
         actions.append(action.copy())
 

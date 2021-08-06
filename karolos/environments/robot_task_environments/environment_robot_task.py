@@ -97,7 +97,7 @@ if __name__ == "__main__":
     env_kwargs = {
         "render": True,
         "task_config": {
-            "name": "pick_place",
+            "name": "reach",
             # "max_steps": 25
         },
         "robot_config": {
@@ -124,6 +124,6 @@ if __name__ == "__main__":
 
             time.sleep(time_step)
 
-            observation, goal, done = env.step(action)
+            state, goal_info, done = env.step(action)
 
-            reward = env.reward_function(False, goal)
+            reward = env.reward_function(goal_info, done)

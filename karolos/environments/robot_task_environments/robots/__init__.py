@@ -22,17 +22,22 @@ import numpy as np
 import pybullet as p
 from gym import spaces
 from numpy.random import RandomState
+from enum import Enum
 
 Joint = namedtuple("Joint", ["id", "initial_position", "limits",
                              "max_velocity", "max_torque"])
 Link = namedtuple("Link", ["mass", "linearDamping"])
 
+class KeyPointMode(Enum):
+    LINK_WORLD = 0
+    WORLD_LINK_FRAME = 1
 
 class RobotArm:
     def __init__(self, bullet_client, urdf_file,
                  joints_arm, joints_hand, links=None,
                  offset=(0, 0, 0), sim_time=0.,
-                 scale=1., parameter_distributions=None):
+                 scale=1., parameter_distributions=None,
+                 key_point_mode=KeyPointMode.LINK_WORLD):
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -54,7 +59,7 @@ class RobotArm:
 
         self.max_steps = int(sim_time / self.time_step)
 
-        self.offset = offset
+        self.offset = np.array(offset)
 
         self.bullet_client = bullet_client
 
@@ -106,6 +111,8 @@ class RobotArm:
                                                   len(self.joints_hand),)),
             "tcp_position": spaces.Box(-1., 1., shape=(3,)),
         })
+
+        self.key_point_mode = key_point_mode
 
         # reset to initial position
         self.reset()
@@ -282,14 +289,12 @@ class RobotArm:
 
         joint_positions = np.array(joint_positions)
         joint_velocities = np.array(joint_velocities)
-        tcp_position = np.array(tcp_position)
-        # tcp_velocity = np.array(tcp_velocity)
+        tcp_position = np.array(tcp_position) - self.offset
 
         observation = {
             "joint_positions": joint_positions,
             "joint_velocities": joint_velocities,
             "tcp_position": tcp_position,
-            # "tcp_velocity": tcp_velocity
         }
 
         for key in observation:
@@ -299,18 +304,18 @@ class RobotArm:
 
         return observation
 
-    def get_key_points(self, useLinkWorld=True):
+    def get_key_points(self):
         joint_ids_arm = [joint.id for _, joint in self.joints_arm.items()]
         joint_ids_hand = [joint.id for _, joint in self.joints_hand.items()]
 
         linkStates_arm = self.bullet_client.getLinkStates(self.model_id, joint_ids_arm, False, True)
         linkStates_hand = self.bullet_client.getLinkStates(self.model_id, joint_ids_hand, False, True)
 
-        if useLinkWorld:
-            kp_arm = [link[:2] for link in linkStates_arm]
-            kp_hand = [link[:2] for link in linkStates_hand]
+        if self.key_point_mode == KeyPointMode.LINK_WORLD:
+            kp_arm = [(link[0] - self.offset, link[1]) for link in linkStates_arm]
+            kp_hand = [(link[0] - self.offset, link[1]) for link in linkStates_hand]
         else:
-            kp_arm = [link[4:6] for link in linkStates_arm]
-            kp_hand = [link[4:6] for link in linkStates_hand]
+            kp_arm = [(link[4] - self.offset, link[5]) for link in linkStates_arm]
+            kp_hand = [(link[4] - self.offset, link[5]) for link in linkStates_hand]
 
         return kp_arm, kp_hand

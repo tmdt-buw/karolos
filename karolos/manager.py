@@ -188,7 +188,8 @@ class Manager:
                 base_experiment_dir = osp.join(results_dir,
                                                base_experiment["experiment"])
 
-                with open(osp.join(base_experiment_dir, 'config.json'), 'r') as f:
+                with open(osp.join(base_experiment_dir, 'config.json'),
+                          'r') as f:
                     base_experiment_config = json.load(f)
 
                 if self.similar_config(env_config, base_experiment_config[
@@ -202,7 +203,8 @@ class Manager:
                     agent_id = base_experiment.get("agent", max(
                         os.listdir(base_experiment_models_dir)))
 
-                    self.agent.load(osp.join(base_experiment_models_dir, agent_id))
+                    self.agent.load(
+                        osp.join(base_experiment_models_dir, agent_id))
                 else:
                     raise ValueError("Configurations do not match!")
 
@@ -221,9 +223,11 @@ class Manager:
 
             best_success_ratio = 0.0
 
-            pbar = tqdm(total=training_config["total_timesteps"], desc="Progress")
+            pbar = tqdm(total=training_config["total_timesteps"],
+                        desc="Progress")
 
-            while sum(self.steps.values()) < training_config["total_timesteps"]:
+            while sum(self.steps.values()) < training_config[
+                "total_timesteps"]:
 
                 # Test
                 if sum(self.steps.values()) >= next_test_timestep:
@@ -250,7 +254,8 @@ class Manager:
 
                     concluded_tests = []
 
-                    pbar_test = tqdm(total=number_tests, desc="Test", leave=False)
+                    pbar_test = tqdm(total=number_tests, desc="Test",
+                                     leave=False)
 
                     while len(concluded_tests) < number_tests:
 
@@ -312,34 +317,84 @@ class Manager:
 
 if __name__ == "__main__":
 
-    learning_rates = [(0.0005, 0.0005)]
-    hidden_layer_sizes = [32]
-    network_depths = [8]
-    entropy_regularization_learning_rates = [5e-5]
-    taus = [0.0025]
-    her_ratios = [0.0]
-
-    training_config = {
-        "total_timesteps": 5_000_000,
-        "test_interval": 500_000,
-        "number_tests": 100,
-
-        "agent_config": {
-            "algorithm": "sac",
-
-            "policy_structure": [('linear', 32), ('relu', None)] * 8,
-            "critic_structure": [('linear', 32), ('relu', None)] * 8
-        },
-        "env_config": {
-            "environment": "karolos",
-            "render": True,
-            "task_config": {
-                "name": "reach",
-            },
-            "robot_config": {
-                "name": "panda",
-            }
-        }
+    all_scenarios = {
+        # 1: range(2,7),
+        # 2: range(1,8),
+        # 3: range(1,8),
+        4: range(1,9),
+        5: range(1,13),
+        6: range(1,13),
     }
 
-    trainer = Manager(training_config, "results")
+    for row, positions in all_scenarios.items():
+        for position in positions:
+            scenario = f"{row}_{position}"
+
+            training_config = {
+                "total_timesteps": 250_000,
+                "test_interval": 50_000,
+                "number_tests": 100,
+                # "number_tests": 1,
+
+                "number_processes": cpu_count(),
+
+                "agent_config": {
+                    "algorithm": "sac",
+
+                    "learning_rate_critic": 0.001,
+                    "learning_rate_policy": 0.001,
+                    "learning_rate_entropy_regularization": 0.0001,
+                    "entropy_regularization": 1,
+                    "weight_decay": 0.0001,
+                    "reward_scale": 100,
+                    "her_ratio": 0.1,
+                    "batch_size": 512,
+                    "tau": 0.0025,
+                    "buffer": {"name": "priority", "buffer_size": 2e6},
+
+                    "policy_structure": [('linear', 64), ('relu', None)] * 3,
+                    "critic_structure": [('linear', 64), ('relu', None)] * 3,
+
+                    # "sample_training_ratio": 10,
+                },
+                "env_config": {
+                    "environment": "shell",
+                    # "render": True,
+                    "max_time": .1,
+                    "max_translation": .01,  # 5,
+                    "max_rotation": np.pi / 180 * 5,
+                    "max_episode_length": 200,
+                    "action_type": "relative",
+                    "reverse": True,
+                    "scenarios": ["1_1", "1_2", "1_3"],
+                }
+            }
+
+            manager = Manager(training_config, f"results/agreed/clip_{scenario}")
+
+            # training_config = {
+            #     "total_timesteps": 5_000_000,
+            #     "test_interval": 500_000,
+            #     "number_tests": 100,
+            #
+            #     "agent_config": {
+            #         "algorithm": "sac",
+            #
+            #         "policy_structure": [('linear', 32), ('relu', None)] * 8,
+            #         "critic_structure": [('linear', 32), ('relu', None)] * 8
+            #     },
+            #     "env_config": {
+            #         "environment": "karolos",
+            #         "render": True,
+            #         "task_config": {
+            #             "name": "reach",
+            #         },
+            #         "robot_config": {
+            #             "name": "panda",
+            #         }
+            #     }
+            # }
+            #
+            # manager = Manager(training_config, f"tmp")
+
+            del manager

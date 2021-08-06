@@ -3,7 +3,7 @@ import os
 import numpy as np
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
-from utils import unwind_space_shapes, unwind_dict_values
+from karolos.utils import unwind_space_shapes, unwind_dict_values
 
 from .replay_buffers import get_replay_buffer
 
@@ -148,11 +148,11 @@ def get_agent(agent_config, observation_space, action_space,
     algorithm = agent_config.pop("algorithm")
 
     if algorithm == "sac":
-        from agents.sac import AgentSAC
+        from karolos.agents.sac import AgentSAC
         agent = AgentSAC(agent_config, observation_space, action_space,
                          reward_function, experiment_dir)
     elif algorithm == "ddpg":
-        from agents.ddpg import AgentDDPG
+        from karolos.agents.ddpg import AgentDDPG
         # todo refactor ddpg to match sac
         agent = AgentDDPG(agent_config, observation_space, action_space,
                           reward_function, experiment_dir)

@@ -75,6 +75,30 @@ if __name__ == "__main__":
 
     robot = Panda(p, sim_time=.1, scale=.1)
 
+    init_state = np.zeros(7)
+    init_state[-1] = -1
+
+    robot.reset(init_state)
+
+    kp_arm, kp_hand = robot.get_key_points()
+
+    for pos, ori in kp_arm:
+        kp = p.createMultiBody(
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX,
+                                                     # halfExtents=[1,1,.001],
+                                                     halfExtents=[.5, .005, .005],
+                                                     rgbaColor=[1, 0, 0, 1],
+                                                     ),
+            baseMass=0,
+        )
+
+        p.resetBasePositionAndOrientation(kp, pos, [0, 0, 0, 1])
+
+    while True:
+        robot.bullet_client.stepSimulation()
+
+    exit()
+
     while True:
         observation = robot.reset()
 
