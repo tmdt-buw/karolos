@@ -58,8 +58,6 @@ while True:
 
         action = agent.predict([state], deterministic=True)[0]
 
-        action[3:] = 0
-
         actions.append(action.copy())
 
         next_state, goal_info, done = env.step(action)

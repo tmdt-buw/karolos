@@ -24,14 +24,10 @@ class Manager:
     def get_initial_state(random: bool, env_id=None):
         # return None for random sampling of initial state
 
-        # initial_state = {
-        #     'robot': self.env_orchestrator.observation_dict['state'][
-        #         'robot'].sample(),
-        #     'task': self.env_orchestrator.observation_dict['state'][
-        #         'task'].sample()
-        # }
-
-        initial_state = None
+        initial_state = {
+            'env_id': env_id,
+            'random': random
+        }
 
         return initial_state
 
@@ -92,6 +88,12 @@ class Manager:
                          ))
 
                 self.steps[env_id] += 1
+
+                total_steps = sum(self.steps.values())
+                env_id_load = self.steps[env_id] / total_steps
+                env_id_load *= len(self.steps)
+
+                self.writer.add_scalar(f'env_id load/{env_id}', env_id_load, total_steps)
             else:
                 raise NotImplementedError(
                     f"Undefined behavior for {env_id} | {response}")
