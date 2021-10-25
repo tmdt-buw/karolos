@@ -8,6 +8,7 @@ import datetime
 from functools import partial
 import json
 import logging
+import random
 from multiprocessing import cpu_count
 import numpy as np
 import os.path as osp
@@ -16,7 +17,7 @@ from tqdm import tqdm
 
 from karolos.agents import get_agent
 from karolos.environments.orchestrator import Orchestrator
-from karolos.utils import unwind_dict_values
+from karolos.utils import unwind_dict_values, set_seed
 
 
 class Manager:
@@ -133,6 +134,10 @@ class Manager:
 
         logger = logging.getLogger("trainer")
         logger.setLevel(logging.INFO)
+
+        seed = training_config.pop('seed', random.randint(0, 10000))
+        set_seed(seed)
+        training_config['seed'] = seed
 
         if not experiment_name:
             experiment_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
