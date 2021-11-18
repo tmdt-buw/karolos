@@ -1,21 +1,29 @@
 import os
+import warnings
 
 import numpy as np
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
-from utils import unwind_space_shapes, unwind_dict_values
 
 from .replay_buffers import get_replay_buffer
+from karolos.utils import unwind_space_shapes, unwind_dict_values
 
 
 class Agent:
 
     def __init__(self, config, observation_space, action_space,
-                 reward_function,
+                 reward_function=None,
                  experiment_dir=None):
 
         self.observation_space = observation_space
         self.action_space = action_space
+
+        if reward_function is None:
+            warnings.warn(message="""Reward function not specified. Using a constant reward of 0.""",
+                          category=UserWarning,
+                          )
+
+            reward_function = lambda **kwargs: 0
 
         self.reward_function = reward_function
 
@@ -144,7 +152,7 @@ class Agent:
 
 
 def get_agent(agent_config, observation_space, action_space,
-              reward_function, experiment_dir):
+              reward_function=None, experiment_dir=None):
     algorithm = agent_config.pop("algorithm")
 
     if algorithm == "sac":
