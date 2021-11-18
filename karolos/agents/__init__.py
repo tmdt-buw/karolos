@@ -8,6 +8,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from .replay_buffers import get_replay_buffer
 from karolos.utils import unwind_space_shapes, unwind_dict_values
 
+from gym import spaces
 
 class Agent:
 
@@ -30,7 +31,11 @@ class Agent:
         observation_shapes = unwind_space_shapes(observation_space)
 
         self.state_dim = (sum(map(np.product, observation_shapes)),)
-        self.action_dim = self.action_space.shape
+
+        if type(self.action_space) is spaces.Box:
+            self.action_dim = self.action_space.shape
+        elif type(self.action_space) is spaces.Discrete:
+            self.action_dim = (self.action_space.n,)
 
         assert len(self.state_dim) == 1
         assert len(self.action_dim) == 1
@@ -136,8 +141,7 @@ class Agent:
 
     def update_priorities(self, indices, predicted_values, target_values):
         if self.memory.uses_priority:
-            errors = (
-                        predicted_values - target_values).abs().flatten().detach().cpu().numpy()
+            errors = (predicted_values - target_values).abs().flatten().detach().cpu().numpy()
 
             for idx, error in zip(indices, errors):
                 self.memory.update(idx, error)
@@ -164,6 +168,11 @@ def get_agent(agent_config, observation_space, action_space,
         # todo refactor ddpg to match sac
         agent = AgentDDPG(agent_config, observation_space, action_space,
                           reward_function, experiment_dir)
+    elif algorithm == "dqn":
+        from agents.dqn import AgentDQN
+        # todo refactor ddpg to match sac
+        agent = AgentDQN(agent_config, observation_space, action_space,
+                         reward_function, experiment_dir)
     else:
         raise NotImplementedError(f"Unknown algorithm {algorithm}")
 
