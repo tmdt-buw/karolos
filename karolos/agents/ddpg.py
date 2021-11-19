@@ -1,24 +1,27 @@
 """
-https://spinningup.openai.com/en/latest/algorithms/sac.html
+https://spinningup.openai.com/en/latest/algorithms/ddpg.html
 
 """
 
 import os
 import os.path as osp
+import pathlib
+import sys
 
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
 
-from agents import Agent
-from agents.utils.nn import NeuralNetwork, init_xavier_uniform
+sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+
+from agent import Agent
+from nn import NeuralNetwork, init_xavier_uniform
 
 
 class Policy(NeuralNetwork):
     def __init__(self, state_dims, action_dim, network_structure):
-        in_dim = int(
-            np.sum([np.product(state_dim) for state_dim in state_dims]))
+        in_dim = int(np.sum([np.product(state_dim) for state_dim in state_dims]))
 
         out_dim = int(np.product(action_dim))
 
@@ -42,9 +45,7 @@ class Policy(NeuralNetwork):
 
 class Critic(NeuralNetwork):
     def __init__(self, state_dims, action_dim, network_structure):
-        in_dim = int(
-            np.sum([np.product(arg) for arg in state_dims]) + np.product(
-                action_dim))
+        in_dim = int(np.sum([np.product(arg) for arg in state_dims]) + np.product(action_dim))
 
         super(Critic, self).__init__(in_dim, network_structure)
 
@@ -59,37 +60,29 @@ class Critic(NeuralNetwork):
 
 
 class AgentDDPG(Agent):
-    def __init__(self, config, observation_space, action_space,
-                 reward_function, experiment_dir="."):
+    def __init__(self, config, observation_space, action_space, reward_function, experiment_dir="."):
 
-        super(AgentDDPG, self).__init__(config, observation_space,
-                                        action_space, reward_function,
-                                        experiment_dir)
+        super(AgentDDPG, self).__init__(config, observation_space, action_space, reward_function, experiment_dir)
 
-        self.learning_rate_critic = config.get("learning_rate_critic", 5e-4)
-        self.learning_rate_policy = config.get("learning_rate_policy", 5e-4)
-        self.weight_decay = config.get("weight_decay", 1e-4)
+        learning_rate_critic = config.get("learning_rate_critic", 5e-4)
+        learning_rate_policy = config.get("learning_rate_policy", 5e-4)
+        weight_decay = config.get("weight_decay", 1e-4)
+        
         self.tau = config.get('tau', 2.5e-3)
 
-        self.policy_structure = config['policy_structure']
-        self.critic_structure = config['critic_structure']
-
         # generate networks
-        self.critic = Critic(self.state_dim, self.action_dim,
-                             self.critic_structure).to(self.device)
-        self.target_critic = Critic(self.state_dim, self.action_dim,
-                                    self.critic_structure).to(self.device)
-        self.policy = Policy(self.state_dim, self.action_dim,
-                             self.policy_structure).to(self.device)
-        self.target_policy = Policy(self.state_dim, self.action_dim,
-                                    self.policy_structure).to(self.device)
+        policy_structure = config.get('policy_structure', [])
+        critic_structure = config.get('critic_structure', [])
 
-        self.optimizer_critic = torch.optim.AdamW(self.critic.parameters(),
-                                                  lr=self.learning_rate_critic,
-                                                  weight_decay=self.weight_decay)
-        self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(),
-                                                  lr=self.learning_rate_policy,
-                                                  weight_decay=self.weight_decay)
+        self.policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
+        self.target_policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
+        self.critic = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
+        self.target_critic = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
+
+        self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(), lr=learning_rate_policy,
+                                                  weight_decay=weight_decay)
+        self.optimizer_critic = torch.optim.AdamW(self.critic.parameters(), lr=learning_rate_critic,
+                                                  weight_decay=weight_decay)
 
         self.update_target(self.policy, self.target_policy, 1.)
         self.update_target(self.critic, self.target_critic, 1.)
@@ -98,9 +91,9 @@ class AgentDDPG(Agent):
 
     def learn(self):
         self.policy.train()
+        self.target_policy.train()
         self.critic.train()
         self.target_critic.train()
-        self.target_policy.train()
 
         experiences, indices = self.memory.sample(self.batch_size)
 
@@ -110,8 +103,7 @@ class AgentDDPG(Agent):
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
-        dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(
-            self.device)
+        dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(self.device)
 
         rewards *= self.reward_scale
 
@@ -120,8 +112,8 @@ class AgentDDPG(Agent):
         predicted_next_action = self.policy(next_states)
 
         # Train critic
-        target_value = rewards + (1 - dones) * self.reward_discount * \
-                       self.target_critic(next_states, predicted_next_action)
+        target_value = rewards + (1 - dones) * self.reward_discount * self.target_critic(next_states,
+                                                                                         predicted_next_action)
 
         critic_loss = self.criterion_critic(predicted_value, target_value)
 
@@ -154,26 +146,18 @@ class AgentDDPG(Agent):
 
         torch.save(self.policy.state_dict(), osp.join(path, "policy.pt"))
         torch.save(self.critic.state_dict(), osp.join(path, "critic_1.pt"))
-        torch.save(self.target_critic.state_dict(),
-                   osp.join(path, "target_critic_1.pt"))
+        torch.save(self.target_critic.state_dict(), osp.join(path, "target_critic_1.pt"))
 
-        torch.save(self.optimizer_policy.state_dict(),
-                   osp.join(path, "optimizer_policy.pt"))
-        torch.save(self.optimizer_critic.state_dict(),
-                   osp.join(path, "optimizer_critic_1.pt"))
+        torch.save(self.optimizer_policy.state_dict(), osp.join(path, "optimizer_policy.pt"))
+        torch.save(self.optimizer_critic.state_dict(), osp.join(path, "optimizer_critic_1.pt"))
 
     def load(self, path):
-        self.policy.load_state_dict(
-            torch.load(osp.join(path, "policy.pt")))
-        self.critic.load_state_dict(
-            torch.load(osp.join(path, "critic_1.pt")))
-        self.target_critic.load_state_dict(
-            torch.load(osp.join(path, "target_critic_1.pt")))
+        self.policy.load_state_dict(torch.load(osp.join(path, "policy.pt")))
+        self.critic.load_state_dict(torch.load(osp.join(path, "critic_1.pt")))
+        self.target_critic.load_state_dict(torch.load(osp.join(path, "target_critic_1.pt")))
 
-        self.optimizer_policy.load_state_dict(
-            torch.load(osp.join(path, "optimizer_policy.pt")))
-        self.optimizer_critic.load_state_dict(
-            torch.load(osp.join(path, "optimizer_critic_1.pt")))
+        self.optimizer_policy.load_state_dict(torch.load(osp.join(path, "optimizer_policy.pt")))
+        self.optimizer_critic.load_state_dict(torch.load(osp.join(path, "optimizer_critic_1.pt")))
 
     def predict(self, states, deterministic=True):
         self.policy.eval()

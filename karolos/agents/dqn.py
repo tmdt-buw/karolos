@@ -1,28 +1,26 @@
 """
-https://spinningup.openai.com/en/latest/algorithms/sac.html
+Playing Atari with Deep Reinforcement Learning, Mnih et al, 2013.
 
 """
 
 import os
 import os.path as osp
+import pathlib
+import sys
 
 import numpy as np
 import torch
 import torch.nn as nn
 
-try:
-    from . import Agent
-    from .utils.nn import NeuralNetwork, init_xavier_uniform
-except:
-    from karolos.agents import Agent
-    from karolos.agents.utils.nn import NeuralNetwork, init_xavier_uniform
+sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+
+from agent import Agent
+from nn import NeuralNetwork, init_xavier_uniform
 
 
 class Policy(NeuralNetwork):
     def __init__(self, state_dims, action_dim, network_structure):
-
-        in_dim = int(
-            np.sum([np.product(state_dim) for state_dim in state_dims]))
+        in_dim = int(np.sum([np.product(state_dim) for state_dim in state_dims]))
 
         out_dim = int(np.product(action_dim))
 
@@ -44,12 +42,10 @@ class AgentDQN(Agent):
     def __init__(self, config, observation_space, action_space,
                  reward_function, experiment_dir=None):
 
-        super(AgentDQN, self).__init__(config, observation_space, action_space,
-                                       reward_function, experiment_dir)
+        super(AgentDQN, self).__init__(config, observation_space, action_space, reward_function, experiment_dir)
 
-        self.learning_rate_policy = config.get("learning_rate", 5e-4)
-        self.weight_decay = config.get("weight_decay", 1e-4)
-        self.tau = config.get('tau', 2.5e-3)
+        learning_rate_policy = config.get("learning_rate", 5e-4)
+        weight_decay = config.get("weight_decay", 1e-4)
 
         exploration_probability_config = config.get("exploration_probability", {})
 
@@ -57,26 +53,26 @@ class AgentDQN(Agent):
         exploration_probability_end = exploration_probability_config.get("end", 0)
         exploration_probability_steps = exploration_probability_config.get("steps", np.inf)
 
+        self.tau = config.get('tau', 2.5e-3)
         self.exploration_probability = lambda step: max(1 - step / exploration_probability_steps, 0) * (
                 exploration_probability_start - exploration_probability_end) + exploration_probability_end
 
-        self.policy_structure = config.get('policy_structure', [])
+        policy_structure = config.get('policy_structure', [])
 
         # generate networks
-        self.q_network = self.policy = Policy(self.state_dim, self.action_dim, self.policy_structure).to(self.device)
-        self.target_q_network = self.policy = Policy(self.state_dim, self.action_dim, self.policy_structure).to(self.device)
+        self.policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
+        self.target_policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
 
-        self.optimizer = torch.optim.AdamW(self.q_network.parameters(),
-                                           lr=self.learning_rate_policy,
-                                           weight_decay=self.weight_decay)
+        self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=learning_rate_policy,
+                                           weight_decay=weight_decay)
 
-        self.update_target(self.q_network, self.target_q_network, 1.)
+        self.update_target(self.policy, self.target_policy, 1.)
 
         self.criterion = nn.MSELoss()
 
     def learn(self):
 
-        self.q_network.train()
+        self.policy.train()
 
         experiences, indices = self.memory.sample(self.batch_size)
 
@@ -90,10 +86,10 @@ class AgentDQN(Agent):
 
         rewards *= self.reward_scale
 
-        action_values = self.q_network(states)
+        action_values = self.policy(states)
         action_values = action_values[torch.arange(len(action_values)), actions]
 
-        next_action_values = self.target_q_network(next_states)
+        next_action_values = self.target_policy(next_states)
         next_action_values_max, _ = next_action_values.max(-1)
 
         target_q_values = rewards + (1 - dones) * self.reward_discount * next_action_values_max
@@ -109,7 +105,7 @@ class AgentDQN(Agent):
         self.update_priorities(indices, action_values, target_q_values)
 
         # Update target
-        self.update_target(self.q_network, self.target_q_network, self.tau)
+        self.update_target(self.policy, self.target_policy, self.tau)
 
         if self.writer:
             self.writer.add_histogram('predicted_action_values', action_values, self.learning_step)
@@ -126,13 +122,13 @@ class AgentDQN(Agent):
         if not osp.exists(path):
             os.makedirs(path)
 
-        torch.save(self.q_network.state_dict(), osp.join(path, "q_network.pt"))
-        torch.save(self.target_q_network.state_dict(), osp.join(path, "target_q_network.pt"))
+        torch.save(self.policy.state_dict(), osp.join(path, "q_network.pt"))
+        torch.save(self.target_policy.state_dict(), osp.join(path, "target_q_network.pt"))
         torch.save(self.optimizer.state_dict(), osp.join(path, "optimizer.pt"))
 
     def load(self, path):
-        self.q_network.load_state_dict(torch.load(osp.join(path, "q_network.pt")))
-        self.target_q_network.load_state_dict(torch.load(osp.join(path, "target_q_network.pt")))
+        self.policy.load_state_dict(torch.load(osp.join(path, "q_network.pt")))
+        self.target_policy.load_state_dict(torch.load(osp.join(path, "target_q_network.pt")))
         self.optimizer.load_state_dict(torch.load(osp.join(path, "optimizer.pt")))
 
     def predict(self, states, deterministic=True):
@@ -150,11 +146,11 @@ class AgentDQN(Agent):
 
             states_deterministic = [states[idx] for idx in indices_deterministic]
 
-            self.q_network.eval()
+            self.policy.eval()
 
             states_deterministic = torch.FloatTensor([state for state in states_deterministic]).to(self.device)
 
-            action_values_deterministic = self.q_network(states_deterministic)
+            action_values_deterministic = self.policy(states_deterministic)
 
             _, actions_deterministic = action_values_deterministic.max(-1)
 
@@ -163,76 +159,3 @@ class AgentDQN(Agent):
             actions[indices_deterministic] = actions_deterministic
 
         return actions
-
-    def set_target_entropy(self, target_entropy):
-        self.target_entropy = target_entropy
-
-
-if __name__ == '__main__':
-    from gym import spaces
-    from .utils import unwind_space_shapes
-
-    config = {
-        "learning_rate": 0.001,
-        "weight_decay": 0.0001,
-        "reward_scale": 100,
-        "batch_size": 16,
-        "tau": 0.0025,
-
-        "buffer": {"name": "priority", "buffer_size": 1e6},
-
-        "policy_structure": [('linear', 64), ('relu', None)] * 3,
-
-        "exploration_probability": {"start": .6,
-                                    }
-
-    }
-
-    action_space = spaces.Discrete(6)
-
-    observation_space = spaces.Dict({
-        'state': spaces.Box(-1, 1, shape=(24,)),
-    })
-
-
-    def reward_function(**kwargs):
-        return 0
-
-
-    dqn = AgentDQN(config, observation_space, action_space, reward_function)
-
-    state_spaces = unwind_space_shapes(observation_space)
-
-
-    def dummy_state():
-        state = {}
-        goal_info = {}
-
-        for space_name, space in observation_space.spaces.items():
-            state[space_name] = space.sample()
-
-        return state, goal_info
-
-
-    def dummy_action():
-        return action_space.sample()
-
-
-    trajectory = []
-
-    for _ in range(50):
-        trajectory.append(dummy_state())
-        trajectory.append(dummy_action())
-
-    trajectory.append(dummy_state())
-
-    dqn.add_experience_trajectory(trajectory)
-
-    dqn.learn()
-
-    states = [dummy_state()[0] for _ in range(10)]
-
-    actions = dqn.predict(states, deterministic=False)
-
-    print(len(actions))
-    print(actions)
