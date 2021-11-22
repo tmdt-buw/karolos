@@ -8,10 +8,14 @@ def get_replay_buffer(config):
     elif buffer_name == "priority":
         from .prioritized_replay_buffer import PrioritizedReplayBuffer
         buffer = PrioritizedReplayBuffer(**config)
+    elif buffer_name == "OnPolBuffer":
+        from .OnPolBuffer import OnPolBuffer
+        buffer = OnPolBuffer(**config)
     else:
         raise NotImplementedError(f"Unknown replay buffer {buffer_name}")
 
     return buffer
+
 
 class ReplayBuffer:
     experience_keys = ["state", "action", "reward", "next_state", "done"]

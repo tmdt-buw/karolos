@@ -19,6 +19,9 @@ def get_agent(agent_config, observation_space, action_space,
     elif algorithm == "dqn":
         from .dqn import AgentDQN
         agent = AgentDQN(agent_config, observation_space, action_space, reward_function, experiment_dir)
+    elif algorithm == "ppo":
+        from .ppo import AgentPPO
+        agent = AgentPPO(agent_config, observation_space, action_space, reward_function, experiment_dir)
     else:
         raise NotImplementedError(f"Unknown algorithm {algorithm}")
 
