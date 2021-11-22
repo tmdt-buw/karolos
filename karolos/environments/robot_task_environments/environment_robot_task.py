@@ -117,13 +117,13 @@ if __name__ == "__main__":
     time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
 
     while True:
-        obs = env.reset()
+        state, goal = env.reset()
 
         for _ in np.arange(1. / time_step):
             action = env.action_space.sample()
 
             time.sleep(time_step)
 
-            observation, goal, done = env.step(action)
+            state, goal, done = env.step(action)
 
-            reward = env.reward_function(False, goal)
+            reward = env.reward_function(goal, False)

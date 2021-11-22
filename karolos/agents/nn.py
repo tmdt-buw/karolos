@@ -2,15 +2,6 @@ import torch
 import torch.nn as nn
 
 
-class Flatten(torch.nn.Module):
-
-    def __init__(self):
-        super(Flatten, self).__init__()
-
-    def forward(self, x):
-        return x.view(x.size(0), -1)
-
-
 class Clamp(torch.nn.Module):
 
     def __init__(self, min, max):
@@ -34,7 +25,7 @@ class NeuralNetwork(nn.Module):
         assert type(in_dim) == int
 
         self.operators = nn.ModuleList([
-            Flatten()
+            nn.Flatten()
         ])
 
         current_layer_size = in_dim

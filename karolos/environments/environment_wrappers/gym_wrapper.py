@@ -4,7 +4,7 @@ from gym import spaces
 
 class GymWrapper:
 
-    def __init__(self, name, max_steps=200, reward_success_threshold=np.inf,
+    def __init__(self, name, max_steps=200, reward_success_threshold=np.inf, step_success_threshold=np.inf,
                  render=False, **kwargs):
         self.env = gym.make(name)
         self.step_counter = 0
@@ -13,7 +13,8 @@ class GymWrapper:
         self.render = render
 
         self.goal_desired = {
-            'reward': reward_success_threshold
+            'reward': reward_success_threshold,
+            'step': step_success_threshold,
         }
 
         self.action_space = self.env.action_space
@@ -29,8 +30,10 @@ class GymWrapper:
 
     @staticmethod
     def success_criterion(goal_info):
-        return goal_info["achieved"]["reward"] >= goal_info["desired"][
-            "reward"]
+        reward_achieved = goal_info["achieved"]["reward"] >= goal_info["desired"]["reward"]
+        steps_achieved = goal_info["achieved"]["step"] >= goal_info["desired"]["step"]
+
+        return reward_achieved or steps_achieved
 
     def step(self, action):
         state, reward, done, _ = self.env.step(action)
@@ -52,6 +55,7 @@ class GymWrapper:
         goal_info = {
             'achieved': {
                 'reward': reward,
+                'step': self.step_counter
             },
             'desired': self.goal_desired
         }

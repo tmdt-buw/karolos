@@ -1,30 +1,28 @@
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath("."))
-
-from collections import defaultdict
 import datetime
-from functools import partial
 import json
 import logging
-import random
-from multiprocessing import cpu_count
-import numpy as np
+import os
 import os.path as osp
+import pathlib
+import random
+import sys
+from collections import defaultdict
+from functools import partial
+
+import numpy as np
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
 
-from karolos.agents import get_agent
-from karolos.environments.orchestrator import Orchestrator
-from karolos.utils import unwind_dict_values, set_seed
+sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+
+from agents import get_agent
+from environments.orchestrator import Orchestrator
+from utils import unwind_dict_values, set_seed
 
 
-class Manager:
+class Experiment:
     @staticmethod
     def get_initial_state(random: bool, env_id=None):
-        # return None for random sampling of initial state
-
         initial_state = {
             'env_id': env_id,
             'random': random
@@ -129,21 +127,20 @@ class Manager:
 
         return requests, results_episodes
 
-    def __init__(self, training_config, results_dir="./results",
+    def __init__(self, experiment_config, results_dir="./results",
                  experiment_name=None):
 
         logger = logging.getLogger("trainer")
         logger.setLevel(logging.INFO)
 
-        seed = training_config.pop('seed', random.randint(0, 10000))
+        seed = experiment_config.pop('seed', random.randint(0, 10000))
         set_seed(seed)
-        training_config['seed'] = seed
+        experiment_config['seed'] = seed
 
         if not experiment_name:
             experiment_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-            logger.warning(f"Experiment name not specified. "
-                           f"Using {experiment_name}.")
+            logger.warning(f"Experiment name not specified. Using {experiment_name}.")
 
         experiment_dir = osp.join(results_dir, experiment_name)
 
@@ -153,9 +150,8 @@ class Manager:
             while os.path.exists(f"{experiment_dir}_{appendix}"):
                 appendix += 1
 
-            logger.warning(
-                f"Result directory already exists {experiment_dir}. "
-                f"Using directory {experiment_dir}_{appendix} instead.")
+            logger.warning(f"Result directory already exists {experiment_dir}. "
+                           f"Using directory {experiment_dir}_{appendix} instead.")
 
             experiment_dir += f"_{appendix}"
 
@@ -165,20 +161,19 @@ class Manager:
         os.makedirs(models_dir)
 
         with open(osp.join(experiment_dir, 'config.json'), 'w') as f:
-            json.dump(training_config, f)
+            json.dump(experiment_config, f)
 
-        env_config = training_config["env_config"]
-        number_processes = training_config.get("number_processes", 1)
-        number_threads = training_config.get("number_threads", 1)
+        env_config = experiment_config["env_config"]
+        number_processes = experiment_config.get("number_processes", 1)
+        number_threads = experiment_config.get("number_threads", 1)
 
-        with Orchestrator(env_config, number_processes,
-                          number_threads) as self.orchestrator:
+        with Orchestrator(env_config, number_processes, number_threads) as self.orchestrator:
 
             self.reward_function = self.orchestrator.reward_function
             self.success_criterion = self.orchestrator.success_criterion
 
             # get agents
-            agent_config = training_config["agent_config"]
+            agent_config = experiment_config["agent_config"]
 
             self.agent = get_agent(agent_config,
                                    self.orchestrator.observation_space,
@@ -188,26 +183,20 @@ class Manager:
 
             models_dir = osp.join(experiment_dir, "models")
 
-            base_experiment = training_config.pop('base_experiment', None)
+            base_experiment = experiment_config.pop('base_experiment', None)
 
             if base_experiment is not None:
-
-                base_experiment_dir = osp.join(results_dir,
-                                               base_experiment["experiment"])
+                base_experiment_dir = osp.join(results_dir, base_experiment["experiment"])
 
                 with open(osp.join(base_experiment_dir, 'config.json'), 'r') as f:
                     base_experiment_config = json.load(f)
 
-                if self.similar_config(env_config, base_experiment_config[
-                    "env_config"]) and self.similar_config(agent_config,
-                                                           base_experiment_config[
-                                                               "agent_config"]):
+                if self.similar_config(env_config, base_experiment_config["env_config"]) and self.similar_config(
+                        agent_config, base_experiment_config["agent_config"]):
 
-                    base_experiment_models_dir = osp.join(base_experiment_dir,
-                                                          "models")
+                    base_experiment_models_dir = osp.join(base_experiment_dir, "models")
 
-                    agent_id = base_experiment.get("agent", max(
-                        os.listdir(base_experiment_models_dir)))
+                    agent_id = base_experiment.get("agent", max(os.listdir(base_experiment_models_dir)))
 
                     self.agent.load(osp.join(base_experiment_models_dir, agent_id))
                 else:
@@ -216,39 +205,35 @@ class Manager:
             self.writer = SummaryWriter(experiment_dir, 'trainer')
 
             # reset all
-            env_responses = self.orchestrator.reset_all(
-                partial(self.get_initial_state, random=True))
+            env_responses = self.orchestrator.reset_all(partial(self.get_initial_state, random=True))
 
             self.steps = defaultdict(int)
             self.trajectories = defaultdict(list)
 
-            number_tests = training_config["number_tests"]
-            test_interval = training_config["test_interval"]
+            number_tests = experiment_config["number_tests"]
+            test_interval = experiment_config["test_interval"]
             next_test_timestep = 0
 
             best_success_ratio = 0.0
 
-            pbar = tqdm(total=training_config["total_timesteps"], desc="Progress")
+            pbar = tqdm(total=experiment_config["total_timesteps"], desc="Progress")
 
-            while sum(self.steps.values()) < training_config["total_timesteps"]:
+            while sum(self.steps.values()) < experiment_config["total_timesteps"]:
 
                 # Test
                 if sum(self.steps.values()) >= next_test_timestep:
 
-                    next_test_timestep = (sum(self.steps.values()) //
-                                          test_interval + 1) * test_interval
+                    next_test_timestep = (sum(self.steps.values()) // test_interval + 1) * test_interval
 
                     # reset all
-                    env_responses = self.orchestrator.reset_all(
-                        partial(self.get_initial_state, random=False))
+                    env_responses = self.orchestrator.reset_all(partial(self.get_initial_state, random=False))
 
                     # subtract tests already launched in each environment
                     tests_to_run = number_tests - len(self.orchestrator)
 
                     # remove excessive tests
                     while tests_to_run < 0:
-                        excessive_tests = min(abs(tests_to_run),
-                                              len(env_responses))
+                        excessive_tests = min(abs(tests_to_run), len(env_responses))
 
                         tests_to_run += excessive_tests
                         env_responses = env_responses[:-excessive_tests]
@@ -268,8 +253,7 @@ class Manager:
                                     data) == AssertionError:
                                 tests_to_run += 1
 
-                        requests, results_episodes = self.process_responses(
-                            env_responses, mode="test")
+                        requests, results_episodes = self.process_responses(env_responses, mode="test")
                         concluded_tests += results_episodes
                         pbar_test.update(len(results_episodes))
 
@@ -280,32 +264,24 @@ class Manager:
                                 else:
                                     del requests[ii]
 
-                        env_responses = self.orchestrator.send_receive(
-                            requests)
+                        env_responses = self.orchestrator.send_receive(requests)
 
                     pbar_test.close()
 
                     # evaluate test
                     success_ratio = np.mean(concluded_tests)
 
-                    self.writer.add_scalar('test success ratio',
-                                           success_ratio,
-                                           sum(self.steps.values()) + 1
-                                           )
+                    self.writer.add_scalar('test success ratio', success_ratio, sum(self.steps.values()) + 1)
 
                     if success_ratio >= best_success_ratio:
                         best_success_ratio = success_ratio
-                        self.agent.save(os.path.join(models_dir,
-                                                     f"{sum(self.steps.values()) + 1}_"
-                                                     f"{success_ratio:.3f}"))
+                        self.agent.save(os.path.join(models_dir, f"{success_ratio:.3f}_{sum(self.steps.values()) + 1}"))
 
                     # reset all
-                    env_responses = self.orchestrator.reset_all(
-                        partial(self.get_initial_state, random=True))
+                    env_responses = self.orchestrator.reset_all(partial(self.get_initial_state, random=True))
 
                 # Train
-                requests, results_episodes = self.process_responses(
-                    env_responses, mode="train")
+                requests, results_episodes = self.process_responses(env_responses, mode="train")
 
                 env_responses = self.orchestrator.send_receive(requests)
 
@@ -315,38 +291,3 @@ class Manager:
                 pbar.refresh()
 
             self.agent.save(os.path.join(models_dir, f"final"))
-
-
-if __name__ == "__main__":
-
-    learning_rates = [(0.0005, 0.0005)]
-    hidden_layer_sizes = [32]
-    network_depths = [8]
-    entropy_regularization_learning_rates = [5e-5]
-    taus = [0.0025]
-    her_ratios = [0.0]
-
-    training_config = {
-        "total_timesteps": 5_000_000,
-        "test_interval": 500_000,
-        "number_tests": 100,
-
-        "agent_config": {
-            "algorithm": "sac",
-
-            "policy_structure": [('linear', 32), ('relu', None)] * 8,
-            "critic_structure": [('linear', 32), ('relu', None)] * 8
-        },
-        "env_config": {
-            "environment": "karolos",
-            "render": True,
-            "task_config": {
-                "name": "reach",
-            },
-            "robot_config": {
-                "name": "panda",
-            }
-        }
-    }
-
-    trainer = Manager(training_config, "results")
