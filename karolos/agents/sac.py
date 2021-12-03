@@ -251,7 +251,7 @@ class AgentSAC(Agent):
 
         action = action.clip(self.action_space.low, self.action_space.high)
 
-        return action
+        return action, None
 
     def set_target_entropy(self, target_entropy):
         # todo: do we still need this function? Where is it used?

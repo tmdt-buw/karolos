@@ -117,10 +117,12 @@ class CriticPPO(NeuralNetwork):
 
 
 class AgentPPO(OnPolAgent):
-    def __init__(self, config, observation_space, action_space, experiment_dir=None):
+    def __init__(self, config, observation_space, action_space,
+                 reward_function, experiment_dir='.'):
 
         super(AgentPPO, self).__init__(
-            config, observation_space, action_space, experiment_dir
+            config, observation_space, action_space,
+            reward_function, experiment_dir
         )
 
         self.is_transfer_learning = False
@@ -130,7 +132,8 @@ class AgentPPO(OnPolAgent):
         self.learning_rate_policy = config.get("learning_rate_policy", 5e-5)
 
         self.weight_decay = config.get("weight_decay", 5e-5)
-        self.batch_size = config.get("batch_size", 240000)
+        self.batch_size = config.get("batch_size", 96000)
+        self.gradient_steps = config.get("gradient_steps", 40)
         self.n_mini_batch = config.get("n_mini_batch", 20)  # crash if not in config
         self.mini_batch_size = self.batch_size // self.n_mini_batch
         assert self.batch_size % self.n_mini_batch == 0
@@ -184,10 +187,6 @@ class AgentPPO(OnPolAgent):
 
     # def decay_action_std(self, ...):
 
-    def add_experiences(self, experiences):
-        for experience in experiences:
-            self.memory.add(experience)
-
     def _decay_action_std(self, step):
         if step >= self.next_decay_step:
             action_std = self.policy.action_std - self.action_std_decay_rate
@@ -197,7 +196,7 @@ class AgentPPO(OnPolAgent):
             self.policy.set_action_std(action_std)
             self.next_decay_step += self.action_std_decay_freq
 
-    def learn(self, step, gradient_steps):
+    def train(self, step):
 
         self._decay_action_std(step)
 
@@ -213,7 +212,7 @@ class AgentPPO(OnPolAgent):
             ratios_log = []
             entropies = []
 
-        for i in range(gradient_steps):
+        for i in range(self.gradient_steps):
             # print(i)
             idxs = torch.randperm(self.batch_size)
 
@@ -295,36 +294,21 @@ class AgentPPO(OnPolAgent):
         self.memory.clear()
         self.learn_steps += 1
 
-    def predict(self, states, test):
+    def predict(self, states, deterministic):
         self.policy.eval()
         states = torch.tensor(states, dtype=torch.float).to(self.device)
         with torch.no_grad():
             values = self.critic(states).detach()
-            if test:
-                action, logprob = self.test_policy(states, test=True)
-            else:
-                action, logprob = self.policy(states, test=False)
+            action, logprob = self.policy(states, test=deterministic)
 
         action_cpu = action.detach().cpu().numpy()
         logprob = logprob.detach().cpu()
         action_clip = action_cpu.clip(self.action_space.low, self.action_space.high)
+
         return action_clip, [
             {"ac_log_probs": lgp, "values": v, "actions": ac}
             for lgp, v, ac in zip(logprob, values, action)
         ]
-
-    def start_test(self):
-        self.test_policy = PolicyPPO(
-            self.state_dim,
-            self.action_dim,
-            self.policy_structure,
-            action_stddev_init=0.0,
-        ).to(self.device)
-        self.test_policy.load_state_dict(self.policy.state_dict())
-        self.test_policy.eval()
-
-    def end_test(self):
-        self.test_policy = None
 
     def save(self, path):
         if not osp.exists(path):
