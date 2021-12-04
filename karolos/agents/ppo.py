@@ -147,6 +147,9 @@ class AgentPPO(OnPolAgent):
         self.next_decay_step = self.action_std_decay_freq
         self.min_action_std = config.get("min_action_std", 0.1)
 
+        self.loss_value_coeff = config.get("value_loss_coeff", 0.5)
+        self.loss_entropy_coeff = config.get("entropy_loss_coeff", 0.01)
+
         # self.reward_scale = config.get('reward_scale', 10.)
 
         self.policy_structure = config["policy_structure"]
@@ -207,6 +210,7 @@ class AgentPPO(OnPolAgent):
 
         if self.learn_steps % self.log_step == 0:
             losses = []
+            v_losses = []
             rets = []
             a_logprobs = []
             ratios_log = []
@@ -247,9 +251,10 @@ class AgentPPO(OnPolAgent):
                 val_loss = torch.max(
                     (vals - samples_ret) ** 2, (clipped_vals - samples_ret) ** 2
                 )
-                val_loss = 0.5 * val_loss.mean()
+                val_loss = val_loss.mean()
 
-                loss = -(pol_reward - 0.5 * val_loss + 0.01 * pi_entropies.mean())
+                loss = -(pol_reward - self.loss_value_coeff * val_loss +
+                         self.loss_entropy_coeff * pi_entropies.mean())
 
                 self.optimizer_policy.zero_grad()
                 self.optimizer_critic.zero_grad()
@@ -270,6 +275,7 @@ class AgentPPO(OnPolAgent):
                 self.optimizer_critic.step()
 
                 if self.learn_steps % self.log_step == 0:
+                    v_losses.append(val_loss)
                     losses.append(loss)
                     rets.append(samples_ret.mean())
                     a_logprobs.append(log_pis.mean())
@@ -278,6 +284,8 @@ class AgentPPO(OnPolAgent):
 
         if self.writer and (self.learn_steps % self.log_step == 0):
             self.writer.add_scalar("loss", np.mean([l.item() for l in losses]), step)
+            self.writer.add_scalar(
+                "value loss", np.mean([l.item() for l in v_losses]), step)
             self.writer.add_scalar(
                 "advantages", np.mean([r.item() for r in rets]), step
             )
@@ -344,7 +352,7 @@ class AgentPPO(OnPolAgent):
 if __name__ == "__main__":
     import gym
 
-    def test_ppo_gym(name="MountainCarContinuous-v0"):
+    def test_ppo_gym(name="LunarLanderContinuous-v2"):
         render = False
         epochs = 15000
         activation = "tanh"
@@ -385,7 +393,8 @@ if __name__ == "__main__":
         config["exp_per_cpu"] = config["batch_size"]  # one process
 
         env = gym.make(name)
-        agent = AgentPPO(config, env.observation_space, env.action_space)
+        agent = AgentPPO(config, env.observation_space, env.action_space,
+                         reward_function=None)
         total_step = 0
         score = 0
         for i_epoch in range(epochs):
@@ -398,21 +407,22 @@ if __name__ == "__main__":
             done = False
             step = 0
             while not done:
-                action, agent_info = agent.predict([state], test=False)
-                next_state, reward, done, info = env.step(action)
+                action, agent_info = agent.predict([state], deterministic=False)
+                next_state, reward, done, info = env.step(action[0])
                 next_state = next_state.flatten()
-                agent.memory.add(env_id=0, experience={
+                # agent.memory.add(env_id=0, experience={
+                agent.add_experiences([{
                     "states": torch.tensor(state),
                     "actions": agent_info[0]['actions'],  # ppo trains on un-clipped actions
                     "rewards": torch.tensor(reward),
                     "ac_log_probs": agent_info[0]['ac_log_probs'],
                     "terminals": torch.tensor(done),
                     "values": agent_info[0]['values'],
-                })
+                }])
 
                 if render: env.render()
                 # if agent.store_transition(trans):
-                agent.learn(step=total_step, gradient_steps=config['gradient_steps'])
+                agent.train(step=total_step)
                 step += 1
                 total_step += 1
                 score += reward
