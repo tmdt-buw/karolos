@@ -77,7 +77,7 @@ class GymWrapper:
 
 if __name__ == "__main__":
 
-    env = GymWrapper(name="Pendulum-v0", max_steps=1000, render=True)
+    env = GymWrapper(name="Pendulum-v1", max_steps=1000, render=True)
 
     while True:
         state, goal_info = env.reset()
