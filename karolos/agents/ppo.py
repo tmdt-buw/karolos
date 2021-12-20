@@ -395,8 +395,8 @@ class AgentPPO(OnPolAgent):
 
 
 if __name__ == "__main__":
-    import gym
     from karolos.environments.environment_wrappers.gym_wrapper import GymWrapper
+
     # LunarLanderContinuous-v2
     # MountainCarContinuous-v0
     def test_ppo_gym(name="LunarLanderContinuous-v2"):
@@ -444,7 +444,7 @@ if __name__ == "__main__":
 
         # config["exp_per_cpu"] = config["batch_size"]  # one process
 
-        env = GymWrapper(name=name)
+        env = GymWrapper(name=name, max_steps=5000)
         agent = AgentPPO(config, env.observation_space, env.action_space,
                          reward_function=None)
         total_step = 0

@@ -27,7 +27,7 @@ class ReplayBuffer:
         self.buffer_size = buffer_size
         self.uses_priority = uses_priority
 
-    def add(self, experience, priority=None):
+    def add(self, experience, env_id=None, priority=None):
         raise NotImplementedError
 
     def sample(self, n_samples):
