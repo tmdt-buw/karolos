@@ -37,6 +37,9 @@ class NeuralNetwork(nn.Module):
             elif layer == 'relu':
                 assert params is None, 'No argument for ReLU please'
                 self.operators.append(nn.ReLU())
+            elif layer == "leaky_relu":
+                assert params is None, 'No argument for ReLU please'
+                self.operators.append(nn.LeakyReLU())
             elif layer == 'selu':
                 assert params is None, 'No argument for SeLU please'
                 self.operators.append(nn.SELU())

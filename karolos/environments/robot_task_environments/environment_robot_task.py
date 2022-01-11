@@ -59,11 +59,10 @@ class RobotTaskEnvironment(Environment):
 
         try:
             if desired_state is not None:
-                observation_robot = self.robot.reset(desired_state["robot"])
+                observation_robot = self.robot.reset(desired_state.get("robot"))
                 observation_task, goal_info, _ = self.task.reset(self.robot,
                                                                  observation_robot,
-                                                                 desired_state[
-                                                                     "task"])
+                                                                 desired_state.get("task"))
             else:
                 observation_robot = self.robot.reset()
                 observation_task, goal_info, _ = self.task.reset(self.robot,

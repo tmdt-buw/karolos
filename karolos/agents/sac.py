@@ -245,13 +245,14 @@ class AgentSAC(Agent):
 
         states = torch.tensor(states, dtype=torch.float).to(self.device)
 
-        action, _ = self.policy(states, deterministic=deterministic)
+        with torch.no_grad():
+            actions, _ = self.policy(states, deterministic=deterministic)
 
-        action = action.detach().cpu().numpy()
+        actions = actions.detach().cpu().numpy()
 
-        action = action.clip(self.action_space.low, self.action_space.high)
+        actions = actions.clip(self.action_space.low, self.action_space.high)
 
-        return action
+        return actions
 
     def set_target_entropy(self, target_entropy):
         # todo: do we still need this function? Where is it used?

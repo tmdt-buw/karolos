@@ -152,3 +152,41 @@ class Agent:
         for network_parameters, target_network_parameters in zip(network.parameters(), target_network.parameters()):
             target_network_parameters.data.copy_(
                 target_network_parameters.data * (1. - tau) + network_parameters.data * tau)
+
+
+class OnPolAgent(Agent):
+    def __init__(self, config, observation_space, action_space,
+                 reward_function=None,
+                 experiment_dir=None):
+        super(OnPolAgent, self).__init__(config, observation_space,
+                                         action_space, reward_function, experiment_dir)
+        self.is_on_policy = True
+        buffer_config = config.get('replay_buffer',
+                                   {"name": "OnPolBuffer",
+                                    "size": config.get("batch_size", 96000),
+                                    "number_envs": config.get("number_threads", 1) * config.get("number_processes", 1),
+                                    "state_shape": self.state_dim[0],
+                                    "action_shape": self.action_dim[0],
+                                    "device": self.device})
+
+        assert buffer_config['name'] == "OnPolBuffer"
+        self.memory = get_replay_buffer(buffer_config)
+
+    def add_experiences(self, experiences, env_id):
+        if (not self.memory.is_full()) and (env_id not in self.memory.full_ids()):
+            for exp in experiences:
+                self.memory.add(exp, env_id)
+
+    def add_experience_trajectory(self, trajectory):
+        assert len(trajectory) % 2
+
+        trajectory_length = len(trajectory) // 2
+
+        rewards = []
+
+        for trajectory_step in range(trajectory_length):
+            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
+            done = trajectory_step == len(trajectory) // 2 - 1
+            reward = self.reward_function(goal_info=goal_info, done=done)
+            rewards.append(reward)
+        return rewards

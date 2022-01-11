@@ -18,7 +18,7 @@ from karolos.environments import get_env
 
 # todo make experiment a parameter
 # experiments = os.listdir("results")
-experiment_folder = osp.join("../results", "results_folder")
+experiment_folder = osp.join("results_persistent/", "agreed_clip_15")
 
 print(experiment_folder)
 print(os.listdir(experiment_folder))
@@ -40,7 +40,7 @@ agent = get_agent(agent_config, env.observation_space,
 
 models_folder = osp.join(experiment_folder, "models")
 
-models_folder = osp.join(models_folder, max(os.listdir(models_folder)))
+models_folder = osp.join(models_folder, '2600934_1.000')
 print(models_folder)
 
 agent.load(models_folder)
@@ -58,6 +58,8 @@ while True:
 
         action = agent.predict([state], deterministic=True)[0]
 
+        # action[3:] = 0
+
         actions.append(action.copy())
 
         next_state, goal_info, done = env.step(action)
@@ -67,6 +69,7 @@ while True:
         # if done:
 
         print(action)
+        print('',state)
 
         state = next_state
 
