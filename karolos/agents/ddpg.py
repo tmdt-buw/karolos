@@ -170,4 +170,4 @@ class AgentDDPG(Agent):
 
         action = action.clip(self.action_space.low, self.action_space.high)
 
-        return action, None
+        return action

@@ -1,29 +1,30 @@
 # https://github.com/nikhilbarhate99/PPO-PyTorch/issues/38
 #
 
+import copy
 import os
 import os.path as osp
-import copy
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.distributions import MultivariateNormal, Normal
+from torch.distributions import MultivariateNormal
 
-from karolos.agents import OnPolAgent
-from karolos.agents.utils.nn import NeuralNetwork, init_xavier_uniform, Clamp
+from karolos.agents.agent import OnPolAgent
+from karolos.agents.nn import NeuralNetwork, init_xavier_uniform, Clamp
+
 
 # https://intellabs.github.io/coach/components/agents/policy_optimization/ppo.html
 
 
 class PolicyPPO(NeuralNetwork):
     def __init__(
-        self,
-        state_dims,
-        action_dim,
-        network_structure,
-        action_stddev_init,
-        device,
+            self,
+            state_dims,
+            action_dim,
+            network_structure,
+            action_stddev_init,
+            device,
     ):
         out_dim = int(np.product(action_dim)) * 2
         in_dim = int(
@@ -32,7 +33,7 @@ class PolicyPPO(NeuralNetwork):
         network_structure = copy.deepcopy(network_structure)
         super(PolicyPPO, self).__init__(in_dim, network_structure)
 
-        dummy = super(PolicyPPO, self).forward(torch.zeros((1,in_dim)))
+        dummy = super(PolicyPPO, self).forward(torch.zeros((1, in_dim)))
 
         self.action_dim = action_dim
         self.operators.append(nn.Linear(dummy.shape[1], out_dim))
@@ -40,8 +41,8 @@ class PolicyPPO(NeuralNetwork):
         self.operators.apply(init_xavier_uniform)
 
         self.action_std = action_stddev_init
-        self.mean_head = nn.Linear(out_dim // 2, out_dim// 2)
-        self.std_head = nn.Linear(out_dim // 2, out_dim// 2)
+        self.mean_head = nn.Linear(out_dim // 2, out_dim // 2)
+        self.std_head = nn.Linear(out_dim // 2, out_dim // 2)
         # self.action_var = torch.full(self.action_dim, self.action_std_log,
         #                              requires_grad=True, dtype=torch.float)\
         #     .to(self.device)
@@ -192,17 +193,17 @@ class AgentPPO(OnPolAgent):
 
         # self.reward_scale = config.get('reward_scale', 10.)
 
-        self.policy_structure = config["policy_structure"]
-        self.critic_structure = config["critic_structure"]
+        policy_structure = config.get('policy_structure', [])
+        critic_structure = config.get('critic_structure', [])
 
         self.critic = CriticPPO(
-            self.state_dim, self.critic_structure,
+            self.state_dim, critic_structure,
         ).to(self.device)
         self.test_policy = None
         self.policy = PolicyPPO(
             self.state_dim,
             self.action_dim,
-            self.policy_structure,
+            policy_structure,
             action_stddev_init=self.action_std_init,
             device=self.device
         ).to(self.device)
@@ -237,9 +238,8 @@ class AgentPPO(OnPolAgent):
             self.policy.set_action_std(action_std)
             self.next_decay_step += self.action_std_decay_freq
 
-    def train(self, step):
-
-        self._decay_action_std(step)
+    def learn(self):
+        self._decay_action_std(self.learning_step)
 
         if not self.memory.is_full():
             return
@@ -270,7 +270,7 @@ class AgentPPO(OnPolAgent):
                 # or if samples_ret.std() close to 0 -> samples_ret.std() = 1
                 # normalize advantages
                 samples_ret_norm = (samples_ret - samples_ret.mean()) / (
-                    samples_ret.std() + 1e-8
+                        samples_ret.std() + 1e-8
                 )
                 log_pis, pi_entropies = self.policy.evaluate_actions(
                     samples[0], samples[1]
@@ -347,21 +347,27 @@ class AgentPPO(OnPolAgent):
         self.memory.clear()
         self.learn_steps += 1
 
+    def get_state_infos(self, states, deterministic):
+        self.policy.eval()
+        states = torch.tensor(states, dtype=torch.float).to(self.device)
+
+        with torch.no_grad():
+            action, logprob = self.policy(states, test=deterministic)
+            values = self.critic(states).detach()
+            logprob = logprob.detach().cpu()
+
+        return [{"ac_log_probs": lgp, "values": v, "actions": ac} for lgp, v, ac in zip(logprob, values, action)]
+
     def predict(self, states, deterministic):
         self.policy.eval()
         states = torch.tensor(states, dtype=torch.float).to(self.device)
         with torch.no_grad():
-            values = self.critic(states).detach()
             action, logprob = self.policy(states, test=deterministic)
 
         action_cpu = action.detach().cpu().numpy()
-        logprob = logprob.detach().cpu()
         action_clip = action_cpu.clip(self.action_space.low, self.action_space.high)
 
-        return action_clip, [
-            {"ac_log_probs": lgp, "values": v, "actions": ac}
-            for lgp, v, ac in zip(logprob, values, action)
-        ]
+        return action_clip
 
     def save(self, path):
         if not osp.exists(path):
@@ -397,6 +403,7 @@ class AgentPPO(OnPolAgent):
 if __name__ == "__main__":
     from karolos.environments.environment_wrappers.gym_wrapper import GymWrapper
 
+
     # LunarLanderContinuous-v2
     # MountainCarContinuous-v0
     def test_ppo_gym(name="LunarLanderContinuous-v2"):
@@ -420,25 +427,25 @@ if __name__ == "__main__":
             "entropy_loss_coeff": 0.01,
 
             "policy_structure": [
-                        ("linear", 128),
-                        (activation, None),
-                        ("linear", 128),
-                        (activation, None),
-                        ("linear", 128),
-                        (activation, None),
                 ("linear", 128),
-        (activation, None),
-                    ],
+                (activation, None),
+                ("linear", 128),
+                (activation, None),
+                ("linear", 128),
+                (activation, None),
+                ("linear", 128),
+                (activation, None),
+            ],
             "critic_structure": [
-                        ("linear", 128),
-                        (activation, None),
-                        ("linear", 128),
-                        (activation, None),
-                        ("linear", 128),
-                        (activation, None),
                 ("linear", 128),
-        (activation, None),
-                    ]
+                (activation, None),
+                ("linear", 128),
+                (activation, None),
+                ("linear", 128),
+                (activation, None),
+                ("linear", 128),
+                (activation, None),
+            ]
 
         }
 
@@ -485,10 +492,11 @@ if __name__ == "__main__":
                 score += reward
                 state = next_state
 
-            #if i_epoch % 10 == 0:
+            # if i_epoch % 10 == 0:
             print("Epoch {},\tscore: {:.2f},\tstep: {},\tstddev: {},\ttotal_step: {}".format(i_epoch,
-                                                                         score, step,
-                                                                         agent.policy.action_std, total_step))
+                                                                                             score, step,
+                                                                                             agent.policy.action_std,
+                                                                                             total_step))
 
 
     test_ppo_gym()

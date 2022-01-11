@@ -10,6 +10,7 @@ from collections import defaultdict
 from functools import partial
 
 import numpy as np
+import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
 
@@ -23,10 +24,7 @@ from utils import unwind_dict_values, set_seed
 class Experiment:
     @staticmethod
     def get_initial_state(random: bool, env_id=None):
-        initial_state = {
-            'env_id': env_id,
-            'random': random
-        }
+        initial_state = None
 
         return initial_state
 
@@ -45,6 +43,25 @@ class Experiment:
             return False
         else:
             return True
+
+    def _save_transition_onpol(self, goal_info, done, env_id):
+        # todo remove this and move into ppo agent!
+        experience = {
+            "states": torch.Tensor(
+                unwind_dict_values(self.trajectories[env_id][-3][0])
+            ),
+            # "actions": torch.Tensor(self.trajectories[env_id]["mdp"][-2]),
+            "rewards": torch.as_tensor(
+                self.reward_function(goal_info=goal_info, done=done)
+            ),
+            "terminals": torch.as_tensor(done, dtype=torch.bool),
+
+            # contains values if generalized advantage estimation in ppo is true
+            # therefore, agent_specific_info should be defined by the on-pol algorithm
+            **self.state_infos[env_id],
+        }
+        self.agent.add_experiences([experience], env_id)
+        self.state_infos[env_id] = None
 
     def process_responses(self, env_responses, mode: str):
 
@@ -68,6 +85,10 @@ class Experiment:
                 self.trajectories[env_id].append((state, goal_info))
 
                 done |= self.success_criterion(goal_info)
+
+                if hasattr(self.agent, "is_on_policy"):
+                    if self.agent.is_on_policy and (mode != "test"):
+                        self._save_transition_onpol(goal_info=goal_info, done=done, env_id=env_id)
 
                 if done:
                     trajectory = self.trajectories.pop(env_id)
@@ -117,8 +138,14 @@ class Experiment:
 
                 states = np.stack(states)
 
-                predictions = self.agent.predict(states,
-                                                 deterministic=mode == "test")
+                predictions = self.agent.predict(states, deterministic=mode == "test")
+
+                if hasattr(self.agent, "is_on_policy"):
+                    if self.agent.is_on_policy and (mode != "test"):
+                        state_infos = self.agent.get_state_infos(states, deterministic=mode == "test")
+
+                        for i, env_id in enumerate(required_predictions):
+                            self.state_infos[env_id] = state_infos[i]
 
             for env_id, prediction in zip(required_predictions,
                                           predictions):
@@ -127,20 +154,26 @@ class Experiment:
 
         return requests, results_episodes
 
-    def __init__(self, experiment_config, results_dir="./results",
-                 experiment_name=None):
+    def __init__(self, experiment_config):
+        self.logger = logging.getLogger("trainer")
+        self.logger.setLevel(logging.INFO)
 
-        logger = logging.getLogger("trainer")
-        logger.setLevel(logging.INFO)
+        self.experiment_config = experiment_config
 
-        seed = experiment_config.pop('seed', random.randint(0, 10000))
+    def run(self, results_dir="./results", experiment_name=None, seed=None):
+        experiment_config = self.experiment_config.copy()
+
+        if seed is None:
+            seed = random.randint(0, 10000)
         set_seed(seed)
+
         experiment_config['seed'] = seed
 
+        # Initialize results folder structure
         if not experiment_name:
             experiment_name = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-            logger.warning(f"Experiment name not specified. Using {experiment_name}.")
+            self.logger.warning(f"Experiment name not specified. Using {experiment_name}.")
 
         experiment_dir = osp.join(results_dir, experiment_name)
 
@@ -150,8 +183,8 @@ class Experiment:
             while os.path.exists(f"{experiment_dir}_{appendix}"):
                 appendix += 1
 
-            logger.warning(f"Result directory already exists {experiment_dir}. "
-                           f"Using directory {experiment_dir}_{appendix} instead.")
+            self.logger.warning(f"Result directory already exists {experiment_dir}. "
+                                f"Using directory {experiment_dir}_{appendix} instead.")
 
             experiment_dir += f"_{appendix}"
 
@@ -161,7 +194,7 @@ class Experiment:
         os.makedirs(models_dir)
 
         with open(osp.join(experiment_dir, 'config.json'), 'w') as f:
-            json.dump(experiment_config, f)
+            json.dump(self.experiment_config, f)
 
         env_config = experiment_config["env_config"]
         number_processes = experiment_config.get("number_processes", 1)
@@ -180,6 +213,10 @@ class Experiment:
                                    self.orchestrator.action_space,
                                    self.reward_function,
                                    experiment_dir)
+
+            if hasattr(self.agent, "is_on_policy"):
+                if self.agent.is_on_policy:
+                    self.state_infos = {}
 
             models_dir = osp.join(experiment_dir, "models")
 
@@ -210,7 +247,7 @@ class Experiment:
             self.steps = defaultdict(int)
             self.trajectories = defaultdict(list)
 
-            number_tests = experiment_config["number_tests"]
+            number_tests = experiment_config.get("number_tests", 1)
             test_interval = experiment_config["test_interval"]
             next_test_timestep = 0
 
