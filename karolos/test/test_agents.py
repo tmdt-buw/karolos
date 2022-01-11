@@ -11,7 +11,7 @@ from utils import unwind_space_shapes, unwind_dict_values
 from ..agents import get_agent
 
 discrete_algorithms = ["dqn"]
-continuous_algorithms = ["sac", "ddpg"]
+continuous_algorithms = ["sac", "ddpg", "ppo"]
 
 algorithms = discrete_algorithms + continuous_algorithms
 
@@ -38,7 +38,7 @@ def dummy_state(observation_space):
 def dummy_action(action_space):
     return action_space.sample()
 
-def get_trajectory(observation_space, action_space):
+def get_dummy_trajectory(observation_space, action_space):
 
     trajectory = []
 
@@ -60,7 +60,7 @@ def test_algorithm(algorithm):
     else:
         raise ValueError("Unknown action space type", algorithm)
 
-    trajectory = get_trajectory(observation_space, agent.action_space)
+    trajectory = get_dummy_trajectory(observation_space, agent.action_space)
 
     agent.add_experience_trajectory(trajectory)
 
