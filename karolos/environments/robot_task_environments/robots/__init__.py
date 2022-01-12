@@ -17,15 +17,22 @@ import logging
 import os
 import time
 from collections import namedtuple
+from enum import Enum
+from itertools import chain
 
 import numpy as np
 import pybullet as p
 from gym import spaces
-from numpy.random import RandomState
 
 Joint = namedtuple("Joint", ["id", "initial_position", "limits",
                              "max_velocity", "max_torque"])
 Link = namedtuple("Link", ["mass", "linearDamping"])
+
+
+class STATUS_HAND(Enum):
+    CLOSED = -1
+    CLOSING = 0
+    OPEN = 1
 
 
 class RobotArm:
@@ -58,8 +65,7 @@ class RobotArm:
 
         self.bullet_client = bullet_client
 
-        self.random = RandomState(
-            int.from_bytes(os.urandom(4), byteorder='little'))
+        self.random = np.random.RandomState(int.from_bytes(os.urandom(4), byteorder='little'))
 
         self.model_id = bullet_client.loadURDF(urdf_file, self.offset,
                                                useFixedBase=True,
@@ -71,49 +77,51 @@ class RobotArm:
             jointInfo = self.bullet_client.getJointInfo(self.model_id, jj)
             self.joint_name2id[jointInfo[1].decode("utf-8")] = jointInfo[0]
 
-            # print(jointInfo[1].decode("utf-8"))
-
         self.joints_arm = {}
         self.joints_hand = {}
+
+        self.status_hand = STATUS_HAND.OPEN
 
         for joint_name, joint_args in joints_arm.items():
             self.joints_arm[joint_name] = Joint(self.joint_name2id[joint_name],
                                                 *joint_args)
 
         for joint_name, joint_args in joints_hand.items():
-            self.joints_hand[joint_name] = Joint(
-                self.joint_name2id[joint_name], *joint_args)
+            self.joints_hand[joint_name] = Joint(self.joint_name2id[joint_name], *joint_args)
 
         if links is None:
             self.links = {}
         else:
             self.links = links
 
-        print(self.joints_arm)
+        if not hasattr(self, "index_tcp"):
+            self.index_tcp = len(self.links) - 1
 
         self.bullet_client.stepSimulation()
 
         # define spaces
-        self.action_space = spaces.Box(-1., 1.,
-                                       shape=(len(self.joints_arm) + 1,))
+        self.action_space = spaces.Box(-1., 1., shape=(len(self.joints_arm) + 1,))
 
         self.observation_space = spaces.Dict({
             "joint_positions": spaces.Box(-1., 1.,
-                                          shape=(len(self.joints_arm) +
-                                                 len(self.joints_hand),)),
+                                          shape=(len(self.joints),)),
             "joint_velocities": spaces.Box(-1., 1.,
-                                           shape=(len(self.joints_arm) +
-                                                  len(self.joints_hand),)),
+                                           shape=(len(self.joints),)),
             "tcp_position": spaces.Box(-1., 1., shape=(3,)),
+            "status_hand": spaces.Box(-1., 1., shape=(1,)),
         })
 
         # reset to initial position
         self.reset()
 
+    @property
+    def joints(self):
+        return list(chain(self.joints_arm.values(), self.joints_hand.values()))
+
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
 
-        action_arm = action[:6]
+        action_arm = action[:-1]
         action_hand = action[-1]
 
         action_arm = list(action_arm * self.scale)  # / self.max_steps)
@@ -123,42 +131,22 @@ class RobotArm:
         maxVelocities = []
         torques = []
 
-        for (_, joint), action_joint in zip(self.joints_arm.items(),
-                                            action_arm):
-            position, _, _, _ = self.bullet_client.getJointState(self.model_id,
-                                                                 joint.id)
+        for (_, joint), action_joint in zip(self.joints_arm.items(), action_arm):
+            position, _, _, _ = self.bullet_client.getJointState(self.model_id, joint.id)
 
-            normalized_joint_position = np.interp(position, joint.limits,
-                                                  [-1, 1])
-            normalized_target_joint_position = np.clip(
-                normalized_joint_position + action_joint, -1, 1)
-            target_joint_position = np.interp(normalized_target_joint_position,
-                                              [-1, 1], joint.limits)
+            normalized_joint_position = np.interp(position, joint.limits, [-1, 1])
+            normalized_target_joint_position = np.clip(normalized_joint_position + action_joint, -1, 1)
+            target_joint_position = np.interp(normalized_target_joint_position, [-1, 1], joint.limits)
 
             joint_ids.append(joint.id)
             target_positions.append(target_joint_position)
             torques.append(joint.max_torque)
 
             maxVelocities.append(joint.max_velocity)
-
-        self.bullet_client.setJointMotorControlArray(self.model_id,
-                                                     joint_ids,
-                                                     p.POSITION_CONTROL,
-                                                     targetPositions=target_positions,
-                                                     # maxVelocities=maxVelocities,
-                                                     forces=torques
-                                                     )
-
-        joint_ids = []
-        target_positions = []
-        maxVelocities = []
-        torques = []
 
         for _, joint in self.joints_hand.items():
-            position, _, _, _ = self.bullet_client.getJointState(self.model_id,
-                                                                 joint.id)
-
-            target_joint_position = np.interp(action_hand, [-1, 1], joint.limits)
+            # always keep hand open, gripping is handled in task
+            target_joint_position = joint.limits[-1]
 
             joint_ids.append(joint.id)
             target_positions.append(target_joint_position)
@@ -170,14 +158,28 @@ class RobotArm:
                                                      joint_ids,
                                                      p.POSITION_CONTROL,
                                                      targetPositions=target_positions,
-                                                     forces=torques
+                                                     # forces=torques
                                                      )
+
+        if action_hand >= 0:
+            self.status_hand = STATUS_HAND.OPEN
+        elif self.status_hand == STATUS_HAND.OPEN:
+            self.status_hand = STATUS_HAND.CLOSING
+        else:
+            self.status_hand = STATUS_HAND.CLOSED
 
         for step in range(self.max_steps):
             self.bullet_client.stepSimulation()
 
-            if self.bullet_client.getConnectionInfo()[
-                "connectionMethod"] == p.GUI:
+            joint_states = self.bullet_client.getJointStates(self.model_id, joint_ids)
+
+            joint_positions = np.array([joint_state[0] for joint_state in joint_states])
+            joint_velocities = np.array([joint_state[1] for joint_state in joint_states])
+
+            if max(abs(joint_velocities)) < .01 and max(abs(joint_positions - target_positions)) < .01:
+                break
+
+            if self.bullet_client.getConnectionInfo()["connectionMethod"] == p.GUI:
                 time.sleep(self.time_step)
 
         observation = self.get_observation()
@@ -197,54 +199,39 @@ class RobotArm:
 
                 parameter_value = np.random.normal(mean, std)
 
-                self.bullet_client.changeDynamics(self.model_id, link_id,
-                                                  **{
-                                                      parameter: parameter_value})
+                self.bullet_client.changeDynamics(self.model_id, link_id, **{parameter: parameter_value})
 
         contact_points = True
 
         if desired_state is not None:
+            assert len(desired_state) == len(
+                self.joints_arm) + 1, f"Please provide {len(self.joints_arm)} values for the arm and 1 value for the hand!"
 
-            desired_state_arm = desired_state[:6]
-            desired_state_hand = desired_state[-1]
+            desired_state_arm = desired_state[:len(self.joints_arm)]
+            desired_state_hand = desired_state[len(self.joints_arm):]
 
-            for (_, joint), desired_state in zip(self.joints_arm.items(),
-                                                 desired_state_arm):
-                joint_position = np.interp(desired_state, [-1, 1],
-                                           joint.limits)
+            for (_, joint), desired_state in zip(self.joints_arm.items(), desired_state_arm):
+                joint_position = np.interp(desired_state, [-1, 1], joint.limits)
 
-                self.bullet_client.resetJointState(self.model_id, joint.id,
-                                                   joint_position)
+                self.bullet_client.resetJointState(self.model_id, joint.id, joint_position)
 
-            for _, joint in self.joints_hand.items():
-                joint_position = np.interp(desired_state_hand, [-1, 1],
-                                           joint.limits)
-
-                self.bullet_client.resetJointState(self.model_id, joint.id,
-                                                   joint_position)
+            if desired_state_hand >= 0:
+                self.status_hand = STATUS_HAND.OPEN
+            else:
+                self.status_hand = STATUS_HAND.CLOSING
 
             self.bullet_client.stepSimulation()
-            contact_points = self.bullet_client.getContactPoints(self.model_id,
-                                                                 self.model_id)
+            contact_points = self.bullet_client.getContactPoints(self.model_id, self.model_id)
 
         # reset until state is valid
         while contact_points:
-
-            for _, joint in self.joints_arm.items():
+            for joint in self.joints:
                 joint_position = self.random.uniform(*joint.limits)
 
-                self.bullet_client.resetJointState(self.model_id, joint.id,
-                                                   joint_position)
-
-            for _, joint in self.joints_hand.items():
-                joint_position = self.random.uniform(*joint.limits)
-
-                self.bullet_client.resetJointState(self.model_id, joint.id,
-                                                   joint_position)
+                self.bullet_client.resetJointState(self.model_id, joint.id, joint_position)
 
             self.bullet_client.stepSimulation()
-            contact_points = self.bullet_client.getContactPoints(self.model_id,
-                                                                 self.model_id)
+            contact_points = self.bullet_client.getContactPoints(self.model_id, self.model_id)
 
         observation = self.get_observation()
 
@@ -253,32 +240,15 @@ class RobotArm:
     def get_observation(self):
         joint_positions, joint_velocities = [], []
 
-        for _, joint in self.joints_arm.items():
-            joint_position, joint_velocity, _, _ = self.bullet_client.getJointState(
-                self.model_id, joint.id)
+        for joint in self.joints:
+            joint_position, joint_velocity, _, _ = self.bullet_client.getJointState(self.model_id, joint.id)
 
-            joint_positions.append(
-                np.interp(joint_position, joint.limits, [-1, 1]))
-            joint_velocities.append(np.interp(joint_velocity,
-                                              [-joint.max_velocity,
-                                               joint.max_velocity],
-                                              [-1, 1]))
+            joint_positions.append(np.interp(joint_position, joint.limits, [-1, 1]))
+            joint_velocities.append(np.interp(joint_velocity, [-joint.max_velocity, joint.max_velocity], [-1, 1]))
 
-        for _, joint in self.joints_hand.items():
-            joint_position, joint_velocity, _, _ = self.bullet_client.getJointState(
-                self.model_id, joint.id)
-
-            joint_positions.append(
-                np.interp(joint_position, joint.limits, [-1, 1]))
-            joint_velocities.append(np.interp(joint_velocity,
-                                              [-joint.max_velocity,
-                                               joint.max_velocity],
-                                              [-1, 1]))
-
-        tcp_position, _, _, _, _, _, tcp_velocity, _ = \
-            self.bullet_client.getLinkState(self.model_id,
-                                            self.joint_name2id["tcp"],
-                                            computeLinkVelocity=True)
+        tcp_position, _, _, _, _, _, tcp_velocity, _ = self.bullet_client.getLinkState(self.model_id,
+                                                                                       self.joint_name2id["tcp"],
+                                                                                       computeLinkVelocity=True)
 
         joint_positions = np.array(joint_positions)
         joint_velocities = np.array(joint_velocities)
@@ -289,6 +259,7 @@ class RobotArm:
             "joint_positions": joint_positions,
             "joint_velocities": joint_velocities,
             "tcp_position": tcp_position,
+            "status_hand": np.array(self.status_hand.value)
             # "tcp_velocity": tcp_velocity
         }
 

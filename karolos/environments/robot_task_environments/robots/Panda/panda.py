@@ -46,6 +46,8 @@ class Panda(RobotArm):
             "panda_grasptarget_hand": Link(0.0, 0.01),
         }
 
+        self.index_tcp = len(links) - 1
+
         super(Panda, self).__init__(bullet_client=bullet_client,
                                     urdf_file=urdf_file,
                                     joints_arm=joints_arm,
