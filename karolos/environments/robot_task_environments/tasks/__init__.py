@@ -44,7 +44,7 @@ class Task(object):
 
         self.step_counter = 0
 
-    def step(self, observation_robot):
+    def step(self, observation_robot, robot):
         self.step_counter += 1
 
         observation_task, goal_info, done = self.get_status(observation_robot)

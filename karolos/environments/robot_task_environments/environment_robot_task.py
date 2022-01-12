@@ -80,7 +80,7 @@ class RobotTaskEnvironment(Environment):
 
     def step(self, action):
         observation_robot = self.robot.step(action)
-        observation_task, goal_info, done = self.task.step(observation_robot)
+        observation_task, goal_info, done = self.task.step(observation_robot, self.robot)
 
         state = {
             'robot': observation_robot,

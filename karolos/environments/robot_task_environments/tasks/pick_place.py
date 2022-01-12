@@ -2,7 +2,11 @@ from gym import spaces
 import numpy as np
 from numpy.random import RandomState
 import os
+
+import numpy as np
 import pybullet as p
+from gym import spaces
+from numpy.random import RandomState
 
 from karolos.utils import unwind_dict_values
 
@@ -34,24 +38,15 @@ class Pick_Place(Task):
         })
 
         self.target = bullet_client.createMultiBody(
-            baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_SPHERE,
-                                                     radius=.03,
-                                                     rgbaColor=[0, 1, 1, 1],
-                                                     ),
-            baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_SPHERE,
-                                                           radius=.03,
-                                                           ),
+            baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_SPHERE, radius=.03, rgbaColor=[0, 1, 1, 1]),
         )
 
-        self.object = bullet_client.createMultiBody(
-            baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_BOX,
-                                                     halfExtents=[.025] * 3,
-                                                     ),
+        self.tcp_target_constraint = None
 
-            baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_BOX,
-                                                           halfExtents=[
-                                                                           .025] * 3,
-                                                           ),
+        self.object = bullet_client.createMultiBody(
+            baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_BOX, halfExtents=[.025] * 3),
+
+            baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_BOX, halfExtents=[.025] * 3),
             baseMass=.1,
         )
 
@@ -166,6 +161,27 @@ class Pick_Place(Task):
                     contact_points = False
 
         return self.get_status(observation_robot)
+
+    def step(self, observation_robot, robot):
+        if observation_robot["status_hand"] == 1:  # open
+            if self.tcp_target_constraint is not None:
+                self.bullet_client.removeConstraint(self.tcp_target_constraint)
+                self.tcp_target_constraint = None
+        elif observation_robot["status_hand"] == 0:  # closing
+            assert self.tcp_target_constraint is None
+
+            position_object, _ = self.bullet_client.getBasePositionAndOrientation(self.object)
+
+            # todo: make theshold a parameter
+            if np.linalg.norm(observation_robot["tcp_position"] - np.array(position_object)) < .03:
+                self.tcp_target_constraint = self.bullet_client.createConstraint(self.object, -1,
+                                                                                 robot.model_id, robot.index_tcp,
+                                                                                 p.JOINT_FIXED, jointAxis=[0, 0, 0],
+                                                                                 parentFramePosition=[0, 0, 0],
+                                                                                 childFramePosition=[0, 0, 0])
+                self.bullet_client.changeConstraint(self.tcp_target_constraint, maxForce=1e5)
+
+        return super(Pick_Place, self).step(observation_robot, robot)
 
     def get_status(self, observation_robot=None):
         if observation_robot is None:
