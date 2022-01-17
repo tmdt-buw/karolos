@@ -20,9 +20,12 @@ from collections import namedtuple
 from enum import Enum
 from itertools import chain
 
+import klampt
 import numpy as np
 import pybullet as p
 from gym import spaces
+from klampt.math import so3
+from klampt.model import ik
 
 Joint = namedtuple("Joint", ["id", "initial_position", "limits",
                              "max_velocity", "max_torque"])
@@ -103,13 +106,21 @@ class RobotArm:
         self.action_space = spaces.Box(-1., 1., shape=(len(self.joints_arm) + 1,))
 
         self.observation_space = spaces.Dict({
-            "joint_positions": spaces.Box(-1., 1.,
-                                          shape=(len(self.joints),)),
-            "joint_velocities": spaces.Box(-1., 1.,
-                                           shape=(len(self.joints),)),
+            "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints),)),
+            "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints),)),
             "tcp_position": spaces.Box(-1., 1., shape=(3,)),
             "status_hand": spaces.Box(-1., 1., shape=(1,)),
         })
+
+        # initialize ik
+
+        self.ik_world = klampt.WorldModel()
+        self.ik_world.loadElement(urdf_file)
+        self.ik_model = self.ik_world.robot(0)
+        self.ik_dof_joint_ids = [jj for jj in range(self.ik_model.numLinks()) if
+                                 self.ik_model.getJointType(jj) == "normal"]
+
+        assert len(self.ik_dof_joint_ids) == len(self.joints), "Mismatch between specified DOF and DOF found by Klampt!"
 
         # reset to initial position
         self.reset()
@@ -117,6 +128,23 @@ class RobotArm:
     @property
     def joints(self):
         return list(chain(self.joints_arm.values(), self.joints_hand.values()))
+
+    def calculate_inverse_kinematics(self, tcp_position, tcp_orientation, initial_pose=None):
+        if initial_pose is not None:
+            assert len(initial_pose) == len(self.ik_dof_joint_ids)
+
+            for ik_dof, pose in zip(self.ik_dof_joint_ids, initial_pose):
+                self.ik_model.setDOFPosition(ik_dof, pose)
+
+        obj = ik.objective(self.ik_model.link(self.ik_model.numLinks() - 1), t=list(tcp_position),
+                           R=so3.from_quaternion(tcp_orientation))
+
+        res = ik.solve_global(obj, activeDofs=self.ik_dof_joint_ids)
+
+        if not res:
+            return None
+        else:
+            return np.array([self.ik_model.getDOFPosition(jj) for jj in self.ik_dof_joint_ids])
 
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
@@ -205,7 +233,7 @@ class RobotArm:
 
         if desired_state is not None:
             assert len(desired_state) == len(
-                self.joints_arm) + 1, f"Please provide {len(self.joints_arm)} values for the arm and 1 value for the hand!"
+                self.joints), f"Please provide {len(self.joints_arm)} values for the arm and 1 value for the hand!"
 
             desired_state_arm = desired_state[:len(self.joints_arm)]
             desired_state_hand = desired_state[len(self.joints_arm):]
@@ -215,7 +243,7 @@ class RobotArm:
 
                 self.bullet_client.resetJointState(self.model_id, joint.id, joint_position)
 
-            if desired_state_hand >= 0:
+            if np.mean(desired_state_hand) >= 0:
                 self.status_hand = STATUS_HAND.OPEN
             else:
                 self.status_hand = STATUS_HAND.CLOSING
@@ -253,14 +281,12 @@ class RobotArm:
         joint_positions = np.array(joint_positions)
         joint_velocities = np.array(joint_velocities)
         tcp_position = np.array(tcp_position)
-        # tcp_velocity = np.array(tcp_velocity)
 
         observation = {
             "joint_positions": joint_positions,
             "joint_velocities": joint_velocities,
             "tcp_position": tcp_position,
             "status_hand": np.array(self.status_hand.value)
-            # "tcp_velocity": tcp_velocity
         }
 
         for key in observation:

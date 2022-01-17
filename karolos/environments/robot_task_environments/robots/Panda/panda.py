@@ -33,17 +33,17 @@ class Panda(RobotArm):
         }
 
         links = {
-            "panda_joint1": Link(2.7, 0.01),
-            "panda_joint2": Link(2.73, 0.01),
-            "panda_joint3": Link(2.04, 0.01),
-            "panda_joint4": Link(2.08, 0.01),
-            "panda_joint5": Link(3.0, 0.01),
-            "panda_joint6": Link(1.3, 0.01),
-            "panda_joint7": Link(0.2, 0.01),
-            "panda_hand_joint": Link(0.81, 0.01),
-            "panda_finger_joint1": Link(0.1, 0.01),
-            "panda_finger_joint2": Link(0.1, 0.01),
-            "panda_grasptarget_hand": Link(0.0, 0.01),
+            "panda_link1": Link(2.7, 0.01),
+            "panda_link2": Link(2.73, 0.01),
+            "panda_link3": Link(2.04, 0.01),
+            "panda_link4": Link(2.08, 0.01),
+            "panda_link5": Link(3.0, 0.01),
+            "panda_link6": Link(1.3, 0.01),
+            "panda_link7": Link(0.2, 0.01),
+            "panda_hand": Link(0.81, 0.01),
+            "panda_leftfinger": Link(0.1, 0.01),
+            "panda_rightfinger": Link(0.1, 0.01),
+            "tcp": Link(0.0, 0.01),
         }
 
         self.index_tcp = len(links) - 1

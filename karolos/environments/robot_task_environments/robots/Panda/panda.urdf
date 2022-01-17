@@ -328,5 +328,5 @@
         <child link="tcp"/>
         <origin rpy="3.14159 0 0" xyz="0 0 0.105"/>
     </joint>
-
+<klampt package_root="."  freeze_root_link="1"/>
 </robot>

@@ -49,6 +49,8 @@ class Task(object):
 
         observation_task, goal_info, done = self.get_status(observation_robot)
 
+        done |= self.step_counter >= self.max_steps
+
         return observation_task, goal_info, done
 
     def get_status(self, observation_robot):

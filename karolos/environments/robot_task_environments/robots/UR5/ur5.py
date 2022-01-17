@@ -26,7 +26,8 @@ class UR5(RobotArm):
                                  "ur5.urdf")
 
         joints_arm = {
-            "shoulder_pan_joint": (0, (-6.2831, 6.2831), 3.15, 300),
+            # "shoulder_pan_joint": (0, (6.2831, 6.2831), 3.15, 300),
+            "shoulder_pan_joint": (0, (-np.pi, np.pi), 3.15, 300),
             "shoulder_lift_joint": (0, (-2.3561, 2.3561), 3.15, 150),
             "elbow_joint": (0, (-3.1415, 3.1415), 3.15, 150),
             "wrist_1_joint": (0, (-2.3561, 2.3561), 3.2, 28),
@@ -36,9 +37,12 @@ class UR5(RobotArm):
 
         joints_hand = {
             # hand
-            "left_inner_finger_joint": (0.3, (-.0425, 0.), 2., 20),
-            "right_inner_finger_joint": (0.3, (-.0425, 0.), 2., 20),
+            "left_inner_finger_joint": (0.3, (0., .0425), 2., 20),
+            "right_inner_finger_joint": (0.3, (0., .0425), 2., 20),
         }
+
+        self.index_tcp = 10
+
 
         super(UR5, self).__init__(bullet_client=bullet_client,
                                   urdf_file=urdf_file,

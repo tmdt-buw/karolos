@@ -307,8 +307,8 @@
         <parent link="robotiq_85_base_link"/>
         <child link="left_inner_finger"/>
         <origin xyz="0.0064 0 0.126" rpy="0 0 0"/>
-        <axis xyz="-0.95307293 0. 0.30274081"/>
-        <limit lower="-.0425" upper="0." velocity="0.1" effort="10"/>
+        <axis xyz="0.95307293 0. -0.30274081"/>
+        <limit lower="0." upper=".0425" velocity="0.1" effort="10"/>
 <!--        <axis xyz="0 -1 0"/>-->
 <!--        <limit lower="-.0425" upper="0" velocity="2.0" effort="20"/>-->
     </joint>
@@ -354,14 +354,14 @@
         <parent link="robotiq_85_base_link"/>
         <child link="right_inner_finger"/>
         <origin xyz="-0.0064 0 0.126" rpy="0 0 3.1416"/>
-        <axis xyz="-0.95307293 0. 0.30274081"/>
-        <limit lower="-.0425" upper="0." velocity="0.1" effort="10"/>
+        <axis xyz="0.95307293 0. -0.30274081"/>
+        <limit lower="0." upper=".0425" velocity="0.1" effort="10"/>
     </joint>
 
     <joint name="tcp" type="fixed">
         <parent link="robotiq_85_base_link"/>
         <child link="tcp"/>
-        <origin rpy="0 0 -1.570796" xyz="0.0 0.0 0.15"/>
+        <origin rpy="3.14159 0 -1.570796" xyz="0.0 0.0 0.15"/>
         <axis xyz="0 1 0"/>
     </joint>
 
@@ -372,6 +372,8 @@
                      izz="0.0"/>
         </inertial>
     </link>
+
+    <klampt package_root="."  freeze_root_link="1"/>
 </robot>
 
 

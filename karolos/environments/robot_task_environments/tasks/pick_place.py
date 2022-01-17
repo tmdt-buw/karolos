@@ -5,6 +5,7 @@ import pybullet as p
 from gym import spaces
 from numpy.random import RandomState
 
+import karolos.environments.robot_task_environments.robots
 from karolos.utils import unwind_dict_values
 
 try:
@@ -94,6 +95,10 @@ class Pick_Place(Task):
 
         super(Pick_Place, self).reset()
 
+        if self.tcp_target_constraint is not None:
+            self.bullet_client.removeConstraint(self.tcp_target_constraint)
+            self.tcp_target_constraint = None
+
         if desired_state is not None:
             # gripped flag irrelevant for initial state
             desired_state_object, desired_state_target = np.split(
@@ -113,6 +118,7 @@ class Pick_Place(Task):
                 f"desired_state puts target out of reach. {desired_state_target}"
 
             desired_state_object[-1] = 0  # put on floor
+            desired_state_target[-1] = max(.1, desired_state_target[-1])  # put on floor
             self.bullet_client.resetBasePositionAndOrientation(
                 self.object, desired_state_object, [0, 0, 0, 1])
 
@@ -137,6 +143,7 @@ class Pick_Place(Task):
                 object_position[-1] = 0  # put object on floor and use gravity
                 target_position = np.random.uniform(self.limits[:, 0],
                                                     self.limits[:, 1])
+                target_position[-1] = max(.1, target_position[-1])  # put on floor
 
                 if np.linalg.norm(object_position) < 0.8 and np.linalg.norm(
                         target_position) < 0.8:
@@ -216,11 +223,11 @@ class Pick_Place(Task):
             'desired': desired_goal,
         }
 
-        done = self.step_counter >= self.max_steps
+        done = False
 
         return observation, goal_info, done
 
-    def get_expert_prediction(self, robot, state):
+    def get_expert_prediction(self, robot: karolos.environments.robot_task_environments.robots.RobotArm, state):
         LOWER_LIMITS = np.array([joint.limits[0] for joint in robot.joints])
         UPPER_LIMITS = np.array([joint.limits[1] for joint in robot.joints])
         JOINT_RANGES = np.array([ul - ll for ul, ll in zip(UPPER_LIMITS, LOWER_LIMITS)])
@@ -243,113 +250,46 @@ class Pick_Place(Task):
         desired_pose_arm = REST_POSE[:7]
         desired_pose_arm[0] = object_angle
 
-        action = np.zeros(8)
+        action = np.zeros(robot.action_space.shape)
 
         if np.linalg.norm(position_object - tcp_position) > .01:
-            # Phase 1: pick object
-
-            # open gripper
+            # move to object with open gripper
             action[-1] = 1
 
-            if abs(desired_pose_arm[0] - current_positions_arm[0]) > 5 * np.pi / 180:
-                # Step 1: align first joint with object
-                print("Step 1")
+            goal_position = position_object.copy()
 
-                delta_poses_arm = desired_pose_arm - current_positions_arm
-
-                action_arm = [delta_pose / (joint.limits[1] - joint.limits[0]) / robot.scale
-                              for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
-
-                action[:7] = np.clip(action_arm, -1, 1)
-            else:
-                # Step 2: pick up object
-                print("Step 2")
-
-                goal_position = position_object.copy()
-
-                if np.linalg.norm(position_object[:2] - tcp_position[:2]) > .01:
-                    # hover over box until x and y are aligned, then move down
-                    goal_position[-1] += .1
-
-                restPoses = current_positions_arm.copy()
-
-                # todo: make sure that this always returns a valid pose and doesn't hang forever
-                while True:
-                    desired_pose = self.bullet_client.calculateInverseKinematics(
-                        bodyUniqueId=robot.model_id,
-                        endEffectorLinkIndex=robot.index_tcp,
-                        targetPosition=goal_position,
-                        targetOrientation=[0, 0, 0, 1],
-                        lowerLimits=LOWER_LIMITS,
-                        upperLimits=UPPER_LIMITS,
-                        jointRanges=JOINT_RANGES,
-                        restPoses=restPoses,
-                        maxNumIterations=1000,
-                        residualThreshold=.001,
-                    )
-
-                    desired_pose = np.array(desired_pose)
-                    desired_pose_clipped = np.clip(desired_pose, LOWER_LIMITS, UPPER_LIMITS)
-
-                    if all(abs(desired_pose - desired_pose_clipped) < .01):
-                        # limit breach is acceptable
-                        desired_pose = desired_pose_clipped
-                        break
-                    else:
-                        restPoses = np.random.uniform(-1, 1, restPoses.shape)
-
-                desired_pose_arm[1:7] = desired_pose[1:7]
-                # desired_pose_arm[:7] = desired_pose[:7]
-
-                delta_poses_arm = desired_pose_arm - current_positions_arm
-
-                action_arm = [delta_pose / (joint.limits[1] - joint.limits[0]) / robot.scale
-                              for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
-
-                action_arm = np.clip(action_arm, -1, 1)
-                action[:7] = action_arm
+            if np.linalg.norm(position_object[:2] - tcp_position[:2]) > .02:
+                # align over object
+                goal_position[-1] += .1
         else:
-            print("Place")
-
-            # grab
+            # close gripper and move to target
             action[-1] = -1
 
             if state['robot']["status_hand"][0] == -1:
-                restPoses = current_positions_arm.copy()
+                if tcp_position[-1] < .05:
+                    goal_position = tcp_position.copy()
+                    goal_position[-1] = .1
+                else:
+                    # move to target
+                    goal_position = position_object_desired.copy()
+            else:
+                # dont move arm while gripping
+                goal_position = None
 
-                # todo: make sure that this always returns a valid pose and doesn't hang forever
-                while True:
-                    desired_pose = self.bullet_client.calculateInverseKinematics(
-                        bodyUniqueId=robot.model_id,
-                        endEffectorLinkIndex=robot.index_tcp,
-                        targetPosition=position_object_desired,
-                        targetOrientation=[0, 0, 0, 1],
-                        lowerLimits=LOWER_LIMITS,
-                        upperLimits=UPPER_LIMITS,
-                        jointRanges=JOINT_RANGES,
-                        restPoses=restPoses,
-                        maxNumIterations=1000,
-                        residualThreshold=.001,
-                    )
+        if goal_position is not None:
+            ik_result = robot.calculate_inverse_kinematics(goal_position, [1, 0, 0, 0],
+                                                           initial_pose=current_positions)
 
-                    desired_pose = np.array(desired_pose)
-                    desired_pose_clipped = np.clip(desired_pose, LOWER_LIMITS, UPPER_LIMITS)
+            if ik_result is None:
+                raise ValueError("IK failed!")
 
-                    if all(abs(desired_pose - desired_pose_clipped) < .01):
-                        # limit breach is acceptable
-                        desired_pose = desired_pose_clipped
-                        break
-                    else:
-                        restPoses = np.random.uniform(-1, 1, restPoses.shape)
+            delta_poses_arm = ik_result[:-2] - current_positions_arm
 
-                desired_pose_arm = desired_pose[:7]
-                delta_poses_arm = desired_pose_arm - current_positions_arm
+            action_arm = [delta_pose / (joint.limits[1] - joint.limits[0]) / robot.scale
+                          for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
 
-                action_arm = [delta_pose / (joint.limits[1] - joint.limits[0]) / robot.scale
-                              for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
-
-                action_arm = np.clip(action_arm, -1, 1)
-                action[:7] = action_arm
+            action_arm = np.clip(action_arm, -1, 1)
+            action[:-1] = action_arm
 
         return action
 
