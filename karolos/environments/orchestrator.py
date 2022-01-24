@@ -15,7 +15,7 @@ class Orchestrator:
         self.locks = {}
 
         self.action_space_ = None
-        self.observation_space_ = None
+        self.state_space_ = None
         self.reward_function_ = None
         self.success_criterion_ = None
 
@@ -102,8 +102,8 @@ class Orchestrator:
                     pipe.send(("render", env.render(params)))
                 elif func == "action space":
                     pipe.send(("action space", env.action_space))
-                elif func == "observation space":
-                    pipe.send(("observation space", env.observation_space))
+                elif func == "state space":
+                    pipe.send(("state space", env.state_space))
                 elif func == "reward function":
                     pipe.send(("reward function", env.reward_function))
                 elif func == "success criterion":
@@ -187,14 +187,14 @@ class Orchestrator:
         return self.action_space_
 
     @property
-    def observation_space(self):
-        if self.observation_space_ is None:
-            self.pipes[0].send(["observation space", None])
-            func, self.observation_space_ = self.pipes[0].recv()
+    def state_space(self):
+        if self.state_space_ is None:
+            self.pipes[0].send(["state space", None])
+            func, self.state_space_ = self.pipes[0].recv()
 
-            assert func == "observation space", f"'{func}' istead of 'observation space'"
+            assert func == "state space", f"'{func}' instead of 'state space'"
 
-        return self.observation_space_
+        return self.state_space_
 
     @property
     def reward_function(self):
@@ -202,7 +202,7 @@ class Orchestrator:
             self.pipes[0].send(["reward function", None])
             func, self.reward_function_ = self.pipes[0].recv()
 
-            assert func == "reward function", f"'{func}' istead of 'reward function'"
+            assert func == "reward function", f"'{func}' instead of 'reward function'"
 
         return self.reward_function_
 
@@ -212,7 +212,7 @@ class Orchestrator:
             self.pipes[0].send(["success criterion", None])
             func, self.success_criterion_ = self.pipes[0].recv()
 
-            assert func == "success criterion", f"'{func}' istead of 'success criterion'"
+            assert func == "success criterion", f"'{func}' instead of 'success criterion'"
 
         return self.success_criterion_
 

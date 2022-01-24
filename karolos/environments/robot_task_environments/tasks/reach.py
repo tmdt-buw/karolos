@@ -1,9 +1,11 @@
-from gym import spaces
-import numpy as np
-from numpy.random import RandomState
 import os
-import pybullet as p
 
+import numpy as np
+import pybullet as p
+from gym import spaces
+from numpy.random import RandomState
+
+import karolos.environments.robot_task_environments.robots
 from karolos.utils import unwind_dict_values
 
 try:
@@ -28,16 +30,16 @@ class Reach(Task):
             (0., .8)
         ])
 
-        self.observation_space = spaces.Box(-1, 1, shape=(3,))
+        self.state_space = spaces.Box(-1, 1, shape=(3,))
 
         self.target = bullet_client.createMultiBody(
             baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_SPHERE,
-                                                     radius=.03,
-                                                     rgbaColor=[0, 1, 1, 1],
-                                                     ),
+                                                                 radius=.03,
+                                                                 rgbaColor=[0, 1, 1, 1],
+                                                                 ),
             baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_SPHERE,
-                                                           radius=.03,
-                                                           ),
+                                                                       radius=.03,
+                                                                       ),
         )
 
         self.random = RandomState(
@@ -65,7 +67,7 @@ class Reach(Task):
 
         return reward
 
-    def reset(self, robot=None, observation_robot=None, desired_state=None):
+    def reset(self, robot=None, state_robot=None, desired_state=None):
 
         super(Reach, self).reset()
 
@@ -111,39 +113,63 @@ class Reach(Task):
             else:
                 contact_points = False
 
-        return self.get_status(observation_robot)
+        return self.get_status(state_robot, robot)
 
-    def get_status(self, observation_robot=None):
+    def get_status(self, state_robot=None, robot=None):
+        expert_action = None
 
-        position_desired, _ = self.bullet_client.getBasePositionAndOrientation(
-            self.target)
+        if state_robot is not None and robot is not None:
+            expert_action = self.get_expert_prediction(state_robot, robot)
+
+        position_desired, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_desired = np.array(position_desired)
 
-        observation = {
-            "goal": {"position": position_desired}
-        }
-
-        if observation_robot is None:
-            achieved_goal = {"position": None}
-        else:
-            achieved_goal = {
-                "position": observation_robot["tcp_position"],
-                # "velocity": observation["tcp_velocity"]
-            }
-
-        desired_goal = {
-            "position": position_desired,
-            # "velocity": np.zeros_like(observation["tcp_velocity"])
+        state = {
+            "goal": {"tcp_position": position_desired}
         }
 
         done = self.step_counter >= self.max_steps
 
         goal_info = {
-            'achieved': achieved_goal,
-            'desired': desired_goal,
+            'achieved': {
+                "tcp_position": state_robot.get("tcp_position"),
+            },
+            'desired': {
+                "tcp_position": position_desired,
+            },
+            "expert_action": expert_action
         }
 
-        return observation, goal_info, done
+        return state, goal_info, done
+
+    def get_expert_prediction(self, state_robot, robot: karolos.environments.robot_task_environments.robots.RobotArm):
+        position_target, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
+        position_target = np.array(position_target)
+
+        current_positions = [np.interp(position, [-1, 1], joint.limits) for joint, position in
+                             zip(robot.joints, state_robot['joint_positions'])]
+
+        current_positions_arm = np.array(current_positions[:-2])
+
+        action = np.zeros(robot.action_space.shape)
+
+        # move to target
+        goal_position = position_target.copy()
+
+        ik_result = robot.calculate_inverse_kinematics(goal_position, [1, 0, 0, 0], initial_pose=current_positions)
+
+        if ik_result is None:
+            raise ValueError("IK failed!")
+
+        delta_poses_arm = ik_result[:-2] - current_positions_arm
+
+        action_arm = [delta_pose / (joint.limits[1] - joint.limits[0]) / robot.scale
+                      for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
+
+        action_arm = np.clip(action_arm, -1, 1)
+        action[:-1] = action_arm
+
+        return action
 
 
 if __name__ == "__main__":

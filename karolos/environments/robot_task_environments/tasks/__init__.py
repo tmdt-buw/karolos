@@ -44,17 +44,21 @@ class Task(object):
 
         self.step_counter = 0
 
-    def step(self, observation_robot, robot):
+    def step(self, state_robot, robot):
         self.step_counter += 1
 
-        observation_task, goal_info, done = self.get_status(observation_robot)
+        state_task, goal_info, done = self.get_status(state_robot, robot)
 
         done |= self.step_counter >= self.max_steps
 
-        return observation_task, goal_info, done
+        return state_task, goal_info, done
 
-    def get_status(self, observation_robot):
+    def get_status(self, state_robot, robot):
         raise NotImplementedError()
+    
+    def get_expert_action(self, state_robot, robot):
+        # todo issue warning
+        return None
 
 
 def get_task(task_config, bullet_client):

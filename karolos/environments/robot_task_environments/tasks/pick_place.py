@@ -30,7 +30,7 @@ class Pick_Place(Task):
             (0., .0)
         ])
 
-        self.observation_space = spaces.Dict({
+        self.state_space = spaces.Dict({
             "position": spaces.Box(-1, 1, shape=(3,)),
             "goal": spaces.Box(-1, 1, shape=(3,)),
         })
@@ -69,29 +69,22 @@ class Pick_Place(Task):
         elif done:
             reward = -1.
         else:
-
-            goal_achieved_object = unwind_dict_values(
-                goal_info["achieved"]['object_position'])
-            goal_achieved_tcp = unwind_dict_values(
-                goal_info["achieved"]['tcp_position'])
-            goal_desired_object = unwind_dict_values(
-                goal_info["desired"]['object_position'])
-            goal_desired_tcp = unwind_dict_values(
-                goal_info["desired"]['tcp_position'])
+            goal_achieved_object = unwind_dict_values(goal_info["achieved"]['object_position'])
+            goal_achieved_tcp = unwind_dict_values(goal_info["achieved"]['tcp_position'])
+            goal_desired_object = unwind_dict_values(goal_info["desired"]['object_position'])
+            goal_desired_tcp = unwind_dict_values(goal_info["desired"]['tcp_position'])
 
             # 0.8 * dist(obj, goal_obj), how close obj is to obj_goal
-            reward_object = np.exp(-5 * np.linalg.norm(goal_desired_object -
-                                                       goal_achieved_object)) - 1
+            reward_object = np.exp(-5 * np.linalg.norm(goal_desired_object - goal_achieved_object)) - 1
 
             # 0.2 * dist(obj, tcp), how close tcp is to obj
-            reward_tcp = np.exp(-5 * np.linalg.norm(goal_achieved_tcp -
-                                                    goal_desired_tcp)) - 1
+            reward_tcp = np.exp(-5 * np.linalg.norm(goal_achieved_tcp - goal_desired_tcp)) - 1
 
             # scale s.t. reward in [-1,1]
             reward = .8 * reward_object + .2 * reward_tcp
         return reward
 
-    def reset(self, robot=None, observation_robot=None, desired_state=None):
+    def reset(self, robot=None, state_robot=None, desired_state=None):
 
         super(Pick_Place, self).reset()
 
@@ -164,20 +157,20 @@ class Pick_Place(Task):
                 else:
                     contact_points = False
 
-        return self.get_status(observation_robot)
+        return self.get_status(state_robot, robot)
 
-    def step(self, observation_robot, robot):
-        if observation_robot["status_hand"] == 1:  # open
+    def step(self, state_robot, robot):
+        if state_robot["status_hand"] == 1:  # open
             if self.tcp_target_constraint is not None:
                 self.bullet_client.removeConstraint(self.tcp_target_constraint)
                 self.tcp_target_constraint = None
-        elif observation_robot["status_hand"] == 0:  # closing
+        elif state_robot["status_hand"] == 0:  # closing
             assert self.tcp_target_constraint is None
 
             position_object, _ = self.bullet_client.getBasePositionAndOrientation(self.object)
 
             # todo: make theshold a parameter
-            if np.linalg.norm(observation_robot["tcp_position"] - np.array(position_object)) < .03:
+            if np.linalg.norm(state_robot["tcp_position"] - np.array(position_object)) < .03:
                 self.tcp_target_constraint = self.bullet_client.createConstraint(self.object, -1,
                                                                                  robot.model_id, robot.index_tcp,
                                                                                  p.JOINT_FIXED, jointAxis=[0, 0, 0],
@@ -185,32 +178,28 @@ class Pick_Place(Task):
                                                                                  childFramePosition=[0, 0, 0])
                 self.bullet_client.changeConstraint(self.tcp_target_constraint, maxForce=1e5)
 
-        return super(Pick_Place, self).step(observation_robot, robot)
+        return super(Pick_Place, self).step(state_robot, robot)
 
-    def get_status(self, observation_robot=None):
-        if observation_robot is None:
-            position_tcp = None
-        else:
-            position_tcp = observation_robot["tcp_position"]
+    def get_status(self, state_robot=None, robot=None):
+        expert_action = None
 
-        position_object, _ = self.bullet_client.getBasePositionAndOrientation(
-            self.object)
+        if state_robot is not None and robot is not None:
+            expert_action = self.get_expert_prediction(state_robot, robot)
 
+        position_object, _ = self.bullet_client.getBasePositionAndOrientation(self.object)
         position_object = np.array(position_object)
 
-        position_object_desired, _ = \
-            self.bullet_client.getBasePositionAndOrientation(self.target)
-
+        position_object_desired, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_object_desired = np.array(position_object_desired)
 
-        observation = {
+        state = {
             "position": position_object,
             "goal": position_object_desired
         }
 
         achieved_goal = {
             "object_position": position_object,
-            "tcp_position": position_tcp
+            "tcp_position": state_robot.get("tcp_position")
         }
 
         desired_goal = {
@@ -221,13 +210,14 @@ class Pick_Place(Task):
         goal_info = {
             'achieved': achieved_goal,
             'desired': desired_goal,
+            "expert_action": expert_action
         }
 
         done = False
 
-        return observation, goal_info, done
+        return state, goal_info, done
 
-    def get_expert_prediction(self, robot: karolos.environments.robot_task_environments.robots.RobotArm, state):
+    def get_expert_prediction(self, state_robot, robot: karolos.environments.robot_task_environments.robots.RobotArm):
         LOWER_LIMITS = np.array([joint.limits[0] for joint in robot.joints])
         UPPER_LIMITS = np.array([joint.limits[1] for joint in robot.joints])
         JOINT_RANGES = np.array([ul - ll for ul, ll in zip(UPPER_LIMITS, LOWER_LIMITS)])
@@ -240,10 +230,12 @@ class Pick_Place(Task):
         position_object_desired = np.array(position_object_desired)
 
         object_angle = np.arctan2(position_object[1], position_object[0])
-        tcp_position = state['robot']["tcp_position"]
+        tcp_position = state_robot["tcp_position"]
 
         current_positions = [np.interp(position, [-1, 1], joint.limits) for joint, position in
-                             zip(robot.joints, state['robot']['joint_positions'])]
+                             zip(robot.joints, state_robot['joint_positions'])]
+
+        # current_positions = REST_POSE
 
         current_positions_arm = np.array(current_positions[:-2])
 
@@ -265,7 +257,7 @@ class Pick_Place(Task):
             # close gripper and move to target
             action[-1] = -1
 
-            if state['robot']["status_hand"][0] == -1:
+            if state_robot["status_hand"][0] == -1:
                 if tcp_position[-1] < .05:
                     goal_position = tcp_position.copy()
                     goal_position[-1] = .1

@@ -44,9 +44,9 @@ class RobotTaskEnvironment(Environment):
 
         self.action_space = self.robot.action_space
 
-        self.observation_space = spaces.Dict({
-            'robot': self.robot.observation_space,
-            'task': self.task.observation_space,
+        self.state_space = spaces.Dict({
+            'robot': self.robot.state_space,
+            'task': self.task.state_space,
         })
 
         self.reward_function = self.task.reward_function
@@ -59,32 +59,32 @@ class RobotTaskEnvironment(Environment):
 
         try:
             if desired_state is not None:
-                observation_robot = self.robot.reset(desired_state.get("robot"))
-                observation_task, goal_info, _ = self.task.reset(self.robot,
-                                                                 observation_robot,
+                state_robot = self.robot.reset(desired_state.get("robot"))
+                state_task, goal_info, _ = self.task.reset(self.robot,
+                                                                 state_robot,
                                                                  desired_state.get("task"))
             else:
-                observation_robot = self.robot.reset()
-                observation_task, goal_info, _ = self.task.reset(self.robot,
-                                                                 observation_robot)
+                state_robot = self.robot.reset()
+                state_task, goal_info, _ = self.task.reset(self.robot,
+                                                                 state_robot)
 
         except AssertionError as e:
             return e
 
         state = {
-            'robot': observation_robot,
-            'task': observation_task
+            'robot': state_robot,
+            'task': state_task
         }
 
         return state, goal_info
 
     def step(self, action):
-        observation_robot = self.robot.step(action)
-        observation_task, goal_info, done = self.task.step(observation_robot, self.robot)
+        state_robot = self.robot.step(action)
+        state_task, goal_info, done = self.task.step(state_robot, self.robot)
 
         state = {
-            'robot': observation_robot,
-            'task': observation_task
+            'robot': state_robot,
+            'task': state_task
         }
 
         return state, goal_info, done

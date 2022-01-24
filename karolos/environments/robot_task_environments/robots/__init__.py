@@ -105,7 +105,7 @@ class RobotArm:
         # define spaces
         self.action_space = spaces.Box(-1., 1., shape=(len(self.joints_arm) + 1,))
 
-        self.observation_space = spaces.Dict({
+        self.state_space = spaces.Dict({
             "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints),)),
             "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints),)),
             "tcp_position": spaces.Box(-1., 1., shape=(3,)),
@@ -210,9 +210,9 @@ class RobotArm:
             if self.bullet_client.getConnectionInfo()["connectionMethod"] == p.GUI:
                 time.sleep(self.time_step)
 
-        observation = self.get_observation()
+        state = self.get_state()
 
-        return observation
+        return state
 
     def reset(self, desired_state=None):
         """Reset robot to initial pose and return new state."""
@@ -261,11 +261,11 @@ class RobotArm:
             self.bullet_client.stepSimulation()
             contact_points = self.bullet_client.getContactPoints(self.model_id, self.model_id)
 
-        observation = self.get_observation()
+        state = self.get_state()
 
-        return observation
+        return state
 
-    def get_observation(self):
+    def get_state(self):
         joint_positions, joint_velocities = [], []
 
         for joint in self.joints:
@@ -282,19 +282,19 @@ class RobotArm:
         joint_velocities = np.array(joint_velocities)
         tcp_position = np.array(tcp_position)
 
-        observation = {
+        state = {
             "joint_positions": joint_positions,
             "joint_velocities": joint_velocities,
             "tcp_position": tcp_position,
             "status_hand": np.array(self.status_hand.value)
         }
 
-        for key in observation:
-            observation[key] = observation[key].clip(
-                self.observation_space[key].low,
-                self.observation_space[key].high)
+        for key in state:
+            state[key] = state[key].clip(
+                self.state_space[key].low,
+                self.state_space[key].high)
 
-        return observation
+        return state
 
     def get_key_points(self, useLinkWorld=True):
         joint_ids_arm = [joint.id for _, joint in self.joints_arm.items()]

@@ -73,10 +73,7 @@ class Experiment:
 
             if func == "reset":
                 if type(data) == AssertionError:
-                    requests.append((env_id, "reset",
-                                     self.get_initial_state(mode != "test",
-                                                            env_id)
-                                     ))
+                    requests.append((env_id, "reset", self.get_initial_state(mode != "test", env_id)))
                 else:
                     self.trajectories.pop(env_id, None)
                     self.trajectories[env_id].append(data)
@@ -95,17 +92,11 @@ class Experiment:
 
                     rewards = self.agent.add_experience_trajectory(trajectory)
 
-                    self.writer.add_scalar(
-                        f'{mode} reward episode', sum(rewards),
-                        sum(self.steps.values()) + 1
-                    )
+                    self.writer.add_scalar(f'{mode} reward episode', sum(rewards), sum(self.steps.values()) + 1)
 
                     results_episodes.append(self.success_criterion(goal_info))
 
-                    requests.append(
-                        (env_id, "reset",
-                         self.get_initial_state(mode != "test", env_id)
-                         ))
+                    requests.append((env_id, "reset", self.get_initial_state(mode != "test", env_id)))
 
                 self.steps[env_id] += 1
 
@@ -118,14 +109,22 @@ class Experiment:
                 raise NotImplementedError(
                     f"Undefined behavior for {env_id} | {response}")
 
-        required_predictions = [env_id for env_id in self.trajectories.keys()
-                                if len(self.trajectories[env_id]) % 2]
+        required_predictions = [env_id for env_id in self.trajectories.keys() if len(self.trajectories[env_id]) % 2]
 
         if required_predictions:
 
             if mode == "random":
-                predictions = [self.agent.action_space.sample() for _ in
-                               range(len(required_predictions))]
+                predictions = [self.agent.action_space.sample() for _ in range(len(required_predictions))]
+                predictions = np.stack(predictions)
+            elif mode == "expert":
+                predictions = []
+
+                for env_id in required_predictions:
+                    _, goal_info = self.trajectories[env_id][-1]
+
+                    predictions.append(goal_info["expert_action"])
+
+                predictions = np.stack(predictions)
             else:
                 states = []
 
@@ -147,8 +146,7 @@ class Experiment:
                         for i, env_id in enumerate(required_predictions):
                             self.state_infos[env_id] = state_infos[i]
 
-            for env_id, prediction in zip(required_predictions,
-                                          predictions):
+            for env_id, prediction in zip(required_predictions, predictions):
                 self.trajectories[env_id].append(prediction)
                 requests.append((env_id, "step", prediction))
 
@@ -209,7 +207,7 @@ class Experiment:
             agent_config = experiment_config["agent_config"]
 
             self.agent = get_agent(agent_config,
-                                   self.orchestrator.observation_space,
+                                   self.orchestrator.state_space,
                                    self.orchestrator.action_space,
                                    self.reward_function,
                                    experiment_dir)
@@ -254,6 +252,9 @@ class Experiment:
             best_success_ratio = 0.0
 
             pbar = tqdm(total=experiment_config["total_timesteps"], desc="Progress")
+
+            if "pretraining"
+
 
             while sum(self.steps.values()) < experiment_config["total_timesteps"]:
 

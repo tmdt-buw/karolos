@@ -34,7 +34,7 @@ class Push(Task):
         ])
 
         # position target, position object
-        self.observation_space = spaces.Dict({
+        self.state_space = spaces.Dict({
             'object_position': spaces.Box(-1, 1, shape=(3,))
         })
         self.goal_space = spaces.Dict({
@@ -95,7 +95,7 @@ class Push(Task):
 
         return reward
 
-    def reset(self, robot=None, observation_robot=None, desired_state=None):
+    def reset(self, robot=None, state_robot=None, desired_state=None):
 
         super(Push, self).reset()
 
@@ -165,13 +165,13 @@ class Push(Task):
                 else:
                     contact_points = False
 
-        return self.get_status(observation_robot)
+        return self.get_status(state_robot)
 
-    def get_status(self, observation_robot=None):
-        if observation_robot is None:
+    def get_status(self, state_robot=None):
+        if state_robot is None:
             position_tcp = None
         else:
-            position_tcp = observation_robot["tcp_position"]
+            position_tcp = state_robot["tcp_position"]
 
         position_object, _ = self.bullet_client.getBasePositionAndOrientation(
             self.object)
@@ -183,7 +183,7 @@ class Push(Task):
 
         position_object_desired = np.array(position_object_desired)
 
-        observation = {
+        state = {
             "position": position_object,
             "goal": position_object_desired
         }
@@ -205,7 +205,7 @@ class Push(Task):
 
         done = self.step_counter >= self.max_steps
 
-        return observation, goal_info, done
+        return state, goal_info, done
 
 
 if __name__ == "__main__":
