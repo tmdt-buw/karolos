@@ -18,11 +18,11 @@ from gym import spaces
 
 class Agent:
 
-    def __init__(self, config, observation_space, action_space,
+    def __init__(self, config, state_space, action_space,
                  reward_function=None,
                  experiment_dir=None):
 
-        self.observation_space = observation_space
+        self.state_space = state_space
         self.action_space = action_space
 
         if reward_function is None:
@@ -34,9 +34,9 @@ class Agent:
 
         self.reward_function = reward_function
 
-        observation_shapes = unwind_space_shapes(observation_space)
+        state_shapes = unwind_space_shapes(state_space)
 
-        self.state_dim = (sum(map(np.product, observation_shapes)),)
+        self.state_dim = (sum(map(np.product, state_shapes)),)
 
         if type(self.action_space) is spaces.Box:
             self.action_dim = self.action_space.shape
@@ -155,10 +155,10 @@ class Agent:
 
 
 class OnPolAgent(Agent):
-    def __init__(self, config, observation_space, action_space,
+    def __init__(self, config, state_space, action_space,
                  reward_function=None,
                  experiment_dir=None):
-        super(OnPolAgent, self).__init__(config, observation_space,
+        super(OnPolAgent, self).__init__(config, state_space,
                                          action_space, reward_function, experiment_dir)
         self.is_on_policy = True
         buffer_config = config.get('replay_buffer',

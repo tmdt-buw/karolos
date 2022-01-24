@@ -159,7 +159,7 @@ class IIWA:
         # define spaces
         self.action_space = spaces.Box(-1., 1., shape=(len(self.joints_arm) + 1,))
 
-        self.observation_space = spaces.Dict({
+        self.state_space = spaces.Dict({
             "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints_arm),)),
             "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints_arm),)),
             "tcp_position": spaces.Box(-1., 1., shape=(3,)),
@@ -202,9 +202,9 @@ class IIWA:
             contact_points = self.bullet_client.getContactPoints(self.model_id,
                                                                  self.model_id)
 
-        observation = self.get_observation()
+        state = self.get_state()
 
-        return observation
+        return state
 
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
@@ -291,11 +291,11 @@ class IIWA:
             if self.bullet_client.getConnectionInfo()["connectionMethod"] == p.GUI:
                 time.sleep(self.time_step)
 
-        observation = self.get_observation()
+        state = self.get_state()
 
-        return observation
+        return state
 
-    def get_observation(self):
+    def get_state(self):
         joint_positions, joint_velocities = [], []
 
         for _, joint in self.joints_arm.items():
@@ -316,19 +316,19 @@ class IIWA:
         tcp_position = np.array(tcp_position)
         # tcp_velocity = np.array(tcp_velocity)
 
-        observation = {
+        state = {
             "joint_positions": joint_positions,
             "joint_velocities": joint_velocities,
             "tcp_position": tcp_position,
             # "tcp_velocity": tcp_velocity
         }
 
-        for key in observation:
-            observation[key] = observation[key].clip(
-                self.observation_space[key].low,
-                self.observation_space[key].high)
+        for key in state:
+            state[key] = state[key].clip(
+                self.state_space[key].low,
+                self.state_space[key].high)
 
-        return observation
+        return state
 
 
 if __name__ == "__main__":
@@ -357,22 +357,22 @@ if __name__ == "__main__":
     )
 
     while True:
-        # observation = robot.reset(np.zeros_like(robot.observation_space["joint_positions"].sample()))
+        # state = robot.reset(np.zeros_like(robot.state_space["joint_positions"].sample()))
 
         action = np.zeros_like(robot.action_space.sample())
         action[-1] = -1.
 
         for _ in range(3):
-            observation = robot.step(action)
+            state = robot.step(action)
 
         p.resetBasePositionAndOrientation(
-            cube, observation["tcp_position"], [0, 0, 0, 1])
+            cube, state["tcp_position"], [0, 0, 0, 1])
 
         for _ in range(20):
             action = robot.action_space.sample()  # * .1
             action[-1] = 1.
 
-            observation = robot.step(action)
+            state = robot.step(action)
 
         p.resetBasePositionAndOrientation(
-            cube, observation["tcp_position"], [0, 0, 0, 1])
+            cube, state["tcp_position"], [0, 0, 0, 1])

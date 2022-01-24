@@ -19,8 +19,8 @@ class GymWrapper:
 
         self.action_space = self.env.action_space
 
-        self.observation_space = spaces.Dict({
-            'state': self.env.observation_space,
+        self.state_space = spaces.Dict({
+            'state': self.env.state_space,
         })
 
     def reward_function(self, goal_info, **kwargs):
