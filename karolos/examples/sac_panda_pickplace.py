@@ -2,13 +2,15 @@ from karolos.experiment import Experiment
 
 if __name__ == "__main__":
 
-    experiment_name = "sac_panda_reach"
+    activation = "tanh"  # relu, tanh, leaky_relu
+    experiment_name = "sac_panda_pickplace"
 
     training_config = {
         "total_timesteps": 25_000_000,
         "test_interval": 500_000,
         # "number_tests": 96,
         # "number_processes": 96,
+
         "agent_config": {
 
             # SAC
@@ -25,15 +27,15 @@ if __name__ == "__main__":
             "gradient_clipping": False,
             "memory_size": 1_000_000,
             "tau": 0.0025,
-            "policy_structure": [('linear', 128), ('tanh', None)] * 3,
-            "critic_structure": [('linear', 128), ('tanh', None)] * 3,
+            "policy_structure": [('linear', 128), (activation, None)] * 3,
+            "critic_structure": [('linear', 128), (activation, None)] * 3,
 
         },
         "env_config": {
             "environment": "karolos",
             "task_config": {
-                "name": "reach",
-                "max_steps": 50,
+                "name": "pick_place",
+                "max_steps": 100,
             },
             "robot_config": {
                 "name": "panda",

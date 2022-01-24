@@ -1,7 +1,7 @@
 from karolos.experiment import Experiment
 
 if __name__ == "__main__":
-    experiment_name = "ppo_panda"
+    experiment_name = "ppo_panda_reach"
 
     training_config = {
         "total_timesteps": 25_000_000,

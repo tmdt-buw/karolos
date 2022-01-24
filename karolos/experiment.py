@@ -253,9 +253,6 @@ class Experiment:
 
             pbar = tqdm(total=experiment_config["total_timesteps"], desc="Progress")
 
-            if "pretraining"
-
-
             while sum(self.steps.values()) < experiment_config["total_timesteps"]:
 
                 # Test
