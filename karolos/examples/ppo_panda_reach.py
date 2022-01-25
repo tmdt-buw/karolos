@@ -1,3 +1,7 @@
+import pathlib
+import sys
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
+
 from karolos.experiment import Experiment
 
 if __name__ == "__main__":
