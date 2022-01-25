@@ -14,3 +14,4 @@ dependencies:
     - gym==0.18.0
     - pybullet==3.0.8
     - scipy==1.6.0
+    - klampt
