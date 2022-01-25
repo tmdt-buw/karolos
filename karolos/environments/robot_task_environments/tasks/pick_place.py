@@ -257,13 +257,11 @@ class Pick_Place(Task):
             # close gripper and move to target
             action[-1] = -1
 
+            goal_position = position_object_desired.copy()
+
             if state_robot["status_hand"][0] == -1:
-                if tcp_position[-1] < .05:
-                    goal_position = tcp_position.copy()
-                    goal_position[-1] = .1
-                else:
-                    # move to target
-                    goal_position = position_object_desired.copy()
+                if np.linalg.norm(position_object[:2] - position_object_desired[:2]) > .02:
+                    goal_position[-1] += .1
             else:
                 # dont move arm while gripping
                 goal_position = None
