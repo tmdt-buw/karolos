@@ -62,8 +62,8 @@ class Reach(Task):
             goal_achieved = unwind_dict_values(goal_info["achieved"])
             goal_desired = unwind_dict_values(goal_info["desired"])
 
-            reward = np.exp(
-                -5 * np.linalg.norm(goal_achieved - goal_desired)) - 1
+            reward = np.exp(-1 * np.linalg.norm(goal_achieved - goal_desired)) - 1
+            reward /= 10
 
         return reward
 
@@ -143,6 +143,7 @@ class Reach(Task):
         return state, goal_info, done
 
     def get_expert_prediction(self, state_robot, robot: karolos.environments.robot_task_environments.robots.RobotArm):
+        return None
         position_target, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_target = np.array(position_target)
 
@@ -159,7 +160,7 @@ class Reach(Task):
         ik_result = robot.calculate_inverse_kinematics(goal_position, [1, 0, 0, 0], initial_pose=current_positions)
 
         if ik_result is None:
-            raise ValueError("IK failed!")
+            return None
 
         delta_poses_arm = ik_result[:-2] - current_positions_arm
 
@@ -167,7 +168,7 @@ class Reach(Task):
                       for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
 
         action_arm = np.clip(action_arm, -1, 1)
-        action[:-1] = action_arm
+        action[:len(robot.joints_arm)] = action_arm
 
         return action
 
