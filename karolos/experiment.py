@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import os.path as osp
-import pathlib
+from pathlib import Path
 import random
 import sys
 from collections import defaultdict
@@ -13,12 +13,13 @@ import numpy as np
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 from tqdm import tqdm
+import warnings
 
-sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parent))
 
 from agents import get_agent
 from environments.orchestrator import Orchestrator
-from utils import unwind_dict_values, set_seed
+from agents.utils import unwind_dict_values, set_seed
 
 
 class Experiment:
@@ -73,6 +74,10 @@ class Experiment:
 
             if func == "reset":
                 if type(data) == AssertionError:
+                    warnings.warn(f"Resetting the environment resulted in AssertionError: {data}.\n"
+                                  f"This might indicate issues, if applicable, in the choice of desired initial states."
+                                  f"The environment will be reset again."
+                                  )
                     requests.append((env_id, "reset", self.get_initial_state(mode != "test", env_id)))
                 else:
                     self.trajectories.pop(env_id, None)

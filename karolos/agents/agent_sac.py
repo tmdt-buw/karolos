@@ -108,7 +108,7 @@ class AgentSAC(Agent):
         self.loss_function_critic_1 = nn.MSELoss()
         self.loss_function_critic_2 = nn.MSELoss()
 
-        self.loss_function_expert_imitation = nn.MSELoss()
+        self.loss_function_expert_imitation = lambda x, y: 1 - nn.functional.cosine_similarity(x, y).mean()
 
     def learn(self):
 
@@ -180,7 +180,7 @@ class AgentSAC(Agent):
         expert_actions_mask = expert_actions.isnan().any(1)
         expert_actions[expert_actions_mask] = predicted_actions[expert_actions_mask]
 
-        loss_imitation = self.imitation_weight(self.learning_step) * self.loss_function_expert_imitation(predicted_actions, expert_actions)
+        loss_imitation = self.loss_function_expert_imitation(predicted_actions, expert_actions)
         loss_imitation_weighted = self.imitation_weight(self.learning_step) * loss_imitation
 
         self.optimizer_actor.zero_grad()
