@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 
 
@@ -44,7 +46,7 @@ class Task(object):
 
         self.step_counter = 0
 
-    def step(self, state_robot, robot):
+    def step(self, state_robot=None, robot=None):
         self.step_counter += 1
 
         state_task, goal_info, done = self.get_status(state_robot, robot)
@@ -53,24 +55,11 @@ class Task(object):
 
         return state_task, goal_info, done
 
-    def get_status(self, state_robot, robot):
+    def get_status(self, state_robot=None, robot=None):
         raise NotImplementedError()
-    
+
     def get_expert_action(self, state_robot, robot):
         # todo issue warning
+        warnings.warn(
+            'The task does not have an expert policy to query and thus cannot be used for Imitation Learning.')
         return None
-
-
-def get_task(task_config, bullet_client):
-    task_name = task_config.pop("name")
-
-    if task_name == 'reach':
-        from .reach import Reach
-        task = Reach(bullet_client, **task_config)
-    elif task_name == 'pick_place':
-        from .pick_place import Pick_Place
-        task = Pick_Place(bullet_client, **task_config)
-    else:
-        raise ValueError()
-
-    return task

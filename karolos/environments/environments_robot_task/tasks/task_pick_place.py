@@ -1,28 +1,28 @@
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import pybullet as p
 from gym import spaces
 from numpy.random import RandomState
 
-import karolos.environments.robot_task_environments.robots
-from karolos.utils import unwind_dict_values
+from karolos.agents.utils import unwind_dict_values
+from karolos.environments.environments_robot_task.robots.robot import Robot
 
-try:
-    from . import Task
-except ImportError:
-    from karolos.environments.robot_task_environments.tasks import Task
+sys.path.append(str(Path(__file__).resolve().parent))
+from task import Task
 
 
-class Pick_Place(Task):
+class TaskPickPlace(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
                  max_steps=100, parameter_distributions=None):
 
-        super(Pick_Place, self).__init__(bullet_client=bullet_client,
-                                         parameter_distributions=parameter_distributions,
-                                         offset=offset, max_steps=max_steps,
-                                         gravity=(0, 0, -9.8))
+        super(TaskPickPlace, self).__init__(bullet_client=bullet_client,
+                                            parameter_distributions=parameter_distributions,
+                                            offset=offset, max_steps=max_steps,
+                                            gravity=(0, 0, -9.8))
 
         self.limits = np.array([
             (.2, .8),
@@ -50,6 +50,10 @@ class Pick_Place(Task):
 
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))
+
+    def __del__(self):
+        self.bullet_client.removeBody(self.object)
+        self.bullet_client.removeBody(self.target)
 
     @staticmethod
     def success_criterion(goal):
@@ -86,7 +90,7 @@ class Pick_Place(Task):
 
     def reset(self, robot=None, state_robot=None, desired_state=None):
 
-        super(Pick_Place, self).reset()
+        super(TaskPickPlace, self).reset()
 
         if self.tcp_target_constraint is not None:
             self.bullet_client.removeConstraint(self.tcp_target_constraint)
@@ -157,34 +161,39 @@ class Pick_Place(Task):
                 else:
                     contact_points = False
 
-        return self.get_status(state_robot, robot)
+        state, goal_info, done = self.get_status(state_robot, robot)
 
-    def step(self, state_robot, robot):
-        if state_robot["status_hand"] == 1:  # open
-            if self.tcp_target_constraint is not None:
-                self.bullet_client.removeConstraint(self.tcp_target_constraint)
-                self.tcp_target_constraint = None
-        elif state_robot["status_hand"] == 0:  # closing
-            assert self.tcp_target_constraint is None
+        return state, goal_info
 
-            position_object, _ = self.bullet_client.getBasePositionAndOrientation(self.object)
+    def step(self, state_robot=None, robot=None):
+        if state_robot is not None and robot is not None:
+            if state_robot["status_hand"] == 1:  # open
+                if self.tcp_target_constraint is not None:
+                    self.bullet_client.removeConstraint(self.tcp_target_constraint)
+                    self.tcp_target_constraint = None
+            elif state_robot["status_hand"] == 0:  # closing
+                assert self.tcp_target_constraint is None
 
-            # todo: make theshold a parameter
-            if np.linalg.norm(state_robot["tcp_position"] - np.array(position_object)) < .03:
-                self.tcp_target_constraint = self.bullet_client.createConstraint(self.object, -1,
-                                                                                 robot.model_id, robot.index_tcp,
-                                                                                 p.JOINT_FIXED, jointAxis=[0, 0, 0],
-                                                                                 parentFramePosition=[0, 0, 0],
-                                                                                 childFramePosition=[0, 0, 0])
-                self.bullet_client.changeConstraint(self.tcp_target_constraint, maxForce=1e5)
+                position_object, _ = self.bullet_client.getBasePositionAndOrientation(self.object)
 
-        return super(Pick_Place, self).step(state_robot, robot)
+                # todo: make theshold a parameter
+                if np.linalg.norm(robot.get_tcp_position() - np.array(position_object)) < .03:
+                    self.tcp_target_constraint = self.bullet_client.createConstraint(self.object, -1,
+                                                                                     robot.model_id, robot.index_tcp,
+                                                                                     p.JOINT_FIXED, jointAxis=[0, 0, 0],
+                                                                                     parentFramePosition=[0, 0, 0],
+                                                                                     childFramePosition=[0, 0, 0])
+                    self.bullet_client.changeConstraint(self.tcp_target_constraint, maxForce=1e5)
+
+        return super(TaskPickPlace, self).step(state_robot, robot)
 
     def get_status(self, state_robot=None, robot=None):
         expert_action = None
+        tcp_position = None
 
         if state_robot is not None and robot is not None:
             expert_action = self.get_expert_prediction(state_robot, robot)
+            tcp_position = robot.get_tcp_position()
 
         position_object, _ = self.bullet_client.getBasePositionAndOrientation(self.object)
         position_object = np.array(position_object)
@@ -199,25 +208,26 @@ class Pick_Place(Task):
 
         achieved_goal = {
             "object_position": position_object,
-            "tcp_position": state_robot.get("tcp_position")
+            "tcp_position": tcp_position
         }
 
         desired_goal = {
             "object_position": position_object_desired,
-            "tcp_position": position_object
+            "tcp_position": position_object_desired
         }
 
         goal_info = {
             'achieved': achieved_goal,
             'desired': desired_goal,
-            "expert_action": expert_action
+            "expert_action": expert_action,
+            "steps": self.step_counter
         }
 
         done = False
 
         return state, goal_info, done
 
-    def get_expert_prediction(self, state_robot, robot: karolos.environments.robot_task_environments.robots.RobotArm):
+    def get_expert_prediction(self, state_robot, robot: Robot):
         LOWER_LIMITS = np.array([joint.limits[0] for joint in robot.joints])
         UPPER_LIMITS = np.array([joint.limits[1] for joint in robot.joints])
         JOINT_RANGES = np.array([ul - ll for ul, ll in zip(UPPER_LIMITS, LOWER_LIMITS)])
@@ -230,23 +240,23 @@ class Pick_Place(Task):
         position_object_desired = np.array(position_object_desired)
 
         object_angle = np.arctan2(position_object[1], position_object[0])
-        tcp_position = state_robot["tcp_position"]
+        tcp_position = robot.get_tcp_position()
 
         current_positions = [np.interp(position, [-1, 1], joint.limits) for joint, position in
                              zip(robot.joints, state_robot['joint_positions'])]
 
         # current_positions = REST_POSE
 
-        current_positions_arm = np.array(current_positions[:-2])
+        current_positions_arm = np.array(current_positions[:len(robot.joints_arm)])
 
-        desired_pose_arm = REST_POSE[:7]
+        desired_pose_arm = REST_POSE[:len(robot.joints_arm)]
         desired_pose_arm[0] = object_angle
 
         action = np.zeros(robot.action_space.shape)
 
         if np.linalg.norm(position_object - tcp_position) > .01:
             # move to object with open gripper
-            action[-1] = 1
+            action[len(robot.joints_arm):] = 1
 
             goal_position = position_object.copy()
 
@@ -254,32 +264,43 @@ class Pick_Place(Task):
                 # align over object
                 goal_position[-1] += .1
         else:
-            # close gripper and move to target
-            action[-1] = -1
+            if self.tcp_target_constraint is not None:
+                assert Robot.STATUS_HAND(state_robot["status_hand"][0]) is not Robot.STATUS_HAND.OPEN, state_robot["status_hand"]
 
-            goal_position = position_object_desired.copy()
+                # object is gripped, keep gripper closed
+                action[len(robot.joints_arm):] = -1
 
-            if state_robot["status_hand"][0] == -1:
-                if np.linalg.norm(position_object[:2] - position_object_desired[:2]) > .02:
-                    goal_position[-1] += .1
+                if Robot.STATUS_HAND(state_robot["status_hand"][0]) is Robot.STATUS_HAND.CLOSED:
+                    goal_position = position_object_desired.copy()
+                    if np.linalg.norm(position_object[:2] - position_object_desired[:2]) > .02:
+                        goal_position[-1] += .1
+                else:
+                    goal_position = None
             else:
-                # dont move arm while gripping
+                # object not gripped
+                if Robot.STATUS_HAND(state_robot["status_hand"][0]) is Robot.STATUS_HAND.CLOSED:
+                    # hand closed, but object not gripped --> open hand
+                    action[len(robot.joints_arm):] = 1
+                else:
+                    # close gripper
+                    action[len(robot.joints_arm):] = -1
+
+                # do not move
                 goal_position = None
 
         if goal_position is not None:
-            ik_result = robot.calculate_inverse_kinematics(goal_position, [1, 0, 0, 0],
-                                                           initial_pose=current_positions)
+            ik_result = robot.calculate_inverse_kinematics(goal_position, [1, 0, 0, 0], initial_pose=current_positions)
 
             if ik_result is None:
-                raise ValueError("IK failed!")
+                return None
 
-            delta_poses_arm = ik_result[:-2] - current_positions_arm
+            delta_poses_arm = ik_result[:len(robot.joints_arm)] - current_positions_arm
 
             action_arm = [delta_pose / (joint.limits[1] - joint.limits[0]) / robot.scale
                           for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
 
             action_arm = np.clip(action_arm, -1, 1)
-            action[:-1] = action_arm
+            action[:len(robot.joints_arm)] = action_arm
 
         return action
 
@@ -293,7 +314,7 @@ if __name__ == "__main__":
 
     p.loadURDF("plane.urdf")
 
-    task = Pick_Place(p)
+    task = TaskPickPlace(p)
 
     time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
 

@@ -1,28 +1,28 @@
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import pybullet as p
 from gym import spaces
 from numpy.random import RandomState
 
-import karolos.environments.robot_task_environments.robots
-from karolos.utils import unwind_dict_values
+from karolos.agents.utils import unwind_dict_values
+from karolos.environments.environments_robot_task.robots.robot import Robot
 
-try:
-    from . import Task
-except:
-    from karolos.environments.robot_task_environments.tasks import Task
+sys.path.append(str(Path(__file__).resolve().parent))
+from task import Task
 
 
-class Reach(Task):
+class TaskReach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
                  max_steps=100, parameter_distributions=None):
 
-        super(Reach, self).__init__(bullet_client=bullet_client,
-                                    parameter_distributions=parameter_distributions,
-                                    offset=offset,
-                                    max_steps=max_steps)
+        super(TaskReach, self).__init__(bullet_client=bullet_client,
+                                        parameter_distributions=parameter_distributions,
+                                        offset=offset,
+                                        max_steps=max_steps)
 
         self.limits = np.array([
             (-.8, .8),
@@ -44,6 +44,9 @@ class Reach(Task):
 
         self.random = RandomState(
             int.from_bytes(os.urandom(4), byteorder='little'))
+
+    def __del__(self):
+        self.bullet_client.removeBody(self.target)
 
     @staticmethod
     def success_criterion(goal_info):
@@ -69,7 +72,7 @@ class Reach(Task):
 
     def reset(self, robot=None, state_robot=None, desired_state=None):
 
-        super(Reach, self).reset()
+        super(TaskReach, self).reset()
 
         contact_points = True
 
@@ -113,13 +116,17 @@ class Reach(Task):
             else:
                 contact_points = False
 
-        return self.get_status(state_robot, robot)
+        state, goal_info, done = self.get_status(state_robot, robot)
+
+        return state, goal_info
 
     def get_status(self, state_robot=None, robot=None):
         expert_action = None
+        tcp_position = None
 
         if state_robot is not None and robot is not None:
             expert_action = self.get_expert_prediction(state_robot, robot)
+            tcp_position = robot.get_tcp_position()
 
         position_desired, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_desired = np.array(position_desired)
@@ -132,18 +139,18 @@ class Reach(Task):
 
         goal_info = {
             'achieved': {
-                "tcp_position": state_robot.get("tcp_position"),
+                "tcp_position": tcp_position,
             },
             'desired': {
                 "tcp_position": position_desired,
             },
-            "expert_action": expert_action
+            "expert_action": expert_action,
+            "steps": self.step_counter
         }
 
         return state, goal_info, done
 
-    def get_expert_prediction(self, state_robot, robot: karolos.environments.robot_task_environments.robots.RobotArm):
-        return None
+    def get_expert_prediction(self, state_robot, robot: Robot):
         position_target, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_target = np.array(position_target)
 
@@ -182,7 +189,7 @@ if __name__ == "__main__":
 
     p.loadURDF("plane.urdf")
 
-    task = Reach(p)
+    task = TaskReach(p)
 
     time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
 

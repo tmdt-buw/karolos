@@ -9,12 +9,12 @@ try:
     from .robots import get_robot
     from .tasks import get_task
 except ImportError:
-    from karolos.environments import Environment
-    from karolos.environments.robot_task_environments.robots import get_robot
-    from karolos.environments.robot_task_environments.tasks import get_task
+    from karolos.environments.environment import Environment
+    from karolos.environments.environments_robot_task.robots import get_robot
+    from karolos.environments.environments_robot_task.tasks import get_task
 
 
-class RobotTaskEnvironment(Environment):
+class EnvironmentRobotTask(Environment):
 
     def __init__(self, task_config, robot_config, render=False,
                  bullet_client=None, **kwargs):
@@ -52,6 +52,10 @@ class RobotTaskEnvironment(Environment):
         self.reward_function = self.task.reward_function
         self.success_criterion = self.task.success_criterion
 
+    def __exit__(self):
+        del self.robot
+        del self.task
+
     def reset(self, desired_state=None):
         """
         Reset the environment and return new state
@@ -60,13 +64,10 @@ class RobotTaskEnvironment(Environment):
         try:
             if desired_state is not None:
                 state_robot = self.robot.reset(desired_state.get("robot"))
-                state_task, goal_info, _ = self.task.reset(self.robot,
-                                                                 state_robot,
-                                                                 desired_state.get("task"))
+                state_task, goal_info = self.task.reset(self.robot, state_robot, desired_state.get("task"))
             else:
                 state_robot = self.robot.reset()
-                state_task, goal_info, _ = self.task.reset(self.robot,
-                                                                 state_robot)
+                state_task, goal_info = self.task.reset(self.robot, state_robot)
 
         except AssertionError as e:
             return e
@@ -106,7 +107,7 @@ if __name__ == "__main__":
         }
     }
 
-    env = RobotTaskEnvironment(**env_kwargs)
+    env = EnvironmentRobotTask(**env_kwargs)
 
     p.resetDebugVisualizerCamera(cameraDistance=1.5,
                                  cameraYaw=70,

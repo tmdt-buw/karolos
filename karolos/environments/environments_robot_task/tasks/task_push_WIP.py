@@ -9,12 +9,12 @@ import numpy as np
 from numpy.random import RandomState
 import os
 
-from utils import unwind_dict_values
+from karolos.agents.utils import unwind_dict_values
 
 try:
     from . import Task
 except ImportError:
-    from karolos.environments.robot_task_environments.tasks import Task
+    from karolos.environments.environments_robot_task.tasks import Task
 
 
 class Push(Task):
