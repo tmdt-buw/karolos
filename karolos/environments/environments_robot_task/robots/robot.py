@@ -1,18 +1,3 @@
-def get_robot(robot_config, bullet_client):
-    robot_name = robot_config.pop("name")
-
-    if robot_name == 'panda':
-        from .Panda.panda import Panda
-        robot = Panda(bullet_client, **robot_config)
-    elif robot_name == 'ur5':
-        from .UR5.ur5 import UR5
-        robot = UR5(bullet_client, **robot_config)
-    else:
-        raise ValueError(f"Unknown robot: {robot_name}")
-
-    return robot
-
-
 import logging
 import os
 import time
@@ -23,6 +8,8 @@ from itertools import chain
 import klampt
 import numpy as np
 import pybullet as p
+import pybullet_data as pd
+import pybullet_utils.bullet_client as bc
 from gym import spaces
 from klampt.math import so3
 from klampt.model import ik
@@ -32,17 +19,26 @@ Joint = namedtuple("Joint", ["id", "initial_position", "limits",
 Link = namedtuple("Link", ["mass", "linearDamping"])
 
 
-class STATUS_HAND(Enum):
-    CLOSED = -1
-    CLOSING = 0
-    OPEN = 1
+class Robot:
+    class STATUS_HAND(Enum):
+        CLOSED = -1
+        CLOSING = 0
+        OPEN = 1
 
+    def __init__(self, urdf_file, joints_arm, joints_hand, links=None, dht_params=None, offset=(0, 0, 0), sim_time=0.,
+                 scale=1.,
+                 parameter_distributions=None, bullet_client=None):
 
-class RobotArm:
-    def __init__(self, bullet_client, urdf_file,
-                 joints_arm, joints_hand, links=None,
-                 offset=(0, 0, 0), sim_time=0.,
-                 scale=1., parameter_distributions=None):
+        if bullet_client is None:
+            bullet_client = bc.BulletClient()
+
+            bullet_client.setAdditionalSearchPath(pd.getDataPath())
+
+            time_step = 1. / 300.
+            bullet_client.setTimeStep(time_step)
+            bullet_client.setRealTimeSimulation(0)
+
+        self.bullet_client = bullet_client
 
         self.logger = logging.Logger(f"robot:panda:{bullet_client}")
 
@@ -50,8 +46,7 @@ class RobotArm:
             parameter_distributions = {}
         self.parameter_distributions = parameter_distributions
 
-        self.time_step = bullet_client.getPhysicsEngineParameters()[
-            "fixedTimeStep"]
+        self.time_step = bullet_client.getPhysicsEngineParameters()["fixedTimeStep"]
 
         if not sim_time:
             sim_time = self.time_step
@@ -64,14 +59,13 @@ class RobotArm:
 
         self.max_steps = int(sim_time / self.time_step)
 
-        self.offset = offset
-
-        self.bullet_client = bullet_client
+        self.offset = np.array(offset)
 
         self.random = np.random.RandomState(int.from_bytes(os.urandom(4), byteorder='little'))
 
         self.model_id = bullet_client.loadURDF(urdf_file, self.offset,
                                                useFixedBase=True,
+                                               # flags=p.URDF_MAINTAIN_LINK_ORDER)
                                                flags=p.URDF_USE_SELF_COLLISION | p.URDF_MAINTAIN_LINK_ORDER)
 
         self.joint_name2id = {}
@@ -83,11 +77,10 @@ class RobotArm:
         self.joints_arm = {}
         self.joints_hand = {}
 
-        self.status_hand = STATUS_HAND.OPEN
+        self.status_hand = Robot.STATUS_HAND.OPEN
 
         for joint_name, joint_args in joints_arm.items():
-            self.joints_arm[joint_name] = Joint(self.joint_name2id[joint_name],
-                                                *joint_args)
+            self.joints_arm[joint_name] = Joint(self.joint_name2id[joint_name], *joint_args)
 
         for joint_name, joint_args in joints_hand.items():
             self.joints_hand[joint_name] = Joint(self.joint_name2id[joint_name], *joint_args)
@@ -103,12 +96,13 @@ class RobotArm:
         self.bullet_client.stepSimulation()
 
         # define spaces
-        self.action_space = spaces.Box(-1., 1., shape=(len(self.joints_arm) + 1,))
+        self.action_space = spaces.Box(-1., 1., shape=(len(self.joints),))
 
         self.state_space = spaces.Dict({
             "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints),)),
-            "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints),)),
-            "tcp_position": spaces.Box(-1., 1., shape=(3,)),
+            # "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints),)),
+            # "tcp_position": spaces.Box(-1., 1., shape=(3,)),
+            # "tcp_orientation": spaces.Box(-1., 1., shape=(4,)),
             "status_hand": spaces.Box(-1., 1., shape=(1,)),
         })
 
@@ -122,35 +116,54 @@ class RobotArm:
 
         assert len(self.ik_dof_joint_ids) == len(self.joints), "Mismatch between specified DOF and DOF found by Klampt!"
 
+        if dht_params is not None:
+            assert len(self.joints_arm) == sum([None in dht_param for dht_param in dht_params])
+
+            self.dht_params = dht_params
+
         # reset to initial position
         self.reset()
+
+    def __del__(self):
+        self.bullet_client.removeBody(self.model_id)
+        del self.ik_world
 
     @property
     def joints(self):
         return list(chain(self.joints_arm.values(), self.joints_hand.values()))
 
-    def calculate_inverse_kinematics(self, tcp_position, tcp_orientation, initial_pose=None):
+    def normalize_joints(self, joint_positions):
+        return np.array([np.interp(joint_position, joint.limits, [-1, 1]) for joint, joint_position in
+                         zip(self.joints, joint_positions)])
+
+    def unnormalize_joints(self, joint_positions):
+        return np.array([np.interp(joint_position, [-1, 1], joint.limits) for joint, joint_position in
+                         zip(self.joints, joint_positions)])
+
+    def calculate_inverse_kinematics(self, tcp_position, tcp_orientation, initial_pose=None, iters=1000):
         if initial_pose is not None:
             assert len(initial_pose) == len(self.ik_dof_joint_ids)
 
+            conf = self.ik_model.getConfig()
             for ik_dof, pose in zip(self.ik_dof_joint_ids, initial_pose):
-                self.ik_model.setDOFPosition(ik_dof, pose)
+                conf[ik_dof] = pose
+            self.ik_model.setConfig(conf)
 
         obj = ik.objective(self.ik_model.link(self.ik_model.numLinks() - 1), t=list(tcp_position),
                            R=so3.from_quaternion(tcp_orientation))
 
-        res = ik.solve_global(obj, activeDofs=self.ik_dof_joint_ids)
+        res = ik.solve_global(obj, iters=iters, activeDofs=self.ik_dof_joint_ids)
 
         if not res:
             return None
-        else:
-            return np.array([self.ik_model.getDOFPosition(jj) for jj in self.ik_dof_joint_ids])
+
+        return np.array([self.ik_model.getDOFPosition(jj) for jj in self.ik_dof_joint_ids])
 
     def step(self, action: np.ndarray):
         assert self.action_space.contains(action), f"{action}"
 
-        action_arm = action[:-1]
-        action_hand = action[-1]
+        action_arm = action[:len(self.joints_arm)]
+        action_hand = action[len(self.joints_arm):]
 
         action_arm = list(action_arm * self.scale)  # / self.max_steps)
 
@@ -189,12 +202,12 @@ class RobotArm:
                                                      # forces=torques
                                                      )
 
-        if action_hand >= 0:
-            self.status_hand = STATUS_HAND.OPEN
-        elif self.status_hand == STATUS_HAND.OPEN:
-            self.status_hand = STATUS_HAND.CLOSING
+        if np.mean(action_hand) >= 0:
+            self.status_hand = Robot.STATUS_HAND.OPEN
+        elif self.status_hand == Robot.STATUS_HAND.OPEN:
+            self.status_hand = Robot.STATUS_HAND.CLOSING
         else:
-            self.status_hand = STATUS_HAND.CLOSED
+            self.status_hand = Robot.STATUS_HAND.CLOSED
 
         for step in range(self.max_steps):
             self.bullet_client.stepSimulation()
@@ -233,7 +246,7 @@ class RobotArm:
 
         if desired_state is not None:
             assert len(desired_state) == len(
-                self.joints), f"Please provide {len(self.joints_arm)} values for the arm and 1 value for the hand!"
+                self.joints), f"Please provide {len(self.joints)} values for resetting the robot!"
 
             desired_state_arm = desired_state[:len(self.joints_arm)]
             desired_state_hand = desired_state[len(self.joints_arm):]
@@ -244,9 +257,9 @@ class RobotArm:
                 self.bullet_client.resetJointState(self.model_id, joint.id, joint_position)
 
             if np.mean(desired_state_hand) >= 0:
-                self.status_hand = STATUS_HAND.OPEN
+                self.status_hand = Robot.STATUS_HAND.OPEN
             else:
-                self.status_hand = STATUS_HAND.CLOSING
+                self.status_hand = Robot.STATUS_HAND.CLOSING
 
             self.bullet_client.stepSimulation()
             contact_points = self.bullet_client.getContactPoints(self.model_id, self.model_id)
@@ -263,7 +276,25 @@ class RobotArm:
 
         state = self.get_state()
 
+        self.bullet_client.setJointMotorControlArray(self.model_id,
+                                                     [joint.id for joint in self.joints],
+                                                     p.VELOCITY_CONTROL,
+                                                     targetVelocities=np.zeros(len(self.joints)),
+                                                     # forces=torques
+                                                     )
+
         return state
+
+    def get_tcp_position(self):
+        tcp_position, tcp_orientation, _, _, _, _, tcp_velocity, _ = self.bullet_client.getLinkState(self.model_id,
+                                                                                                     self.joint_name2id[
+                                                                                                         "tcp"],
+                                                                                                     computeLinkVelocity=True)
+
+        tcp_position = np.array(tcp_position) - self.offset
+        # tcp_orientation = np.array(tcp_orientation)
+
+        return tcp_position
 
     def get_state(self):
         joint_positions, joint_velocities = [], []
@@ -274,18 +305,14 @@ class RobotArm:
             joint_positions.append(np.interp(joint_position, joint.limits, [-1, 1]))
             joint_velocities.append(np.interp(joint_velocity, [-joint.max_velocity, joint.max_velocity], [-1, 1]))
 
-        tcp_position, _, _, _, _, _, tcp_velocity, _ = self.bullet_client.getLinkState(self.model_id,
-                                                                                       self.joint_name2id["tcp"],
-                                                                                       computeLinkVelocity=True)
-
         joint_positions = np.array(joint_positions)
-        joint_velocities = np.array(joint_velocities)
-        tcp_position = np.array(tcp_position)
+        # joint_velocities = np.array(joint_velocities)
 
         state = {
             "joint_positions": joint_positions,
-            "joint_velocities": joint_velocities,
-            "tcp_position": tcp_position,
+            # "joint_velocities": joint_velocities,
+            # "tcp_position": tcp_position,
+            # "tcp_orientation": tcp_orientation,
             "status_hand": np.array(self.status_hand.value)
         }
 
@@ -295,19 +322,3 @@ class RobotArm:
                 self.state_space[key].high)
 
         return state
-
-    def get_key_points(self, useLinkWorld=True):
-        joint_ids_arm = [joint.id for _, joint in self.joints_arm.items()]
-        joint_ids_hand = [joint.id for _, joint in self.joints_hand.items()]
-
-        linkStates_arm = self.bullet_client.getLinkStates(self.model_id, joint_ids_arm, False, True)
-        linkStates_hand = self.bullet_client.getLinkStates(self.model_id, joint_ids_hand, False, True)
-
-        if useLinkWorld:
-            kp_arm = [link[:2] for link in linkStates_arm]
-            kp_hand = [link[:2] for link in linkStates_hand]
-        else:
-            kp_arm = [link[4:6] for link in linkStates_arm]
-            kp_hand = [link[4:6] for link in linkStates_hand]
-
-        return kp_arm, kp_hand

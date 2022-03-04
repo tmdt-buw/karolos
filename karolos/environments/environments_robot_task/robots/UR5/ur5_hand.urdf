@@ -1,0 +1,131 @@
+<?xml version="1.0" ?>
+<robot name="ur5">
+
+    <link name="robotiq_85_base_link">
+        <inertial>
+            <origin xyz="0.00021987 -2.3546E-10 0.030163" rpy="0 0 0"/>
+            <mass value="0.30915"/>
+            <inertia ixx="0.00028972" ixy="-5.7879E-10" ixz="-1.8543E-06"
+                     iyy="0.00030737" iyz="1.682E-12" izz="0.00019914"/>
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://meshes/visual/robotiq_85_base_link_fine.STL"/>
+            </geometry>
+            <material name="red">
+                <color rgba="1 0 0 1"/>
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://meshes/collision/robotiq_85_base_link_coarse.STL"/>
+            </geometry>
+        </collision>
+    </link>
+
+<!--    <link name="left_inner_finger">-->
+<!--        <inertial>-->
+<!--            <origin xyz="0.0060275613594574 -6.29183141465421E-15 0.00669925693133241"-->
+<!--                    rpy="0 0 0"/>-->
+<!--            <mass value="0.00724255346165745"/>-->
+<!--            <inertia-->
+<!--                    ixx="1.47824274053603E-06"-->
+<!--                    ixy="-3.94884463570303E-19"-->
+<!--                    ixz="-3.45268847648622E-07"-->
+<!--                    iyy="1.70064480838395E-06"-->
+<!--                    iyz="3.5059838910097E-19"-->
+<!--                    izz="4.77151336838364E-07"/>-->
+<!--        </inertial>-->
+<!--        <visual>-->
+<!--            <origin xyz="0 0 0"-->
+<!--                    rpy="0 0 0"/>-->
+<!--            <geometry>-->
+<!--                <mesh filename="package://meshes/visual/inner_finger_fine.STL"/>-->
+<!--            </geometry>-->
+<!--            <material name="magenta">-->
+<!--                <color rgba="1 0 1 1"/>-->
+<!--            </material>-->
+<!--        </visual>-->
+<!--        <collision>-->
+<!--            <origin xyz="0 0 0"-->
+<!--                    rpy="0 0 0"/>-->
+<!--            <geometry>-->
+<!--                <mesh filename="package://meshes/collision/inner_finger_coarse.STL"/>-->
+<!--            </geometry>-->
+<!--        </collision>-->
+<!--        <contact>-->
+<!--            <stiffness value="10000"/>-->
+<!--            <damping value="10"/>-->
+<!--                     <lateral_friction value="100.0"/>-->
+
+<!--        </contact>-->
+
+<!--    </link>-->
+
+    <joint name="right_inner_knuckle_joint" type="prismatic">
+        <origin xyz="-0.007 0 0.15"
+                rpy="0 0 3.14159265358979"/>
+        <parent link="robotiq_85_base_link"/>
+        <child link="right_inner_finger"/>
+        <axis xyz="0 -1 0"/>
+        <limit effort="140" lower="0.0" upper="0.5" velocity="0.0002"/>
+    </joint>
+    <link name="right_inner_finger">
+        <inertial>
+            <origin xyz="0.00602756228812038 -6.47284509480176E-15 0.00669925609578108"
+                    rpy="0 0 0"/>
+            <mass value="0.00724255346165744"/>
+            <inertia
+                    ixx="1.47824283625957E-06"
+                    ixy="-3.95952064019123E-19"
+                    ixz="-3.45268708875543E-07"
+                    iyy="1.70064480838394E-06"
+                    iyz="3.55286507960029E-19"
+                    izz="4.77151241114822E-07"/>
+        </inertial>
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://meshes/visual/inner_finger_fine.STL"/>
+            </geometry>
+            <material name="magenta_light">
+                <color rgba="1 0 1 .5"/>
+            </material>
+        </visual>
+        <collision>
+            <origin xyz="0 0 0"
+                    rpy="0 0 0"/>
+            <geometry>
+                <mesh filename="package://meshes/collision/inner_finger_coarse.STL"/>
+            </geometry>
+        </collision>
+        <contact>
+            <stiffness value="10000"/>
+            <damping value="10"/>
+                     <lateral_friction value="100.0"/>
+
+        </contact>
+
+    </link>
+
+
+    <joint name="tcp" type="fixed">
+        <parent link="robotiq_85_base_link"/>
+        <child link="tcp"/>
+        <origin rpy="0 0 -1.570796" xyz="0.0 0.0 0.15"/>
+        <axis xyz="0 1 0"/>
+    </joint>
+
+    <link name="tcp">
+        <inertial>
+            <mass value="0.0"/>
+            <inertia ixx="1.0" ixy="1.0" ixz="1.0" iyy="0.0" iyz="0.0"
+                     izz="0.0"/>
+        </inertial>
+    </link>
+
+</robot>
+
+
