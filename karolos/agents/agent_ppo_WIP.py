@@ -241,10 +241,10 @@ class AgentPPO(OnPolAgent):
     def learn(self):
         self._decay_action_std(self.learning_step)
 
-        if not self.memory.is_full():
+        if not self.replay_buffer.is_full():
             return
 
-        experience = self.memory.sample(self.critic)
+        experience = self.replay_buffer.sample(self.critic)
 
         if self.learn_steps % self.log_step == 0:
             losses = []
@@ -344,7 +344,7 @@ class AgentPPO(OnPolAgent):
                 "entropy", np.mean([e.item() for e in entropies]), step
             )
 
-        self.memory.clear()
+        self.replay_buffer.clear()
         self.learn_steps += 1
 
     def get_state_infos(self, states, deterministic):

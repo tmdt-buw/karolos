@@ -1,28 +1,20 @@
-import pathlib
-import sys
-
-sys.path.append(str(pathlib.Path(__file__).resolve().parent))
-
-from replay_buffers import get_replay_buffer
-
-
 def get_agent(agent_config, observation_space, action_space,
               reward_function=None, experiment_dir=None):
-    algorithm = agent_config.pop("algorithm")
+    agent_name = agent_config.pop("name")
 
-    if algorithm == "sac":
-        from .sac import AgentSAC
+    if agent_name == "sac":
+        from .agent_sac import AgentSAC
         agent = AgentSAC(agent_config, observation_space, action_space, reward_function, experiment_dir)
-    elif algorithm == "ddpg":
-        from .ddpg import AgentDDPG
+    elif agent_name == "ddpg":
+        from .agent_ddpg import AgentDDPG
         agent = AgentDDPG(agent_config, observation_space, action_space, reward_function, experiment_dir)
-    elif algorithm == "dqn":
-        from .dqn import AgentDQN
+    elif agent_name == "dqn":
+        from .agent_dqn import AgentDQN
         agent = AgentDQN(agent_config, observation_space, action_space, reward_function, experiment_dir)
-    elif algorithm == "ppo":
-        from .ppo import AgentPPO
+    elif agent_name == "ppo":
+        from .agent_ppo_WIP import AgentPPO
         agent = AgentPPO(agent_config, observation_space, action_space, reward_function, experiment_dir)
     else:
-        raise NotImplementedError(f"Unknown algorithm {algorithm}")
+        raise NotImplementedError(f"Unknown agent {agent_name}")
 
     return agent

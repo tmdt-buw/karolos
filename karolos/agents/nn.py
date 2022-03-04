@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -73,9 +74,7 @@ class NeuralNetwork(nn.Module):
 
         return weights
 
-    def get_activations(self, state):
-        x = state
-
+    def get_activations(self, x):
         activations = []
 
         for operator in self.operators:
@@ -87,27 +86,33 @@ class NeuralNetwork(nn.Module):
         return activations
 
 
+class Critic(NeuralNetwork):
+    def __init__(self, state_dims, action_dim, network_structure):
+        in_dim = int(np.sum([np.product(arg) for arg in state_dims]) + np.product(action_dim))
+
+        super(Critic, self).__init__(in_dim, network_structure)
+
+        dummy = super(Critic, self).forward(torch.zeros((1, in_dim)))
+
+        self.operators.append(nn.Linear(dummy.shape[1], 1))
+
+        self.operators.apply(init_xavier_uniform)
+
+    def forward(self, *args):
+        return super(Critic, self).forward(*args)
+
+
 if __name__ == "__main__":
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda' if use_cuda else 'cpu')
 
-    pol_struct = [('linear', 64), ('relu', None), ('dropout', 0.2),
-                  ('linear', 32)]
+    network_structure = [('linear', 64), ('relu', None), ('dropout', 0.2), ('linear', 32)]
 
-    neural_network = NeuralNetwork([21], [7], pol_struct).to(device)
+    neural_network = NeuralNetwork(21, network_structure).to(device)
 
     print(neural_network)
 
-    print(neural_network(torch.rand((1, 21)).to(device)))
+    x = torch.rand((1, 21)).to(device)
+    y = neural_network(x)
 
-    policy = Policy([21], [7], pol_struct).to(device)
-
-    print(policy(torch.rand((1, 21)).to(device)))
-    print(policy)
-
-    val_struct = [('linear', 32), ('relu', None), ('dropout', 0.2),
-                  ('linear', 32)]
-
-    # val = Critic([21], [7], val_struct).to(device)
-
-    # print(val.operators)
+    print(y.shape)

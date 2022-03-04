@@ -68,13 +68,13 @@ class AgentDQN(Agent):
 
         self.update_target(self.policy, self.target_policy, 1.)
 
-        self.criterion = nn.MSELoss()
+        self.loss_function_q = nn.MSELoss()
 
     def learn(self):
 
         self.policy.train()
 
-        experiences, indices = self.memory.sample(self.batch_size)
+        experiences, indices = self.replay_buffer.sample(self.batch_size)
 
         states, actions, rewards, next_states, dones = experiences
 
@@ -94,7 +94,7 @@ class AgentDQN(Agent):
 
         target_q_values = rewards + (1 - dones) * self.reward_discount * next_action_values_max
 
-        loss = self.criterion(action_values, target_q_values)
+        loss = self.loss_function_q(action_values, target_q_values)
 
         self.optimizer.zero_grad()
 

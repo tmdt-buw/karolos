@@ -5,15 +5,12 @@ import warnings
 
 import numpy as np
 import torch
+from gym import spaces
 from torch.utils.tensorboard.writer import SummaryWriter
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[0]))
 from replay_buffers import get_replay_buffer
-
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 from utils import unwind_space_shapes, unwind_dict_values
-
-from gym import spaces
 
 
 class Agent:
@@ -47,14 +44,24 @@ class Agent:
         assert len(self.action_dim) == 1
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = "cpu"
 
         self.batch_size = config.get('batch_size', 64)
         self.reward_discount = config.get('reward_discount', .99)
         self.reward_scale = config.get('reward_scale', 1.)
         self.her_ratio = config.get('her_ratio', 0.)
 
-        buffer_config = config.get('replay_buffer', {"name": "fifo", "buffer_size": int(1e6)})
-        self.memory = get_replay_buffer(buffer_config)
+        imitation_config = config.get("imitation", {})
+
+        imitation_weight_start = imitation_config.get("start", 0)
+        imitation_weight_end = imitation_config.get("end", 0)
+        imitation_weight_steps = imitation_config.get("steps", np.inf)
+
+        self.imitation_weight = lambda step: max(1 - step / imitation_weight_steps, 0) * (
+                imitation_weight_start - imitation_weight_end) + imitation_weight_end
+
+        buffer_config = config.get('replay_buffer', {"name": "uniform", "buffer_size": int(1e6)})
+        self.replay_buffer = get_replay_buffer(buffer_config)
 
         if experiment_dir:
             self.writer = SummaryWriter(os.path.join(experiment_dir, "agent"), "agent")
@@ -87,24 +94,29 @@ class Agent:
         rewards = []
 
         for trajectory_step in range(trajectory_length):
-            state, _ = trajectory[trajectory_step * 2]
+            state, goal_info = trajectory[trajectory_step * 2]
             action = trajectory[trajectory_step * 2 + 1]
-            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
+            next_state, next_goal_info = trajectory[trajectory_step * 2 + 2]
             done = trajectory_step == len(trajectory) // 2 - 1
-            reward = self.reward_function(goal_info=goal_info, done=done)
+            reward = self.reward_function(goal_info=next_goal_info, done=done)
 
             state = unwind_dict_values(state)
             next_state = unwind_dict_values(next_state)
+            expert_action = goal_info.get("expert_action")
+
+            if expert_action is None:
+                expert_action = np.empty_like(action) * np.nan
 
             experience = {
                 "state": state,
                 "action": action,
                 "reward": reward,
                 "next_state": next_state,
-                "done": done
+                "done": done,
+                "expert_action": expert_action
             }
 
-            self.memory.add(experience)
+            self.replay_buffer.add(experience)
             rewards.append(reward)
 
         for _ in range(int(self.her_ratio * len(trajectory) // 2)):
@@ -113,39 +125,43 @@ class Agent:
 
             state, _ = trajectory[trajectory_step * 2]
             action = trajectory[trajectory_step * 2 + 1]
-            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
+            next_state, next_goal_info = trajectory[trajectory_step * 2 + 2]
             done = trajectory_step == len(trajectory) // 2 - 1
 
             # sample future goal_info
             goal_step = np.random.randint(trajectory_step, len(trajectory) // 2)
             _, future_goal_info = trajectory[goal_step * 2]
 
-            goal_info = goal_info.copy()
-            goal_info["desired"] = future_goal_info["achieved"]
+            next_goal_info = next_goal_info.copy()
+            next_goal_info["desired"] = future_goal_info["achieved"]
 
-            reward = self.reward_function(goal_info=goal_info, done=done)
+            reward = self.reward_function(goal_info=next_goal_info, done=done)
 
             state = unwind_dict_values(state)
             next_state = unwind_dict_values(next_state)
+
+            # todo: generate meaningful expert suggestion for her experience
+            expert_action = np.empty_like(action) * np.nan
 
             experience = {
                 "state": state,
                 "action": action,
                 "reward": reward,
                 "next_state": next_state,
-                "done": done
+                "done": done,
+                "expert_action": expert_action
             }
 
-            self.memory.add(experience)
+            self.replay_buffer.add(experience)
 
         return rewards
 
     def update_priorities(self, indices, predicted_values, target_values):
-        if self.memory.uses_priority:
+        if self.replay_buffer.uses_priority:
             errors = (predicted_values - target_values).abs().flatten().detach().cpu().numpy()
 
             for idx, error in zip(indices, errors):
-                self.memory.update(idx, error)
+                self.replay_buffer.update(idx, error)
 
     @staticmethod
     def update_target(network, target_network, tau):
@@ -170,12 +186,12 @@ class OnPolAgent(Agent):
                                     "device": self.device})
 
         assert buffer_config['name'] == "OnPolBuffer"
-        self.memory = get_replay_buffer(buffer_config)
+        self.replay_buffer = get_replay_buffer(buffer_config)
 
     def add_experiences(self, experiences, env_id):
-        if (not self.memory.is_full()) and (env_id not in self.memory.full_ids()):
+        if (not self.replay_buffer.is_full()) and (env_id not in self.replay_buffer.full_ids()):
             for exp in experiences:
-                self.memory.add(exp, env_id)
+                self.replay_buffer.add(exp, env_id)
 
     def add_experience_trajectory(self, trajectory):
         assert len(trajectory) % 2

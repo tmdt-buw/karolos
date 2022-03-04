@@ -16,25 +16,25 @@ from torch.distributions import Normal
 sys.path.append(str(pathlib.Path(__file__).resolve().parent))
 
 from agent import Agent
-from nn import NeuralNetwork, init_xavier_uniform
+from nn import NeuralNetwork, init_xavier_uniform, Critic
 
 
-class Policy(NeuralNetwork):
+class Actor(NeuralNetwork):
     def __init__(self, state_dims, action_dim, network_structure):
         in_dim = int(np.sum([np.product(state_dim) for state_dim in state_dims]))
 
         out_dim = int(np.product(action_dim))
 
-        super(Policy, self).__init__(in_dim, network_structure)
+        super(Actor, self).__init__(in_dim, network_structure)
 
-        dummy = super(Policy, self).forward(torch.zeros((1, in_dim)))
+        dummy = super(Actor, self).forward(torch.zeros((1, in_dim)))
 
         self.operators.append(nn.Linear(dummy.shape[1], out_dim))
 
         self.operators.apply(init_xavier_uniform)
 
     def forward(self, *state_args, deterministic=True):
-        action = super(Policy, self).forward(*state_args)
+        action = super(Actor, self).forward(*state_args)
 
         if not deterministic:
             normal = Normal(action, torch.ones_like(action))
@@ -43,96 +43,93 @@ class Policy(NeuralNetwork):
         return action
 
 
-class Critic(NeuralNetwork):
-    def __init__(self, state_dims, action_dim, network_structure):
-        in_dim = int(np.sum([np.product(arg) for arg in state_dims]) + np.product(action_dim))
-
-        super(Critic, self).__init__(in_dim, network_structure)
-
-        dummy = super(Critic, self).forward(torch.zeros((1, in_dim)))
-
-        self.operators.append(nn.Linear(dummy.shape[1], 1))
-
-        self.operators.apply(init_xavier_uniform)
-
-    def forward(self, *args):
-        return super(Critic, self).forward(*args)
-
-
 class AgentDDPG(Agent):
     def __init__(self, config, observation_space, action_space, reward_function, experiment_dir="."):
 
         super(AgentDDPG, self).__init__(config, observation_space, action_space, reward_function, experiment_dir)
 
+        self.replay_buffer.experience_keys += ["expert_action"]
+
         learning_rate_critic = config.get("learning_rate_critic", 5e-4)
-        learning_rate_policy = config.get("learning_rate_policy", 5e-4)
+        learning_rate_actor = config.get("learning_rate_actor", 5e-4)
         weight_decay = config.get("weight_decay", 1e-4)
-        
+
         self.tau = config.get('tau', 2.5e-3)
 
         # generate networks
-        policy_structure = config.get('policy_structure', [])
+        actor_structure = config.get('actor_structure', [])
         critic_structure = config.get('critic_structure', [])
 
-        self.policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
-        self.target_policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
+        self.actor = Actor(self.state_dim, self.action_dim, actor_structure).to(self.device)
+        self.actor_target = Actor(self.state_dim, self.action_dim, actor_structure).to(self.device)
         self.critic = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
-        self.target_critic = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
+        self.critic_target = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
 
-        self.optimizer_policy = torch.optim.AdamW(self.policy.parameters(), lr=learning_rate_policy,
-                                                  weight_decay=weight_decay)
+        self.optimizer_actor = torch.optim.AdamW(self.actor.parameters(), lr=learning_rate_actor,
+                                                 weight_decay=weight_decay)
         self.optimizer_critic = torch.optim.AdamW(self.critic.parameters(), lr=learning_rate_critic,
                                                   weight_decay=weight_decay)
 
-        self.update_target(self.policy, self.target_policy, 1.)
-        self.update_target(self.critic, self.target_critic, 1.)
+        self.update_target(self.actor, self.actor_target, 1.)
+        self.update_target(self.critic, self.critic_target, 1.)
 
-        self.criterion_critic = nn.MSELoss()
+        self.loss_critic = nn.MSELoss()
+        self.loss_expert_imitation = nn.MSELoss()
 
     def learn(self):
-        self.policy.train()
-        self.target_policy.train()
+        self.actor.train()
+        self.actor_target.train()
         self.critic.train()
-        self.target_critic.train()
+        self.critic_target.train()
 
-        experiences, indices = self.memory.sample(self.batch_size)
+        experiences, indices = self.replay_buffer.sample(self.batch_size)
 
-        states, actions, rewards, next_states, dones = experiences
+        states, actions, rewards, next_states, dones, expert_actions = experiences
 
         states = torch.FloatTensor(states).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(self.device)
+        expert_actions = torch.FloatTensor(expert_actions).to(self.device)
 
         rewards *= self.reward_scale
 
         predicted_value = self.critic(states, actions)
 
-        predicted_next_action = self.policy(next_states)
+        predicted_next_action = self.actor(next_states)
 
         # Train critic
-        target_value = rewards + (1 - dones) * self.reward_discount * self.target_critic(next_states,
+        target_value = rewards + (1 - dones) * self.reward_discount * self.critic_target(next_states,
                                                                                          predicted_next_action)
 
-        critic_loss = self.criterion_critic(predicted_value, target_value)
+        critic_loss = self.loss_critic(predicted_value, target_value)
 
         self.optimizer_critic.zero_grad()
         critic_loss.backward()
         self.optimizer_critic.step()
 
-        # Training policy
-        predicted_action = self.policy(states)
-        loss_policy = -self.critic(states, predicted_action).mean()
+        # Training actor
+        predicted_actions = self.actor(states)
+        loss_actor = -self.critic(states, predicted_actions).mean()
 
-        self.optimizer_policy.zero_grad()
-        loss_policy.backward()
-        self.optimizer_policy.step()
+        # imitate expert
+
+        # replace missing expert actions
+        expert_actions_mask = expert_actions.isnan().any(1)
+        expert_actions[expert_actions_mask] = predicted_actions[expert_actions_mask]
+
+        loss_imitation = self.imitation_weight(self.learning_step) * self.loss_expert_imitation(predicted_actions,
+                                                                                                expert_actions)
+        self.optimizer_actor.zero_grad()
+        loss_actor.backward(retain_graph=True)
+        loss_imitation.backward()
+        self.optimizer_actor.step()
 
         self.update_priorities(indices, predicted_value, target_value)
 
         # Update target
-        self.update_target(self.critic, self.target_critic, self.tau)
+        self.update_target(self.critic, self.critic_target, self.tau)
 
         if self.writer:
             self.writer.add_histogram('rewards', rewards, self.learning_step)
@@ -144,27 +141,27 @@ class AgentDDPG(Agent):
         if not osp.exists(path):
             os.makedirs(path)
 
-        torch.save(self.policy.state_dict(), osp.join(path, "policy.pt"))
+        torch.save(self.actor.state_dict(), osp.join(path, "actor.pt"))
         torch.save(self.critic.state_dict(), osp.join(path, "critic_1.pt"))
-        torch.save(self.target_critic.state_dict(), osp.join(path, "target_critic_1.pt"))
+        torch.save(self.critic_target.state_dict(), osp.join(path, "target_critic_1.pt"))
 
-        torch.save(self.optimizer_policy.state_dict(), osp.join(path, "optimizer_policy.pt"))
+        torch.save(self.optimizer_actor.state_dict(), osp.join(path, "optimizer_actor.pt"))
         torch.save(self.optimizer_critic.state_dict(), osp.join(path, "optimizer_critic_1.pt"))
 
     def load(self, path):
-        self.policy.load_state_dict(torch.load(osp.join(path, "policy.pt")))
+        self.actor.load_state_dict(torch.load(osp.join(path, "actor.pt")))
         self.critic.load_state_dict(torch.load(osp.join(path, "critic_1.pt")))
-        self.target_critic.load_state_dict(torch.load(osp.join(path, "target_critic_1.pt")))
+        self.critic_target.load_state_dict(torch.load(osp.join(path, "target_critic_1.pt")))
 
-        self.optimizer_policy.load_state_dict(torch.load(osp.join(path, "optimizer_policy.pt")))
+        self.optimizer_actor.load_state_dict(torch.load(osp.join(path, "optimizer_actor.pt")))
         self.optimizer_critic.load_state_dict(torch.load(osp.join(path, "optimizer_critic_1.pt")))
 
     def predict(self, states, deterministic=True):
-        self.policy.eval()
+        self.actor.eval()
 
         states = torch.tensor(states, dtype=torch.float).to(self.device)
 
-        action = self.policy(states, deterministic=deterministic)
+        action = self.actor(states, deterministic=deterministic)
 
         action = action.detach().cpu().numpy()
 
