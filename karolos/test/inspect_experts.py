@@ -4,33 +4,40 @@ import sys
 import numpy as np
 import pytest
 from gym import spaces
+import pybullet as p
+import pybullet_data as pd
 
 sys.path.append(str(Path(__file__).parents[1].resolve()))
 
-from ..agents.utils import unwind_space_shapes
-from ..environments import get_env
+from karolos.environments import get_env
+from itertools import product
 
-robots = ["ur5", "panda"]
-tasks = ["reach", "pick_place"]
+# robots = ["ur5", "panda"]
+# tasks = ["reach", "pick_place"]
+robots = ["panda"]
+tasks = ["pick_place"]
 
-action_space_discrete = spaces.Discrete(6)
-action_space_continuous = spaces.Box(-1, 1, (6,))
+p.connect(p.GUI)
+p.setAdditionalSearchPath(pd.getDataPath())
 
-state_space = spaces.Dict({
-    'state': spaces.Box(-1, 1, shape=(100,)),
-})
+p.resetDebugVisualizerCamera(cameraDistance=1.5,
+                             cameraYaw=70,
+                             cameraPitch=-27,
+                             cameraTargetPosition=(0, 0, 0)
+                             )
 
-state_spaces = unwind_space_shapes(state_space)
+p.setRealTimeSimulation(0)
+p.setGravity(0, 0, -9.81)
 
+for robot, task in product(robots, tasks):
+    print(robot, task)
 
-@pytest.mark.parametrize("robot", robots)
-@pytest.mark.parametrize('task', tasks)
-def test_expert(robot, task):
     env_config = {
         "environment": "karolos",
+        "bullet_client": p,
         "task_config": {
             "name": task,
-            "max_steps": 150
+            "max_steps": 100
         },
         "robot_config": {
             "name": robot,
@@ -59,6 +66,7 @@ def test_expert(robot, task):
                     done = True
 
                 done |= env.success_criterion(goal_info)
+                print(goal_info["steps"])
 
             results.append(env.success_criterion(goal_info))
         except:
