@@ -1,9 +1,9 @@
-import pathlib
+from pathlib import Path
 import sys
 
 import numpy as np
 
-sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parent))
 from replay_buffer import ReplayBuffer
 
 

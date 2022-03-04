@@ -1,5 +1,5 @@
 import os
-import pathlib
+from pathlib import Path
 import sys
 import warnings
 
@@ -8,7 +8,7 @@ import torch
 from gym import spaces
 from torch.utils.tensorboard.writer import SummaryWriter
 
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[0]))
+sys.path.append(str(Path(__file__).resolve().parents[0]))
 from replay_buffers import get_replay_buffer
 from utils import unwind_space_shapes, unwind_dict_values
 

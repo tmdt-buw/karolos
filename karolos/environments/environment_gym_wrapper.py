@@ -1,8 +1,15 @@
+import sys
+from pathlib import Path
+
 import gym
 import numpy as np
 from gym import spaces
 
-class GymWrapper:
+sys.path.append(str(Path(__file__).resolve().parent))
+from environment import Environment
+
+
+class GymWrapper(Environment):
 
     def __init__(self, name, max_steps=200, reward_success_threshold=np.inf, step_success_threshold=np.inf,
                  render=False, **kwargs):
@@ -20,7 +27,7 @@ class GymWrapper:
         self.action_space = self.env.action_space
 
         self.state_space = spaces.Dict({
-            'state': self.env.state_space,
+            'state': self.env.observation_space,
         })
 
     def reward_function(self, goal_info, **kwargs):
@@ -47,7 +54,6 @@ class GymWrapper:
         return *self.get_status(state, reward), done
 
     def get_status(self, state, reward=None):
-
         state = {
             "state": state
         }
@@ -73,23 +79,3 @@ class GymWrapper:
     def __render(self):
         if self.render:
             self.env.render()
-
-
-if __name__ == "__main__":
-
-    env = GymWrapper(name="Pendulum-v1", max_steps=1000, render=True)
-
-    while True:
-        state, goal_info = env.reset()
-        done = False
-
-        while not done:
-            action = env.action_space.sample()  # * .0
-            next_state, goal_info, done = env.step(action)
-
-            done |= env.success_criterion(goal_info)
-
-            # if done:
-            print(env.reward_function(goal_info))
-
-            state = next_state

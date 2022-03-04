@@ -5,7 +5,7 @@ https://spinningup.openai.com/en/latest/algorithms/ddpg.html
 
 import os
 import os.path as osp
-import pathlib
+from pathlib import Path
 import sys
 
 import numpy as np
@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Normal
 
-sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parent))
 
 from agent import Agent
 from nn import NeuralNetwork, init_xavier_uniform, Critic

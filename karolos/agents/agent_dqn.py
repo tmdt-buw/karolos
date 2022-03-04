@@ -5,14 +5,14 @@ Playing Atari with Deep Reinforcement Learning, Mnih et al, 2013.
 
 import os
 import os.path as osp
-import pathlib
+from pathlib import Path
 import sys
 
 import numpy as np
 import torch
 import torch.nn as nn
 
-sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+sys.path.append(str(Path(__file__).resolve().parent))
 
 from agent import Agent
 from nn import NeuralNetwork, init_xavier_uniform

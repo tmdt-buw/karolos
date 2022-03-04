@@ -126,7 +126,6 @@ class Robot:
 
     def __del__(self):
         self.bullet_client.removeBody(self.model_id)
-        del self.ik_world
 
     @property
     def joints(self):

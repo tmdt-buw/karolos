@@ -1,11 +1,11 @@
 import pytest
 
-import pathlib
+from pathlib import Path
 import sys
 
 from gym import spaces
 
-sys.path.append(str(pathlib.Path(__file__).parents[1].resolve()))
+sys.path.append(str(Path(__file__).parents[1].resolve()))
 
 from ..agents.utils import unwind_space_shapes, unwind_dict_values
 from ..agents import get_agent

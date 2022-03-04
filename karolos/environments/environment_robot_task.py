@@ -1,17 +1,17 @@
+import sys
+from pathlib import Path
+
 import numpy as np
 import pybullet as p
 import pybullet_data as pd
 import pybullet_utils.bullet_client as bc
 from gym import spaces
 
-try:
-    from .. import Environment
-    from .robots import get_robot
-    from .tasks import get_task
-except ImportError:
-    from karolos.environments.environment import Environment
-    from karolos.environments.environments_robot_task.robots import get_robot
-    from karolos.environments.environments_robot_task.tasks import get_task
+sys.path.append(str(Path(__file__).resolve().parent))
+
+from environment import Environment
+from environments_robot_task.robots import get_robot
+from environments_robot_task.tasks import get_task
 
 
 class EnvironmentRobotTask(Environment):
@@ -89,41 +89,3 @@ class EnvironmentRobotTask(Environment):
         }
 
         return state, goal_info, done
-
-
-if __name__ == "__main__":
-    import time
-
-    env_kwargs = {
-        "render": True,
-        "task_config": {
-            "name": "pick_place",
-            # "max_steps": 25
-        },
-        "robot_config": {
-            "name": "panda",
-            # "scale": .1,
-            # "sim_time": .1
-        }
-    }
-
-    env = EnvironmentRobotTask(**env_kwargs)
-
-    p.resetDebugVisualizerCamera(cameraDistance=1.5,
-                                 cameraYaw=70,
-                                 cameraPitch=-27,
-                                 cameraTargetPosition=(0, 0, 0)
-                                 )
-    time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
-
-    while True:
-        state, goal = env.reset()
-
-        for _ in np.arange(1. / time_step):
-            action = env.action_space.sample()
-
-            time.sleep(time_step)
-
-            state, goal, done = env.step(action)
-
-            reward = env.reward_function(goal, False)

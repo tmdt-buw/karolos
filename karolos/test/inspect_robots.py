@@ -39,6 +39,11 @@ for robot_name in robots:
     for _ in range(25):
         state = robot.step(-action)
 
+    state = robot.reset()
+
+    for _ in range(25):
+        robot.step(robot.action_space.sample())
+
     del robot
 
 p.disconnect()
