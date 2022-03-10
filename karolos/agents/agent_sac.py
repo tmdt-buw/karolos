@@ -64,9 +64,9 @@ class Actor(NeuralNetwork):
 
 
 class AgentSAC(Agent):
-    def __init__(self, config, observation_space, action_space, reward_function, experiment_dir=None):
+    def __init__(self, config, state_space, goal_space, action_space, reward_function, experiment_dir=None):
 
-        super(AgentSAC, self).__init__(config, observation_space, action_space, reward_function, experiment_dir)
+        super(AgentSAC, self).__init__(config, state_space, goal_space, action_space, reward_function, experiment_dir)
 
         self.replay_buffer.experience_keys += ["expert_action"]
 
@@ -86,11 +86,13 @@ class AgentSAC(Agent):
         actor_structure = config.get('actor_structure', [])
         critic_structure = config.get('critic_structure', [])
 
-        self.actor = Actor(self.state_dim, self.action_dim, actor_structure).to(self.device)
-        self.critic_1 = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
-        self.critic_2 = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
-        self.critic_target_1 = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
-        self.critic_target_2 = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
+        self.actor = Actor((self.state_dim, self.goal_dim), self.action_dim, actor_structure).to(self.device)
+        self.critic_1 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(self.device)
+        self.critic_2 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(self.device)
+        self.critic_target_1 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(
+            self.device)
+        self.critic_target_2 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(
+            self.device)
 
         self.optimizer_actor = torch.optim.AdamW(self.actor.parameters(), lr=learning_rate_actor,
                                                  weight_decay=weight_decay)
@@ -120,22 +122,24 @@ class AgentSAC(Agent):
 
         experiences, indices = self.replay_buffer.sample(self.batch_size)
 
-        states, actions, rewards, next_states, dones, expert_actions = experiences
+        states, goals, actions, rewards, next_states, next_goals, dones, expert_actions = experiences
 
         states = torch.FloatTensor(states).to(self.device)
+        goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
+        next_goals = torch.FloatTensor(next_goals).to(self.device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(self.device)
         expert_actions = torch.FloatTensor(expert_actions).to(self.device)
 
         rewards *= self.reward_scale
 
-        predicted_value_1 = self.critic_1(states, actions)
-        predicted_value_2 = self.critic_2(states, actions)
+        predicted_value_1 = self.critic_1(states, goals, actions)
+        predicted_value_2 = self.critic_2(states, goals, actions)
 
-        predicted_actions, log_prob = self.actor(states, deterministic=False)
-        predicted_next_actions, next_log_prob = self.actor(next_states, deterministic=False)
+        predicted_actions, log_prob = self.actor(states, goals, deterministic=False)
+        predicted_next_actions, next_log_prob = self.actor(next_states, next_goals, deterministic=False)
 
         if self.automatic_entropy_regularization is True:
             entropy_regularization_loss = -(
@@ -149,8 +153,8 @@ class AgentSAC(Agent):
             entropy_regularization = 1.
 
         # Train critic
-        target_critic_min = torch.min(self.critic_target_1(next_states, predicted_next_actions),
-                                      self.critic_target_2(next_states, predicted_next_actions))
+        target_critic_min = torch.min(self.critic_target_1(next_states, next_goals, predicted_next_actions),
+                                      self.critic_target_2(next_states, next_goals, predicted_next_actions))
 
         target_critic_min.sub_(entropy_regularization * next_log_prob)
 
@@ -170,8 +174,8 @@ class AgentSAC(Agent):
         self.optimizer_critic_2.step()
 
         # Training actor
-        predicted_new_q_val = torch.min(self.critic_1(states, predicted_actions),
-                                        self.critic_2(states, predicted_actions))
+        predicted_new_q_val = torch.min(self.critic_1(states, goals, predicted_actions),
+                                        self.critic_2(states, goals, predicted_actions))
         loss_actor = (entropy_regularization * log_prob - predicted_new_q_val).mean()
 
         # imitate expert
@@ -240,14 +244,15 @@ class AgentSAC(Agent):
         self.optimizer_critic_1.load_state_dict(torch.load(osp.join(path, "optimizer_critic_1.pt")))
         self.optimizer_critic_2.load_state_dict(torch.load(osp.join(path, "optimizer_critic_2.pt")))
 
-    def predict(self, states, deterministic=True):
+    def predict(self, states, goals, deterministic=True):
 
         self.actor.eval()
 
         states = torch.tensor(states, dtype=torch.float).to(self.device)
+        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
         with torch.no_grad():
-            actions, _ = self.actor(states, deterministic=deterministic)
+            actions, _ = self.actor(states, goals, deterministic=deterministic)
 
         actions = actions.detach().cpu().numpy()
 

@@ -15,12 +15,13 @@ from utils import unwind_space_shapes, unwind_dict_values
 
 class Agent:
 
-    def __init__(self, config, state_space, action_space,
+    def __init__(self, config, state_space, goal_space, action_space,
                  reward_function=None,
                  experiment_dir=None):
 
         self.state_space = state_space
         self.action_space = action_space
+        self.goal_space = goal_space
 
         if reward_function is None:
             warnings.warn(message="""Reward function not specified. Using a constant reward of 0.""",
@@ -32,15 +33,20 @@ class Agent:
         self.reward_function = reward_function
 
         state_shapes = unwind_space_shapes(state_space)
-
         self.state_dim = (sum(map(np.product, state_shapes)),)
+
+        goal_shapes = unwind_space_shapes(goal_space)
+        self.goal_dim = (sum(map(np.product, goal_shapes)),)
 
         if type(self.action_space) is spaces.Box:
             self.action_dim = self.action_space.shape
         elif type(self.action_space) is spaces.Discrete:
             self.action_dim = (self.action_space.n,)
+        else:
+            raise ValueError(f"Unexpected action_space type: {type(self.action_space)}")
 
         assert len(self.state_dim) == 1
+        assert len(self.goal_dim) == 1
         assert len(self.action_dim) == 1
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -94,24 +100,28 @@ class Agent:
         rewards = []
 
         for trajectory_step in range(trajectory_length):
-            state, goal_info = trajectory[trajectory_step * 2]
+            state, goal, info = trajectory[trajectory_step * 2]
             action = trajectory[trajectory_step * 2 + 1]
-            next_state, next_goal_info = trajectory[trajectory_step * 2 + 2]
+            next_state, next_goal, next_info = trajectory[trajectory_step * 2 + 2]
             done = trajectory_step == len(trajectory) // 2 - 1
-            reward = self.reward_function(goal_info=next_goal_info, done=done)
+            reward = self.reward_function(goal=next_goal, info=next_info, done=done)
 
             state = unwind_dict_values(state)
+            goal = unwind_dict_values(goal)
             next_state = unwind_dict_values(next_state)
-            expert_action = goal_info.get("expert_action")
+            next_goal = unwind_dict_values(next_goal)
+            expert_action = info.get("expert_action")
 
             if expert_action is None:
                 expert_action = np.empty_like(action) * np.nan
 
             experience = {
                 "state": state,
+                "goal": goal,
                 "action": action,
                 "reward": reward,
                 "next_state": next_state,
+                "next_goal": next_goal,
                 "done": done,
                 "expert_action": expert_action
             }
@@ -123,31 +133,39 @@ class Agent:
             # sample random step
             trajectory_step = np.random.randint(len(trajectory) // 2)
 
-            state, _ = trajectory[trajectory_step * 2]
+            state, goal, _ = trajectory[trajectory_step * 2]
             action = trajectory[trajectory_step * 2 + 1]
-            next_state, next_goal_info = trajectory[trajectory_step * 2 + 2]
-            done = trajectory_step == len(trajectory) // 2 - 1
+            next_state, next_goal, _ = trajectory[trajectory_step * 2 + 2]
 
             # sample future goal_info
             goal_step = np.random.randint(trajectory_step, len(trajectory) // 2)
-            _, future_goal_info = trajectory[goal_step * 2]
+            done = trajectory_step == goal_step
 
-            next_goal_info = next_goal_info.copy()
-            next_goal_info["desired"] = future_goal_info["achieved"]
+            _, future_goal, _ = trajectory[goal_step * 2 + 2]
 
-            reward = self.reward_function(goal_info=next_goal_info, done=done)
+            new_goal = goal.copy()
+            new_goal["desired"] = future_goal["achieved"]
+
+            new_next_goal = next_goal.copy()
+            new_next_goal["desired"] = future_goal["achieved"]
+
+            reward = self.reward_function(goal=new_next_goal, done=done)
 
             state = unwind_dict_values(state)
+            new_goal = unwind_dict_values(new_goal)
             next_state = unwind_dict_values(next_state)
+            new_next_goal = unwind_dict_values(new_next_goal)
 
             # todo: generate meaningful expert suggestion for her experience
             expert_action = np.empty_like(action) * np.nan
 
             experience = {
                 "state": state,
+                "goal": new_goal,
                 "action": action,
                 "reward": reward,
                 "next_state": next_state,
+                "next_goal": new_next_goal,
                 "done": done,
                 "expert_action": expert_action
             }
@@ -171,16 +189,16 @@ class Agent:
 
 
 class OnPolAgent(Agent):
-    def __init__(self, config, state_space, action_space,
+    def __init__(self, config, state_space, goal_space, action_space,
                  reward_function=None,
                  experiment_dir=None):
-        super(OnPolAgent, self).__init__(config, state_space,
+        super(OnPolAgent, self).__init__(config, state_space, goal_space,
                                          action_space, reward_function, experiment_dir)
         self.is_on_policy = True
         buffer_config = config.get('replay_buffer',
                                    {"name": "OnPolBuffer",
                                     "size": config.get("batch_size", 96000),
-                                    "number_envs": config.get("number_threads", 1) * config.get("number_processes", 1),
+                                    "number_envs": config.get("number_envs", 1),
                                     "state_shape": self.state_dim[0],
                                     "action_shape": self.action_dim[0],
                                     "device": self.device})
@@ -201,8 +219,8 @@ class OnPolAgent(Agent):
         rewards = []
 
         for trajectory_step in range(trajectory_length):
-            next_state, goal_info = trajectory[trajectory_step * 2 + 2]
+            state, goal, info = trajectory[trajectory_step * 2 + 2]
             done = trajectory_step == len(trajectory) // 2 - 1
-            reward = self.reward_function(goal_info=goal_info, done=done)
+            reward = self.reward_function(goal=goal, done=done, info=info)
             rewards.append(reward)
         return rewards

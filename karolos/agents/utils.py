@@ -13,7 +13,10 @@ def unwind_dict_values(element):
     for key, value in element.items():
         values.append(unwind_dict_values(value))
 
-    return np.concatenate(values, axis=-1)
+    if len(values):
+        return np.concatenate(values, axis=-1)
+    else:
+        return np.array([])
 
 
 def unwind_space_shapes(space):

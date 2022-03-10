@@ -45,7 +45,7 @@ class Experiment:
         else:
             return True
 
-    def _save_transition_onpol(self, goal_info, done, env_id):
+    def _save_transition_onpol(self, goal, done, info, env_id):
         # todo remove this and move into ppo agent!
         experience = {
             "states": torch.Tensor(
@@ -53,7 +53,7 @@ class Experiment:
             ),
             # "actions": torch.Tensor(self.trajectories[env_id]["mdp"][-2]),
             "rewards": torch.as_tensor(
-                self.reward_function(goal_info=goal_info, done=done)
+                self.reward_function(goal=goal, done=done, info=info)
             ),
             "terminals": torch.as_tensor(done, dtype=torch.bool),
 
@@ -83,14 +83,14 @@ class Experiment:
                     self.trajectories.pop(env_id, None)
                     self.trajectories[env_id].append(data)
             elif func == "step":
-                state, goal_info, done = data
-                self.trajectories[env_id].append((state, goal_info))
+                state, goal, done, info = data
+                self.trajectories[env_id].append((state, goal, info))
 
-                done |= self.success_criterion(goal_info)
+                done |= self.success_criterion(state=state, goal=goal, done=done, info=info)
 
                 if hasattr(self.agent, "is_on_policy"):
                     if self.agent.is_on_policy and (mode != "test"):
-                        self._save_transition_onpol(goal_info=goal_info, done=done, env_id=env_id)
+                        self._save_transition_onpol(goal=goal, done=done, info=info, env_id=env_id)
 
                 if done:
                     trajectory = self.trajectories.pop(env_id)
@@ -99,7 +99,7 @@ class Experiment:
 
                     self.writer.add_scalar(f'{mode} reward episode', sum(rewards), sum(self.steps.values()) + 1)
 
-                    results_episodes.append(self.success_criterion(goal_info))
+                    results_episodes.append(self.success_criterion(state=state, goal=goal, done=done, info=info))
 
                     requests.append((env_id, "reset", self.get_initial_state(mode != "test", env_id)))
 
@@ -132,21 +132,25 @@ class Experiment:
                 predictions = np.stack(predictions)
             else:
                 states = []
+                goals = []
 
                 for env_id in required_predictions:
-                    state, _ = self.trajectories[env_id][-1]
+                    state, goal, _ = self.trajectories[env_id][-1]
 
                     state = unwind_dict_values(state)
+                    goal = unwind_dict_values(goal)
 
                     states.append(state)
+                    goals.append(goal)
 
                 states = np.stack(states)
+                goals = np.stack(goals)
 
-                predictions = self.agent.predict(states, deterministic=mode == "test")
+                predictions = self.agent.predict(states, goals, deterministic=mode == "test")
 
                 if hasattr(self.agent, "is_on_policy"):
                     if self.agent.is_on_policy and (mode != "test"):
-                        state_infos = self.agent.get_state_infos(states, deterministic=mode == "test")
+                        state_infos = self.agent.get_state_infos(states, goals, deterministic=mode == "test")
 
                         for i, env_id in enumerate(required_predictions):
                             self.state_infos[env_id] = state_infos[i]
@@ -213,6 +217,7 @@ class Experiment:
 
             self.agent = get_agent(agent_config,
                                    self.orchestrator.state_space,
+                                   self.orchestrator.goal_space,
                                    self.orchestrator.action_space,
                                    self.reward_function,
                                    experiment_dir)

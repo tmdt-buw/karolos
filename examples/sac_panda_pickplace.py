@@ -1,25 +1,25 @@
-import pathlib
+from pathlib import Path
 import sys
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from karolos.experiment import Experiment
-from multiprocessing import cpu_count
 
 if __name__ == "__main__":
 
-    experiment_name = "sac_panda_reach"
+    experiment_name = "sac_panda_pickplace"
 
     training_config = {
-        "total_timesteps": 15_000_000,
+        "total_timesteps": 10, #25_000_000,
         "test_interval": 500_000,
-        "number_tests": 100,
-        "number_processes": 2 * cpu_count(),
+        # "number_tests": 96,
+        # "number_processes": 96,
+
         "agent_config": {
 
             # SAC
-            "algorithm": "sac",
-            "learning_rate_critic": 0.0005,
-            "learning_rate_policy": 0.0005,
+            "name":"sac",
+            "learning_rate_critic": 0.005,
+            "learning_rate_policy": 0.005,
             "entropy_regularization": 1,
             "learning_rate_entropy_regularization": 5e-5,
             "weight_decay": 1e-4,
@@ -28,20 +28,17 @@ if __name__ == "__main__":
             "reward_scale": 100,
             "automatic_entropy_regularization": True,
             "gradient_clipping": False,
+            "memory_size": 1_000_000,
             "tau": 0.0025,
             "policy_structure": [('linear', 128), ('tanh', None)] * 8,
             "critic_structure": [('linear', 128), ('tanh', None)] * 8,
 
-            "replay_buffer": {
-                "name": "priority",
-                "buffer_size": int(1e6)
-            }
         },
         "env_config": {
             "environment": "karolos",
             "task_config": {
-                "name": "reach",
-                "max_steps": 25,
+                "name": "pick_place",
+                "max_steps": 100,
             },
             "robot_config": {
                 "name": "panda",
@@ -52,4 +49,4 @@ if __name__ == "__main__":
     }
 
     experiment = Experiment(training_config)
-    experiment.run("results", experiment_name=experiment_name)
+    experiment.run("../results", experiment_name=experiment_name)

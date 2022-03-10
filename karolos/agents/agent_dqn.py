@@ -39,10 +39,9 @@ class Policy(NeuralNetwork):
 
 
 class AgentDQN(Agent):
-    def __init__(self, config, observation_space, action_space,
-                 reward_function, experiment_dir=None):
+    def __init__(self, config, state_space, goal_space, action_space, reward_function, experiment_dir=None):
 
-        super(AgentDQN, self).__init__(config, observation_space, action_space, reward_function, experiment_dir)
+        super(AgentDQN, self).__init__(config, state_space, goal_space, action_space, reward_function, experiment_dir)
 
         learning_rate_policy = config.get("learning_rate", 5e-4)
         weight_decay = config.get("weight_decay", 1e-4)
@@ -60,11 +59,10 @@ class AgentDQN(Agent):
         policy_structure = config.get('policy_structure', [])
 
         # generate networks
-        self.policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
-        self.target_policy = Policy(self.state_dim, self.action_dim, policy_structure).to(self.device)
+        self.policy = Policy((self.state_dim, self.goal_dim), self.action_dim, policy_structure).to(self.device)
+        self.target_policy = Policy((self.state_dim, self.goal_dim), self.action_dim, policy_structure).to(self.device)
 
-        self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=learning_rate_policy,
-                                           weight_decay=weight_decay)
+        self.optimizer = torch.optim.AdamW(self.policy.parameters(), lr=learning_rate_policy, weight_decay=weight_decay)
 
         self.update_target(self.policy, self.target_policy, 1.)
 
@@ -76,20 +74,22 @@ class AgentDQN(Agent):
 
         experiences, indices = self.replay_buffer.sample(self.batch_size)
 
-        states, actions, rewards, next_states, dones = experiences
+        states, goals, actions, rewards, next_states, next_goals, dones = experiences
 
         states = torch.FloatTensor(states).to(self.device)
+        goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.LongTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
+        next_goals = torch.FloatTensor(next_goals).to(self.device)
         dones = torch.FloatTensor(np.float32(dones)).to(self.device)
 
         rewards *= self.reward_scale
 
-        action_values = self.policy(states)
+        action_values = self.policy(states, goals)
         action_values = action_values[torch.arange(len(action_values)), actions]
 
-        next_action_values = self.target_policy(next_states)
+        next_action_values = self.target_policy(next_states, next_goals)
         next_action_values_max, _ = next_action_values.max(-1)
 
         target_q_values = rewards + (1 - dones) * self.reward_discount * next_action_values_max
@@ -131,7 +131,7 @@ class AgentDQN(Agent):
         self.target_policy.load_state_dict(torch.load(osp.join(path, "target_q_network.pt")))
         self.optimizer.load_state_dict(torch.load(osp.join(path, "optimizer.pt")))
 
-    def predict(self, states, deterministic=True):
+    def predict(self, states, goals, deterministic=True):
 
         if not deterministic:
             mask_deterministic = np.random.random(len(states)) > self.exploration_probability(self.learning_step)
@@ -145,12 +145,14 @@ class AgentDQN(Agent):
             indices_deterministic = np.argwhere(mask_deterministic).flatten()
 
             states_deterministic = [states[idx] for idx in indices_deterministic]
+            goals_deterministic = [goals[idx] for idx in indices_deterministic]
 
             self.policy.eval()
 
-            states_deterministic = torch.FloatTensor([state for state in states_deterministic]).to(self.device)
+            states_deterministic = torch.FloatTensor(states_deterministic).to(self.device)
+            goals_deterministic = torch.FloatTensor(goals_deterministic).to(self.device)
 
-            action_values_deterministic = self.policy(states_deterministic)
+            action_values_deterministic = self.policy(states_deterministic, goals_deterministic)
 
             _, actions_deterministic = action_values_deterministic.max(-1)
 

@@ -1,9 +1,9 @@
 import numpy as np
 import pybullet as p
 
-import pathlib
+from pathlib import Path
 import sys
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from karolos.environments import get_env
 
@@ -11,10 +11,10 @@ if __name__ == "__main__":
 
     env_config = {
         "environment": "karolos",
-        "render": True,
+        # "render": True,
         "task_config": {
             "name": "pick_place",
-            "max_steps": 150
+            "max_steps": 50
         },
         "robot_config": {
             "name": "panda",
@@ -32,15 +32,17 @@ if __name__ == "__main__":
                                  )
     time_step = p.getPhysicsEngineParameters()["fixedTimeStep"]
 
-    # state, goal_info = env.reset({"robot": np.zeros(9)})
-    state, goal_info = env.reset()
 
-    done = False
-    while not done:
-        action = goal_info["expert_action"]
+    for _ in range(100):
+        state, goal_info = env.reset({"robot": np.zeros_like(env.state_space["robot"]["joint_positions"].sample())})
+        # state, goal_info = env.reset()
 
-        state, goal_info, done = env.step(action)
+        done = False
+        while not done:
+            action = goal_info["expert_action"]
 
-        done |= env.success_criterion(goal_info)
+            state, goal_info, done = env.step(action)
 
-    print("Success:", env.success_criterion(goal_info))
+            done |= env.success_criterion(goal_info)
+
+        print("Success:", env.success_criterion(goal_info), goal_info["steps"])

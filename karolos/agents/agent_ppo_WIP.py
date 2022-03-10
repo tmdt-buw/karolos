@@ -27,8 +27,7 @@ class PolicyPPO(NeuralNetwork):
             device,
     ):
         out_dim = int(np.product(action_dim)) * 2
-        in_dim = int(
-            np.sum([np.product(state_dim) for state_dim in state_dims]))
+        in_dim = int(np.sum([np.product(state_dim) for state_dim in state_dims]))
 
         network_structure = copy.deepcopy(network_structure)
         super(PolicyPPO, self).__init__(in_dim, network_structure)
@@ -55,15 +54,15 @@ class PolicyPPO(NeuralNetwork):
         self.std_clamp = Clamp(-20, 2)
         self.std_activation = torch.nn.Softplus()
 
-    def forward(self, state_args, test=False):
-        x = super(PolicyPPO, self).forward(state_args)
+    def forward(self, *state_args, deterministic=False):
+        x = super(PolicyPPO, self).forward(*state_args)
         mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
         mean = self.mean_head(mean)
         log_std = self.std_head(log_std)
 
         # std = log_std.exp()
         # cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-        if test:
+        if deterministic:
             # action = torch.tanh(mean)
             action = mean
             # log_prob = torch.zeros_like(torch.diag(self.action_var).unsqueeze(dim=0))
@@ -123,7 +122,7 @@ class PolicyPPO(NeuralNetwork):
 
 
 class CriticPPO(NeuralNetwork):
-    def __init__(self, state_dims, network_structure):
+    def __init__(self, state_dims, action_dim, network_structure):
         # if isinstance(state_dims, dict):
         #     raise NotImplementedError
         # if len(state_dims) == 1:
@@ -135,9 +134,7 @@ class CriticPPO(NeuralNetwork):
         # else:
         #     raise NotImplementedError(f"Unknown dims: state:{state_dims}")
 
-        in_dim = int(
-            np.sum([np.product(arg) for arg in state_dims])
-        )
+        in_dim = int(np.sum([np.product(arg) for arg in state_dims]) + np.product(action_dim))
 
         network_structure = copy.deepcopy(network_structure)
 
@@ -156,11 +153,11 @@ class CriticPPO(NeuralNetwork):
 
 
 class AgentPPO(OnPolAgent):
-    def __init__(self, config, observation_space, action_space,
+    def __init__(self, config, state_space, goal_space, action_space,
                  reward_function, experiment_dir='.'):
 
         super(AgentPPO, self).__init__(
-            config, observation_space, action_space,
+            config, state_space, goal_space, action_space,
             reward_function, experiment_dir
         )
 
@@ -196,16 +193,10 @@ class AgentPPO(OnPolAgent):
         policy_structure = config.get('policy_structure', [])
         critic_structure = config.get('critic_structure', [])
 
-        self.critic = CriticPPO(
-            self.state_dim, critic_structure,
-        ).to(self.device)
+        self.critic = CriticPPO((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(self.device)
         self.test_policy = None
-        self.policy = PolicyPPO(
-            self.state_dim,
-            self.action_dim,
-            policy_structure,
-            action_stddev_init=self.action_std_init,
-            device=self.device
+        self.policy = PolicyPPO((self.state_dim, self.goal_dim), self.action_dim, policy_structure,
+            action_stddev_init=self.action_std_init, device=self.device
         ).to(self.device)
         # self.policy_old = PolicyPPO(self.state_dim, self.action_dim,
         #                        self.policy_structure,
@@ -347,22 +338,24 @@ class AgentPPO(OnPolAgent):
         self.replay_buffer.clear()
         self.learn_steps += 1
 
-    def get_state_infos(self, states, deterministic):
+    def get_state_infos(self, states, goals, deterministic):
         self.policy.eval()
         states = torch.tensor(states, dtype=torch.float).to(self.device)
+        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
         with torch.no_grad():
-            action, logprob = self.policy(states, test=deterministic)
-            values = self.critic(states).detach()
+            actions, logprob = self.policy(states, goals, deterministic=deterministic)
+            values = self.critic(states, goals, actions).detach()
             logprob = logprob.detach().cpu()
 
-        return [{"ac_log_probs": lgp, "values": v, "actions": ac} for lgp, v, ac in zip(logprob, values, action)]
+        return [{"ac_log_probs": lgp, "values": v, "actions": ac} for lgp, v, ac in zip(logprob, values, actions)]
 
-    def predict(self, states, deterministic):
+    def predict(self, states, goals, deterministic):
         self.policy.eval()
         states = torch.tensor(states, dtype=torch.float).to(self.device)
+        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
         with torch.no_grad():
-            action, logprob = self.policy(states, test=deterministic)
+            action, logprob = self.policy(states, goals, deterministic=deterministic)
 
         action_cpu = action.detach().cpu().numpy()
         action_clip = action_cpu.clip(self.action_space.low, self.action_space.high)

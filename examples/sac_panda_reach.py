@@ -1,24 +1,21 @@
-import pathlib
+import os
 import sys
-sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from karolos.experiment import Experiment
+from multiprocessing import cpu_count
 
 if __name__ == "__main__":
-
-    activation = "tanh"  # relu, tanh, leaky_relu
-    experiment_name = "sac_panda_pickplace"
-
     training_config = {
-        "total_timesteps": 25_000_000,
+        "total_timesteps": 5_000_000,
         "test_interval": 500_000,
-        # "number_tests": 96,
-        # "number_processes": 96,
-
+        "number_tests": 100,
+        "number_processes": cpu_count(),
         "agent_config": {
-
             # SAC
-            "algorithm": "sac",
+            "name": "sac",
             "learning_rate_critic": 0.005,
             "learning_rate_policy": 0.005,
             "entropy_regularization": 1,
@@ -31,15 +28,15 @@ if __name__ == "__main__":
             "gradient_clipping": False,
             "memory_size": 1_000_000,
             "tau": 0.0025,
-            "policy_structure": [('linear', 128), (activation, None)] * 3,
-            "critic_structure": [('linear', 128), (activation, None)] * 3,
-
+            "policy_structure": [('linear', 128), ("tanh", None)] * 3,
+            "critic_structure": [('linear', 128), ("tanh", None)] * 3,
         },
         "env_config": {
             "environment": "karolos",
+
             "task_config": {
-                "name": "pick_place",
-                "max_steps": 100,
+                "name": "reach",
+                "max_steps": 50,
             },
             "robot_config": {
                 "name": "panda",
@@ -49,5 +46,9 @@ if __name__ == "__main__":
         }
     }
 
-    experiment = Experiment(training_config)
-    experiment.run("../results", experiment_name=experiment_name)
+    import copy
+
+    # for _ in range(5):
+    experiment = Experiment(copy.deepcopy(training_config))
+    # experiment.run("results/sac_panda_reach")
+    experiment.run(f"results/{os.path.basename(__file__).replace('.py', '')}")

@@ -44,9 +44,9 @@ class Actor(NeuralNetwork):
 
 
 class AgentDDPG(Agent):
-    def __init__(self, config, observation_space, action_space, reward_function, experiment_dir="."):
+    def __init__(self, config, state_space, goal_space, action_space, reward_function, experiment_dir="."):
 
-        super(AgentDDPG, self).__init__(config, observation_space, action_space, reward_function, experiment_dir)
+        super(AgentDDPG, self).__init__(config, state_space, goal_space, action_space, reward_function, experiment_dir)
 
         self.replay_buffer.experience_keys += ["expert_action"]
 
@@ -60,10 +60,10 @@ class AgentDDPG(Agent):
         actor_structure = config.get('actor_structure', [])
         critic_structure = config.get('critic_structure', [])
 
-        self.actor = Actor(self.state_dim, self.action_dim, actor_structure).to(self.device)
-        self.actor_target = Actor(self.state_dim, self.action_dim, actor_structure).to(self.device)
-        self.critic = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
-        self.critic_target = Critic(self.state_dim, self.action_dim, critic_structure).to(self.device)
+        self.actor = Actor((self.state_dim, self.goal_dim), self.action_dim, actor_structure).to(self.device)
+        self.actor_target = Actor((self.state_dim, self.goal_dim), self.action_dim, actor_structure).to(self.device)
+        self.critic = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(self.device)
+        self.critic_target = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(self.device)
 
         self.optimizer_actor = torch.optim.AdamW(self.actor.parameters(), lr=learning_rate_actor,
                                                  weight_decay=weight_decay)
@@ -84,20 +84,22 @@ class AgentDDPG(Agent):
 
         experiences, indices = self.replay_buffer.sample(self.batch_size)
 
-        states, actions, rewards, next_states, dones, expert_actions = experiences
+        states, goals, actions, rewards, next_states, next_goals, dones, expert_actions = experiences
 
         states = torch.FloatTensor(states).to(self.device)
+        goals = torch.FloatTensor(goals).to(self.device)
         actions = torch.FloatTensor(actions).to(self.device)
         rewards = torch.FloatTensor(rewards).unsqueeze(1).to(self.device)
         next_states = torch.FloatTensor(next_states).to(self.device)
+        next_goals = torch.FloatTensor(next_goals).to(self.device)
         dones = torch.FloatTensor(np.float32(dones)).unsqueeze(1).to(self.device)
         expert_actions = torch.FloatTensor(expert_actions).to(self.device)
 
         rewards *= self.reward_scale
 
-        predicted_value = self.critic(states, actions)
+        predicted_value = self.critic(states, goals, actions)
 
-        predicted_next_action = self.actor(next_states)
+        predicted_next_action = self.actor(next_states, next_goals)
 
         # Train critic
         target_value = rewards + (1 - dones) * self.reward_discount * self.critic_target(next_states,
@@ -156,12 +158,13 @@ class AgentDDPG(Agent):
         self.optimizer_actor.load_state_dict(torch.load(osp.join(path, "optimizer_actor.pt")))
         self.optimizer_critic.load_state_dict(torch.load(osp.join(path, "optimizer_critic_1.pt")))
 
-    def predict(self, states, deterministic=True):
+    def predict(self, states, goals, deterministic=True):
         self.actor.eval()
 
         states = torch.tensor(states, dtype=torch.float).to(self.device)
+        goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
-        action = self.actor(states, deterministic=deterministic)
+        action = self.actor(states, goals, deterministic=deterministic)
 
         action = action.detach().cpu().numpy()
 

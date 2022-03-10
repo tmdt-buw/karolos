@@ -200,7 +200,7 @@ class OnPolBuffer(object):
                  gamma_gae: float = 0.99, lambda_gae: float = 0.95):
 
         assert size % number_envs == 0, \
-            "Choose multiple of number envs as batch_size"
+            f"Choose multiple of number envs as batch_size ({size}, {number_envs})"
 
         self.device = device
         self.cap_p_env = size // number_envs
