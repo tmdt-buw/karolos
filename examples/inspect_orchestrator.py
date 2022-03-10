@@ -42,6 +42,3 @@ if __name__ == "__main__":
                     total_responses += len(env_responses)
 
                 duration = time.time() - t0
-
-                # print(number_processes, number_threads, duration,
-                #       duration / (number_processes * number_threads))

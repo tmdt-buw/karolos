@@ -2,8 +2,6 @@ from pathlib import Path
 import sys
 
 import numpy as np
-import pytest
-from gym import spaces
 import pybullet as p
 import pybullet_data as pd
 
@@ -12,10 +10,8 @@ sys.path.append(str(Path(__file__).parents[1].resolve()))
 from karolos.environments import get_env
 from itertools import product
 
-# robots = ["ur5", "panda"]
-# tasks = ["reach", "pick_place"]
-robots = ["panda"]
-tasks = ["pick_place"]
+robots = ["ur5", "panda"]
+tasks = ["reach", "pick_place"]
 
 p.connect(p.GUI)
 p.setAdditionalSearchPath(pd.getDataPath())
@@ -54,21 +50,20 @@ for robot, task in product(robots, tasks):
 
     for _ in range(trials):
         try:
-            state, goal_info = env.reset()
+            state, goal, info = env.reset()
 
             done = False
 
             while not done:
                 try:
-                    action = goal_info["expert_action"]
-                    state, goal_info, done = env.step(action)
+                    action = info["expert_action"]
+                    state, goal, done, info = env.step(action)
                 except ValueError:
                     done = True
 
-                done |= env.success_criterion(goal_info)
-                print(goal_info["steps"])
+                done |= env.success_criterion(goal)
 
-            results.append(env.success_criterion(goal_info))
+            results.append(env.success_criterion(goal, done))
         except:
             pass
 

@@ -6,7 +6,7 @@ from karolos.environments.environments_robot_task.robots import get_robot
 import pybullet as p
 import pybullet_data as pd
 
-robots = ["panda", "ur5"]
+robots = ["panda", "ur5", "iiwa"]
 
 p.connect(p.GUI)
 p.setAdditionalSearchPath(pd.getDataPath())
@@ -21,7 +21,7 @@ p.setRealTimeSimulation(0)
 p.setGravity(0, 0, -9.81)
 
 for robot_name in robots:
-    print(robot_name)
+    print(f"Display robot: {robot_name}")
 
     robot = get_robot({
         "name": robot_name,
@@ -31,16 +31,19 @@ for robot_name in robots:
 
     state = robot.reset()
 
-    action = -np.ones_like(robot.action_space.sample())
+    action = np.ones_like(robot.action_space.sample())
 
+    print("Perform max actions")
     for _ in range(25):
         state = robot.step(action)
 
+    print("Perform min actions")
     for _ in range(25):
         state = robot.step(-action)
 
     state = robot.reset()
 
+    print("Perform random actions")
     for _ in range(25):
         robot.step(robot.action_space.sample())
 
