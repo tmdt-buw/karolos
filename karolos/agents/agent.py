@@ -49,8 +49,10 @@ class Agent:
         assert len(self.goal_dim) == 1
         assert len(self.action_dim) == 1
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.device = "cpu"
+        if config.get('force_cpu', False):
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = "cpu"
 
         self.batch_size = config.get('batch_size', 64)
         self.reward_discount = config.get('reward_discount', .99)
