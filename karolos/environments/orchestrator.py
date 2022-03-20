@@ -14,8 +14,9 @@ class Orchestrator:
         self.pipes = {}
         self.locks = {}
 
-        self.action_space_ = None
         self.state_space_ = None
+        self.goal_space_ = None
+        self.action_space_ = None
         self.reward_function_ = None
         self.success_criterion_ = None
 
@@ -95,20 +96,24 @@ class Orchestrator:
                 if func == "ping":
                     pipe.send(("ping", params))
                 elif func == "reset":
-                    pipe.send(("reset", env.reset(params)))
+                    try:
+                        pipe.send(("reset", env.reset(params)))
+                    except AssertionError as e:
+                        pipe.send(("reset", e))
                 elif func == "step":
                     pipe.send(("step", env.step(params)))
                 elif func == "render":
                     pipe.send(("render", env.render(params)))
-                elif func == "action space":
-                    pipe.send(("action space", env.action_space))
                 elif func == "state space":
                     pipe.send(("state space", env.state_space))
+                elif func == "goal space":
+                    pipe.send(("goal space", env.goal_space))
+                elif func == "action space":
+                    pipe.send(("action space", env.action_space))
                 elif func == "reward function":
                     pipe.send(("reward function", env.reward_function))
                 elif func == "success criterion":
-                    pipe.send(
-                        ("success criterion", env.success_criterion))
+                    pipe.send(("success criterion", env.success_criterion))
                 else:
                     raise NotImplementedError(func)
 
@@ -176,6 +181,26 @@ class Orchestrator:
         return responses
 
     @property
+    def state_space(self):
+        if self.state_space_ is None:
+            self.pipes[0].send(["state space", None])
+            func, self.state_space_ = self.pipes[0].recv()
+
+            assert func == "state space", f"'{func}' instead of 'state space'"
+
+        return self.state_space_
+
+    @property
+    def goal_space(self):
+        if self.goal_space_ is None:
+            self.pipes[0].send(["goal space", None])
+            func, self.goal_space_ = self.pipes[0].recv()
+
+            assert func == "goal space", f"'{func}' instead of 'goal space'"
+
+        return self.goal_space_
+
+    @property
     def action_space(self):
 
         if self.action_space_ is None:
@@ -185,16 +210,6 @@ class Orchestrator:
             assert func == "action space", f"'{func}' istead of 'action space'"
 
         return self.action_space_
-
-    @property
-    def state_space(self):
-        if self.state_space_ is None:
-            self.pipes[0].send(["state space", None])
-            func, self.state_space_ = self.pipes[0].recv()
-
-            assert func == "state space", f"'{func}' instead of 'state space'"
-
-        return self.state_space_
 
     @property
     def reward_function(self):

@@ -4,7 +4,9 @@ import numpy as np
 
 
 class Task(object):
-
+    """
+    Parent class for all tasks
+    """
     def __init__(self,
                  bullet_client,
                  offset=(0, 0, 0),
@@ -24,14 +26,31 @@ class Task(object):
         self.max_steps = max_steps
 
     @staticmethod
-    def success_criterion(goal_info):
+    def success_criterion(goal):
+        """
+        define the success criterion for each task
+        :param goal_info:   a dictionary passed to experiment.py containing
+                            info about a goal (reached/desired)
+        :return: whether success_criterion is reached
+        """
         raise NotImplementedError()
 
-    def reward_function(self, done, goal_info, **kwargs):
+    def reward_function(self, goal, done, **kwargs):
+        """
+        define the reward function using goal_info
+        rewards should be normalized
+        :param done: Markov decision process - terminal boolean
+        :param goal_info: goal_info
+        :param kwargs:
+        :return: the reward
+        """
         raise NotImplementedError()
 
-    # TODO should we pass robot into method? What if gravity not in self.parameter distirbutions?
     def reset(self):
+        """
+        resets the task
+        :return:
+        """
         gravity_distribution = self.parameter_distributions.get("gravity", {})
 
         mean = gravity_distribution.get("mean", (0, 0, -9.81))
@@ -47,15 +66,26 @@ class Task(object):
         self.step_counter = 0
 
     def step(self, state_robot=None, robot=None):
+        """
+        step in the task
+        observation_robot is required to determine e.g. collisions
+        :param observation_robot: robots observation
+        :return: observation of the task, goal_info, terminal (done)
+        """
         self.step_counter += 1
 
-        state_task, goal_info, done = self.get_status(state_robot, robot)
+        state_task, goal, done, info = self.get_status(state_robot, robot)
 
         done |= self.step_counter >= self.max_steps
 
-        return state_task, goal_info, done
+        return state_task, goal, done, info
 
     def get_status(self, state_robot=None, robot=None):
+        """
+        get status of task
+        :param observation_robot:
+        :return:
+        """
         raise NotImplementedError()
 
     def get_expert_action(self, state_robot, robot):

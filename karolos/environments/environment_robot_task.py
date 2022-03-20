@@ -7,15 +7,22 @@ import pybullet_data as pd
 import pybullet_utils.bullet_client as bc
 from gym import spaces
 
-sys.path.append(str(Path(__file__).resolve().parent))
-
+sys.path.append(str(Path(__file__).resolve().parents[0]))
 from environment import Environment
-from environments_robot_task.robots import get_robot
-from environments_robot_task.tasks import get_task
 
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+try:
+    from .environments_robot_task.robots import get_robot
+    from .environments_robot_task.tasks import get_task
+except:
+    from environments_robot_task.robots import get_robot
+    from environments_robot_task.tasks import get_task
 
 class EnvironmentRobotTask(Environment):
-
+    """
+    A class to combine a robot instance with a task instance
+    to define a RL environment
+    """
     def __init__(self, task_config, robot_config, render=False,
                  bullet_client=None, **kwargs):
         self.render = render
@@ -34,8 +41,6 @@ class EnvironmentRobotTask(Environment):
             bullet_client.setTimeStep(time_step)
             bullet_client.setRealTimeSimulation(0)
 
-        bullet_client.loadURDF("plane.urdf")
-
         self.bullet_client = bullet_client
 
         self.task = get_task(task_config, self.bullet_client)
@@ -49,6 +54,8 @@ class EnvironmentRobotTask(Environment):
             'task': self.task.state_space,
         })
 
+        self.goal_space = self.task.goal_space
+
         self.reward_function = self.task.reward_function
         self.success_criterion = self.task.success_criterion
 
@@ -61,31 +68,26 @@ class EnvironmentRobotTask(Environment):
         Reset the environment and return new state
         """
 
-        try:
-            if desired_state is not None:
-                state_robot = self.robot.reset(desired_state.get("robot"))
-                state_task, goal_info = self.task.reset(self.robot, state_robot, desired_state.get("task"))
-            else:
-                state_robot = self.robot.reset()
-                state_task, goal_info = self.task.reset(self.robot, state_robot)
+        if desired_state is None:
+            desired_state = {}
 
-        except AssertionError as e:
-            return e
+        state_robot = self.robot.reset(desired_state.get("robot"))
+        state_task, goal, info = self.task.reset(desired_state.get("task"), self.robot, state_robot)
 
         state = {
             'robot': state_robot,
             'task': state_task
         }
 
-        return state, goal_info
+        return state, goal, info
 
     def step(self, action):
         state_robot = self.robot.step(action)
-        state_task, goal_info, done = self.task.step(state_robot, self.robot)
+        state_task, goal, done, info = self.task.step(state_robot, self.robot)
 
         state = {
             'robot': state_robot,
             'task': state_task
         }
 
-        return state, goal_info, done
+        return state, goal, done, info

@@ -17,7 +17,7 @@ from task import Task
 class TaskReach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 max_steps=100, parameter_distributions=None):
+                 max_steps=25, parameter_distributions=None):
 
         super(TaskReach, self).__init__(bullet_client=bullet_client,
                                         parameter_distributions=parameter_distributions,
@@ -30,7 +30,12 @@ class TaskReach(Task):
             (0., .8)
         ])
 
-        self.state_space = spaces.Box(-1, 1, shape=(3,))
+        self.state_space = spaces.Dict({})
+
+        self.goal_space = spaces.Dict({
+            "achieved": spaces.Box(-1, 1, shape=(3,)),
+            "desired": spaces.Box(-1, 1, shape=(3,)),
+        })
 
         self.target = bullet_client.createMultiBody(
             baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_SPHERE,
@@ -49,42 +54,44 @@ class TaskReach(Task):
         self.bullet_client.removeBody(self.target)
 
     @staticmethod
-    def success_criterion(goal_info):
-        goal_achieved = unwind_dict_values(goal_info["achieved"])
-        goal_desired = unwind_dict_values(goal_info["desired"])
+    def success_criterion(goal, **kwargs):
+        goal_achieved = unwind_dict_values(goal["achieved"])
+        goal_desired = unwind_dict_values(goal["desired"])
 
         goal_distance = np.linalg.norm(goal_achieved - goal_desired)
         return goal_distance < 0.05
 
-    def reward_function(self, goal_info, done, **kwargs):
-        if self.success_criterion(goal_info):
+    def reward_function(self, goal, done, **kwargs):
+        if self.success_criterion(goal):
             reward = 1.
         elif done:
             reward = -1.
         else:
-            goal_achieved = unwind_dict_values(goal_info["achieved"])
-            goal_desired = unwind_dict_values(goal_info["desired"])
+            goal_achieved = unwind_dict_values(goal["achieved"])
+            goal_desired = unwind_dict_values(goal["desired"])
 
             reward = np.exp(-1 * np.linalg.norm(goal_achieved - goal_desired)) - 1
             reward /= 10
 
         return reward
 
-    def reset(self, robot=None, state_robot=None, desired_state=None):
+    def reset(self, desired_state=None, robot=None, state_robot=None):
 
         super(TaskReach, self).reset()
 
         contact_points = True
 
         if desired_state is not None:
-            desired_state = [np.interp(value, [-1, 1], limits)
-                             for value, limits in
-                             zip(desired_state, self.limits)]
+            desired_state = np.array([np.interp(value, [-1, 1], limits)
+                                      for value, limits in
+                                      zip(desired_state, self.limits)])
 
             assert np.linalg.norm(
                 desired_state) < 0.85, \
                 f"desired_state puts target out of reach. " \
                 f"{np.linalg.norm(desired_state)}"
+
+            desired_state += self.offset
 
             self.bullet_client.resetBasePositionAndOrientation(
                 self.target, desired_state, [0, 0, 0, 1])
@@ -104,53 +111,52 @@ class TaskReach(Task):
 
             if np.linalg.norm(target_position) < 0.8:
                 target_position += self.offset
-                self.bullet_client.resetBasePositionAndOrientation(
-                    self.target, target_position, [0, 0, 0, 1])
+                self.bullet_client.resetBasePositionAndOrientation(self.target, target_position, [0, 0, 0, 1])
                 self.bullet_client.stepSimulation()
             else:
                 continue
 
             if robot:
-                contact_points = self.bullet_client.getContactPoints(
-                    robot.model_id, self.target)
+                contact_points = self.bullet_client.getContactPoints(robot.model_id, self.target)
             else:
                 contact_points = False
 
-        state, goal_info, done = self.get_status(state_robot, robot)
+        state, goal, done, info = self.get_status(state_robot, robot)
 
-        return state, goal_info
+        return state, goal, info
 
     def get_status(self, state_robot=None, robot=None):
         expert_action = None
         tcp_position = None
 
         if state_robot is not None and robot is not None:
-            expert_action = self.get_expert_prediction(state_robot, robot)
-            tcp_position = robot.get_tcp_position()
+            expert_action = self.get_expert_action(state_robot, robot)
+            tcp_position, _ = robot.get_tcp_pose()
 
         position_desired, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_desired = np.array(position_desired)
 
-        state = {
-            "goal": {"tcp_position": position_desired}
-        }
+        state = {}
 
-        done = self.step_counter >= self.max_steps
-
-        goal_info = {
+        goal = {
             'achieved': {
                 "tcp_position": tcp_position,
             },
             'desired': {
                 "tcp_position": position_desired,
             },
+        }
+
+        done = self.step_counter >= self.max_steps
+
+        info = {
             "expert_action": expert_action,
             "steps": self.step_counter
         }
 
-        return state, goal_info, done
+        return state, goal, done, info
 
-    def get_expert_prediction(self, state_robot, robot: Robot):
+    def get_expert_action(self, state_robot, robot: Robot):
         position_target, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_target = np.array(position_target)
 

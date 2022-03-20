@@ -20,6 +20,9 @@ Link = namedtuple("Link", ["mass", "linearDamping"])
 
 
 class Robot:
+    """
+    Parent class of all robots.
+    """
     class STATUS_HAND(Enum):
         CLOSED = -1
         CLOSING = 0
@@ -117,8 +120,6 @@ class Robot:
         assert len(self.ik_dof_joint_ids) == len(self.joints), "Mismatch between specified DOF and DOF found by Klampt!"
 
         if dht_params is not None:
-            assert len(self.joints_arm) == sum([None in dht_param for dht_param in dht_params])
-
             self.dht_params = dht_params
 
         # reset to initial position
@@ -159,6 +160,11 @@ class Robot:
         return np.array([self.ik_model.getDOFPosition(jj) for jj in self.ik_dof_joint_ids])
 
     def step(self, action: np.ndarray):
+        """
+        Execute an action using the robotic arm
+        :param action: the action
+        :return: an observation
+        """
         assert self.action_space.contains(action), f"{action}"
 
         action_arm = action[:len(self.joints_arm)]
@@ -244,8 +250,8 @@ class Robot:
         contact_points = True
 
         if desired_state is not None:
-            assert len(desired_state) == len(
-                self.joints), f"Please provide {len(self.joints)} values for resetting the robot!"
+            assert len(desired_state) == len(self.joints), \
+                f"Reset expected {len(self.joints)} values in desired state indead of {len(desired_state)}"
 
             desired_state_arm = desired_state[:len(self.joints_arm)]
             desired_state_hand = desired_state[len(self.joints_arm):]
@@ -284,18 +290,22 @@ class Robot:
 
         return state
 
-    def get_tcp_position(self):
+    def get_tcp_pose(self):
         tcp_position, tcp_orientation, _, _, _, _, tcp_velocity, _ = self.bullet_client.getLinkState(self.model_id,
                                                                                                      self.joint_name2id[
                                                                                                          "tcp"],
                                                                                                      computeLinkVelocity=True)
 
         tcp_position = np.array(tcp_position) - self.offset
-        # tcp_orientation = np.array(tcp_orientation)
+        tcp_orientation = np.array(tcp_orientation)
 
-        return tcp_position
+        return tcp_position, tcp_orientation
 
     def get_state(self):
+        """
+        Convert pybullet robot state to observation
+        :return: the observation
+        """
         joint_positions, joint_velocities = [], []
 
         for joint in self.joints:

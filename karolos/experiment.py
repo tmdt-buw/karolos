@@ -25,13 +25,26 @@ from agents.utils import unwind_dict_values, set_seed
 class Experiment:
     @staticmethod
     def get_initial_state(random: bool, env_id=None):
+        """
+        Initial state generator, if initial state is None a random initial state is chosen
+        The goal (e.g. TCP end point with reach task) can also be specified
+        :param random:
+        :param env_id:
+        :return: initial state or None
+        """
         initial_state = None
 
         return initial_state
 
     @staticmethod
     def similar_config(config_1, config_2):
-
+        """
+        check similarity between config1 and config2
+        required when re-loading previous experiments
+        :param config_1:
+        :param config_2:
+        :return: bool if configs are similar
+        """
         def ordered(obj):
             if isinstance(obj, dict):
                 return sorted((k, ordered(v)) for k, v in obj.items())
@@ -65,7 +78,13 @@ class Experiment:
         self.state_infos[env_id] = None
 
     def process_responses(self, env_responses, mode: str):
-
+        """
+        handle the responses sent back by environments
+        and return a request for each environment, e.g. the agents action or a reset command
+        :param env_responses: list of tuples (env_id, response) of env reponses
+        :param mode: "train" or "test"
+        :return: requests to each environment as list of tuples (env_id, request)
+        """
         requests = []
         results_episodes = []
 
@@ -168,6 +187,12 @@ class Experiment:
         self.experiment_config = experiment_config
 
     def run(self, results_dir="./results", experiment_name=None, seed=None):
+        """
+        Runs the experiment
+        :param results_dir: directory where results are saved
+        :param experiment_name: name of experiment and directory name
+        :param seed: seed for random, numpy, cuda and pytorch
+        """
         experiment_config = self.experiment_config.copy()
 
         if seed is None:
