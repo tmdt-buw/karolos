@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 from pathlib import Path
 import sys
@@ -36,7 +37,7 @@ def test_environment_robot_task(robot, task):
     done = False
 
     while not done:
-        state, goal_info, done = env.step(env.action_space.sample())
+        state, goal, done, info = env.step(env.action_space.sample())
 
         step += 1
 
