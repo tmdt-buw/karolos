@@ -50,33 +50,16 @@ class RobotPanda(Robot):
         }
 
         dht_params = [
-            [None, .333, 0., 0.],
-            [None, 0., 0., -np.pi / 2],
-            [None, .316, 0., np.pi / 2],
-            [None, 0., .0825, np.pi / 2],
-            [None, .384, -.0825, -np.pi / 2],
-            [None, 0., 0., np.pi / 2],
-            [None, 0., .088, np.pi / 2],
-            [0., .107, 0., 0.],
+            {"d": .333, "a": 0., "alpha": 0., "proximal": True},
+            {"d": 0., "a": 0., "alpha": -np.pi / 2, "proximal": True},
+            {"d": .316, "a": 0., "alpha": np.pi / 2, "proximal": True},
+            {"d": 0., "a": .0825, "alpha": np.pi / 2, "proximal": True},
+            {"d": .384, "a": -.0825, "alpha": -np.pi / 2, "proximal": True},
+            {"d": 0., "a": 0., "alpha": np.pi / 2, "proximal": True},
+            {"d": 0., "a": .088, "alpha": np.pi / 2, "proximal": True},
+            {"theta": 0., "d": .107, "a": 0., "alpha": 0., "proximal": True},
+            {"theta": 0., "d": -.105, "a": 0., "alpha": np.pi, "proximal": True},
         ]
-
-        # dht_params = [(
-        #     (None, .333, 0., 0.), (
-        #         (None, 0., 0., -np.pi / 2), (
-        #             (None, .316, 0., np.pi / 2), (
-        #                 (None, 0., .0825, np.pi / 2), (
-        #                     (None, .384, -.0825, -np.pi / 2), (
-        #                         (None, 0., 0., np.pi / 2), (
-        #                             (None, 0., .088, np.pi / 2), (
-        #                                 (0., .107, 0., 0.)
-        #                             )
-        #                         )
-        #                     )
-        #                 )
-        #             )
-        #         )
-        #     )
-        # )]
 
         self.index_tcp = len(links) - 1
 

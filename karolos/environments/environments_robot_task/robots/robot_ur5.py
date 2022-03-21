@@ -39,13 +39,18 @@ class RobotUR5(Robot):
         }
 
         dht_params = [
-            [None, 0, .15185, np.pi / 2],
-            [None, -.24355, 0, 0],
-            [None, -.2132, 0, 0],
-            [None, 0, .13105, np.pi / 2],
-            [None, 0, .08535, -np.pi / 2],
-            [None, 0, .0921, 0]
+            {"d": .089159, "a": 0., "alpha": np.pi / 2.},
+            {"d": 0., "a": -.425, "alpha": 0.},
+            {"d": 0., "a": -.39225, "alpha": 0.},
+            {"d": .10915, "a": 0., "alpha": np.pi / 2.},
+            {"d": .09465, "a": 0., "alpha": -np.pi / 2.},
+            {"d": .0823, "a": 0., "alpha": 0},
+            {"theta": np.pi / 2, "d": .15, "a": 0., "alpha": np.pi},
+
+            #{"theta": 0., "d": -.105, "a": 0., "alpha": np.pi},
         ]
+
+
 
         self.index_tcp = 10
 

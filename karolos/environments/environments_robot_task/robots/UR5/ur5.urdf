@@ -1,20 +1,5 @@
 <?xml version="1.0" ?>
 <robot name="ur5">
-    <link name="base">
-        <inertial>
-            <mass value="0.0"/>
-            <inertia ixx="1.0" ixy="1.0" ixz="1.0"
-                     iyy="0.0" iyz="0.0" izz="0.0"/>
-        </inertial>
-    </link>
-
-    <joint name="base_joint" type="fixed">
-        <origin xyz="0 0 0" rpy="0 0 1.570796"/>
-        <parent link="base"/>
-        <child link="base_link"/>
-        <axis xyz="0 -1 0"/>
-    </joint>
-
     <link name="base_link">
         <visual>
             <geometry>
@@ -72,7 +57,7 @@
     <joint name="shoulder_lift_joint" type="revolute">
         <parent link="shoulder_link"/>
         <child link="upper_arm_link"/>
-        <origin rpy="0.0 0.0 0.0" xyz="0.0 0.13585 0.0"/>
+        <origin rpy="0.0 1.5708 0.0" xyz="0.0 0.13585 0.0"/>
         <axis xyz="0 1 0"/>
         <limit effort="300.0" lower="-2.35619449019" upper="2.35619449019"
                velocity="3.15"/>
@@ -116,8 +101,8 @@
             <geometry>
                 <mesh filename="package://meshes/visual/forearm.obj"/>
             </geometry>
-            <material name="LightGrey">
-                <color rgba="0.7 0.7 0.7 1.0"/>
+            <material name="r">
+                <color rgba="0. 0.7 0.7 1.0"/>
             </material>
         </visual>
         <collision>
@@ -136,7 +121,7 @@
     <joint name="wrist_1_joint" type="revolute">
         <parent link="forearm_link"/>
         <child link="wrist_1_link"/>
-        <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.39225"/>
+        <origin rpy="0.0 1.5708 0.0" xyz="0.0 0.0 0.39225"/>
         <axis xyz="0 1 0"/>
         <limit effort="300.0" lower="-2.35619449019" upper="2.35619449019"
                velocity="3.2"/>
@@ -252,8 +237,8 @@
             <geometry>
                 <mesh filename="package://meshes/visual/robotiq_85_base_link_fine.STL"/>
             </geometry>
-            <material name="red">
-                <color rgba="1 0 0 1"/>
+            <material name="dark-grey">
+                <color rgba=".16 .16 .16 1"/>
             </material>
         </visual>
         <collision>
@@ -282,8 +267,8 @@
             <geometry>
                 <mesh filename="package://meshes/visual/inner_finger_fine.STL"/>
             </geometry>
-            <material name="green">
-                <color rgba="0 1 0 1"/>
+            <material name="dark-grey">
+                <color rgba=".16 .16 .16 1"/>
             </material>
         </visual>
         <collision>
@@ -330,8 +315,8 @@
             <geometry>
                 <mesh filename="package://meshes/visual/inner_finger_fine.STL"/>
             </geometry>
-            <material name="blue">
-                <color rgba="0 0 1 1"/>
+            <material name="dark-grey">
+                <color rgba=".16 .16 .16 1"/>
             </material>
         </visual>
         <collision>
