@@ -13,7 +13,7 @@ class ReplayBufferPriority(ReplayBuffer):
         super(ReplayBufferPriority, self).__init__(buffer_size=buffer_size,
                                                    uses_priority=True)
 
-        self.tree = SumTree(self.buffer_size)
+        self.memory = SumTree(self.buffer_size)
 
         self.e = e
         self.a = a
@@ -25,10 +25,10 @@ class ReplayBufferPriority(ReplayBuffer):
         experience = [experience[key] for key in self.experience_keys]
 
         p = self._getPriority(error)
-        self.tree.add(experience, p)
+        self.memory.add(experience, p)
 
     def sample(self, n_samples):
-        segment = self.tree.total() / n_samples
+        segment = self.memory.total() / n_samples
 
         s = np.random.uniform(np.arange(n_samples), np.arange(n_samples) + 1)
         s *= segment
@@ -37,7 +37,7 @@ class ReplayBufferPriority(ReplayBuffer):
         experiences = []
 
         for s_ in s:
-            index, _, experience = self.tree.get(s_)
+            index, _, experience = self.memory.get(s_)
 
             indices.append(index)
             experiences.append(experience)
@@ -49,8 +49,10 @@ class ReplayBufferPriority(ReplayBuffer):
 
     def update(self, idx, error):
         p = self._getPriority(error)
-        self.tree.update(idx, p)
+        self.memory.update(idx, p)
 
+    def clear(self):
+        self.memory.clear()
 
 class SumTree:
     write = 0
@@ -104,3 +106,7 @@ class SumTree:
         dataIdx = idx - self.capacity + 1
 
         return idx, self.tree[idx], self.data[dataIdx]
+
+    def clear(self):
+        self.tree = np.zeros(2 * self.capacity - 1)
+        self.data = np.zeros(self.capacity, dtype=object)

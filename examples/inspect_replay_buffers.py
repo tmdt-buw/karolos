@@ -15,6 +15,8 @@ for replay_buffer_name in replay_buffers:
         "buffer_size": 50
     })
 
+    replay_buffer.experience_keys = ["state", "action", "reward", "next_state", "done"]
+
     for i in range(150):
         sample = {key: i for key in ["state", "action", "reward", "next_state", "done"]}
         replay_buffer.add(sample, i)
@@ -72,3 +74,8 @@ for replay_buffer_name in replay_buffers:
     plt.ylabel("sample time per sample")
     plt.title(replay_buffer_name)
     plt.show()
+
+    # test clearing buffer
+
+    replay_buffer.clear()
+    assert len(replay_buffer) == 0

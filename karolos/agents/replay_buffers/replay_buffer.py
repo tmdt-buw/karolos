@@ -17,3 +17,6 @@ class ReplayBuffer:
 
     def update(self, indices, error):
         pass
+
+    def clear(self):
+        raise NotImplementedError
