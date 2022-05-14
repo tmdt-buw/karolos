@@ -23,7 +23,7 @@ class GymWrapper(Environment):
 
             return act
 
-    def __init__(self, name, max_steps=200, reward_success_threshold=np.inf, step_success_threshold=np.inf,
+    def __init__(self, name, max_steps=np.inf, reward_success_threshold=np.inf, step_success_threshold=np.inf,
                  render=False, **kwargs):
         self.env = self.ActionWrapper(gym.make(name))
         self.step_counter = 0
@@ -65,7 +65,7 @@ class GymWrapper(Environment):
 
         state = self.env.reset()
 
-        state, goal, done, info = self.get_status(state)
+        state, goal, done, info = self.get_state(state)
 
         return state, goal, info
 
@@ -76,9 +76,9 @@ class GymWrapper(Environment):
 
         self.__render()
 
-        return self.get_status(state, reward, done)
+        return self.get_state(state, reward, done)
 
-    def get_status(self, state, reward=None, done=False):
+    def get_state(self, state, reward=None, done=False):
         state = {
             "state": state
         }
