@@ -165,9 +165,9 @@ class Push(Task):
                 else:
                     contact_points = False
 
-        return self.get_status(state_robot)
+        return self.get_state(state_robot)
 
-    def get_status(self, state_robot=None):
+    def get_state(self, state_robot=None):
         if state_robot is None:
             position_tcp = None
         else:

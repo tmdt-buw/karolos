@@ -23,7 +23,7 @@ class EnvironmentRobotTask(Environment):
     A class to combine a robot instance with a task instance
     to define a RL environment
     """
-    def __init__(self, task_config, robot_config, render=False,
+    def __init__(self, robot_config, task_config, render=False,
                  bullet_client=None, **kwargs):
         self.render = render
 
@@ -63,7 +63,7 @@ class EnvironmentRobotTask(Environment):
         del self.robot
         del self.task
 
-    def reset(self, desired_state=None):
+    def reset(self, desired_state=None, desired_goal=None):
         """
         Reset the environment and return new state
         """
@@ -72,7 +72,7 @@ class EnvironmentRobotTask(Environment):
             desired_state = {}
 
         state_robot = self.robot.reset(desired_state.get("robot"))
-        state_task, goal, info = self.task.reset(desired_state.get("task"), self.robot, state_robot)
+        state_task, goal, info = self.task.reset(desired_state.get("task"), desired_goal, self.robot, state_robot)
 
         state = {
             'robot': state_robot,

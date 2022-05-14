@@ -74,13 +74,13 @@ class Task(object):
         """
         self.step_counter += 1
 
-        state_task, goal, done, info = self.get_status(state_robot, robot)
+        state_task, goal, done, info = self.get_state(state_robot, robot)
 
         done |= self.step_counter >= self.max_steps
 
         return state_task, goal, done, info
 
-    def get_status(self, state_robot=None, robot=None):
+    def get_state(self, state_robot=None, robot=None):
         """
         get status of task
         :param observation_robot:
@@ -89,7 +89,6 @@ class Task(object):
         raise NotImplementedError()
 
     def get_expert_action(self, state_robot, robot):
-        # todo issue warning
         warnings.warn(
             'The task does not have an expert policy to query and thus cannot be used for Imitation Learning.')
         return None

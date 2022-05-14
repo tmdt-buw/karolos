@@ -19,4 +19,6 @@ def get_task(task_config, bullet_client):
     else:
         raise NotImplementedError(f"Unknown task {task_name}")
 
+    task.name = task_name
+
     return task

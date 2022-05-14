@@ -8,7 +8,6 @@ from gym import spaces
 from numpy.random import RandomState
 
 from karolos.agents.utils import unwind_dict_values
-from karolos.environments.environments_robot_task.robots.robot import Robot
 
 sys.path.append(str(Path(__file__).resolve().parent))
 from task import Task
@@ -17,12 +16,14 @@ from task import Task
 class TaskReach(Task):
 
     def __init__(self, bullet_client, offset=(0, 0, 0),
-                 max_steps=25, parameter_distributions=None):
+                 max_steps=25, accuracy=0.05, parameter_distributions=None):
 
         super(TaskReach, self).__init__(bullet_client=bullet_client,
                                         parameter_distributions=parameter_distributions,
                                         offset=offset,
                                         max_steps=max_steps)
+
+        self.accuracy = accuracy
 
         self.limits = np.array([
             (-.8, .8),
@@ -30,38 +31,43 @@ class TaskReach(Task):
             (0., .8)
         ])
 
-        self.state_space = spaces.Dict({})
+        self.state_space = spaces.Dict({
+        })
 
         self.goal_space = spaces.Dict({
-            "achieved": spaces.Box(-1, 1, shape=(3,)),
-            "desired": spaces.Box(-1, 1, shape=(3,)),
+            "achieved": spaces.Dict({
+                "position": spaces.Box(-np.inf, np.inf, shape=(3,), dtype=np.float64)
+            }),
+            "desired": spaces.Dict({
+                "position": spaces.Box(-np.inf, np.inf, shape=(3,), dtype=np.float64)
+            })
         })
 
         self.target = bullet_client.createMultiBody(
             baseVisualShapeIndex=bullet_client.createVisualShape(p.GEOM_SPHERE,
-                                                                 radius=.03,
+                                                                 radius=self.accuracy,
                                                                  rgbaColor=[0, 1, 1, 1],
                                                                  ),
-            baseCollisionShapeIndex=bullet_client.createCollisionShape(p.GEOM_SPHERE,
-                                                                       radius=.03,
-                                                                       ),
         )
 
-        self.random = RandomState(
-            int.from_bytes(os.urandom(4), byteorder='little'))
+        self.random = RandomState(int.from_bytes(os.urandom(4), byteorder='little'))
 
     def __del__(self):
         self.bullet_client.removeBody(self.target)
 
-    @staticmethod
-    def success_criterion(goal, **kwargs):
+    def success_criterion(self, goal, *args, **kwargs):
         goal_achieved = unwind_dict_values(goal["achieved"])
         goal_desired = unwind_dict_values(goal["desired"])
 
-        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
-        return goal_distance < 0.05
+        goal_achieved = np.array(
+            [np.interp(value, [-1, 1], limits) for value, limits in zip(goal_achieved, self.limits)])
+        goal_desired = np.array(
+            [np.interp(value, [-1, 1], limits) for value, limits in zip(goal_desired, self.limits)])
 
-    def reward_function(self, goal, done, **kwargs):
+        goal_distance = np.linalg.norm(goal_achieved - goal_desired)
+        return goal_distance < self.accuracy
+
+    def reward_function(self, goal, done, *args, **kwargs):
         if self.success_criterion(goal):
             reward = 1.
         elif done:
@@ -70,120 +76,89 @@ class TaskReach(Task):
             goal_achieved = unwind_dict_values(goal["achieved"])
             goal_desired = unwind_dict_values(goal["desired"])
 
+            goal_achieved = np.array(
+                [np.interp(value, [-1, 1], limits) for value, limits in zip(goal_achieved, self.limits)])
+            goal_desired = np.array(
+                [np.interp(value, [-1, 1], limits) for value, limits in zip(goal_desired, self.limits)])
+
             reward = np.exp(-1 * np.linalg.norm(goal_achieved - goal_desired)) - 1
-            reward /= 10
+            reward /= self.max_steps
 
         return reward
 
-    def reset(self, desired_state=None, robot=None, state_robot=None):
+    def reset(self, desired_state=None, desired_goal=None, robot=None, state_robot=None, force=False):
 
         super(TaskReach, self).reset()
 
-        contact_points = True
+        if desired_goal is None:
+            desired_goal = {}
 
-        if desired_state is not None:
-            desired_state = np.array([np.interp(value, [-1, 1], limits)
-                                      for value, limits in
-                                      zip(desired_state, self.limits)])
+        def complete_state(state_dict, space):
+            for key in space:
+                if key not in state_dict:
+                    state_dict[key] = space[key].sample()
+                elif type(space[key]) == spaces.Dict:
+                    state_dict[key] = complete_state(state_dict[key], space[key])
+            return state_dict
 
-            assert np.linalg.norm(
-                desired_state) < 0.85, \
-                f"desired_state puts target out of reach. " \
-                f"{np.linalg.norm(desired_state)}"
+        desired_goal = complete_state(desired_goal, self.goal_space)
 
-            desired_state += self.offset
+        while True:
+            desired_target_position = np.array([np.interp(value, [-1, 1], limits) for value, limits in
+                                                zip(desired_goal["desired"]["position"], self.limits)])
 
-            self.bullet_client.resetBasePositionAndOrientation(
-                self.target, desired_state, [0, 0, 0, 1])
-
+            self.bullet_client.resetBasePositionAndOrientation(self.target, desired_target_position + self.offset,
+                                                               [0, 0, 0, 1])
             self.bullet_client.stepSimulation()
 
-            if robot:
-                contact_points = self.bullet_client.getContactPoints(
-                    robot.model_id, self.target)
-            else:
-                contact_points = False
-
-        while contact_points:
-
-            target_position = np.random.uniform(self.limits[:, 0],
-                                                self.limits[:, 1])
-
-            if np.linalg.norm(target_position) < 0.8:
-                target_position += self.offset
-                self.bullet_client.resetBasePositionAndOrientation(self.target, target_position, [0, 0, 0, 1])
-                self.bullet_client.stepSimulation()
-            else:
-                continue
-
-            if robot:
+            if robot and not force:
                 contact_points = self.bullet_client.getContactPoints(robot.model_id, self.target)
             else:
                 contact_points = False
 
-        state, goal, done, info = self.get_status(state_robot, robot)
+            if not contact_points and np.linalg.norm(desired_target_position) < 0.8:
+                break
+            else:
+                # try reset again with random state
+                desired_goal = self.goal_space.sample()
+
+        state, goal, done, info = self.get_state(state_robot, robot)
 
         return state, goal, info
 
-    def get_status(self, state_robot=None, robot=None):
-        expert_action = None
-        tcp_position = None
+    def get_state(self, state_robot=None, robot=None):
+        position_achieved = None
 
         if state_robot is not None and robot is not None:
-            expert_action = self.get_expert_action(state_robot, robot)
-            tcp_position, _ = robot.get_tcp_pose()
+            position_achieved, _ = robot.get_tcp_pose()
+            position_achieved = np.array(
+                [np.interp(value, limits, [-1, 1]) for value, limits in zip(position_achieved, self.limits)])
 
         position_desired, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
         position_desired = np.array(position_desired)
+        position_desired -= self.offset
+
+        position_desired = np.array(
+            [np.interp(value, limits, [-1, 1]) for value, limits in zip(position_desired, self.limits)])
 
         state = {}
 
         goal = {
             'achieved': {
-                "tcp_position": tcp_position,
+                "position": position_achieved,
             },
             'desired': {
-                "tcp_position": position_desired,
+                "position": position_desired,
             },
         }
 
         done = self.step_counter >= self.max_steps
 
         info = {
-            "expert_action": expert_action,
             "steps": self.step_counter
         }
 
         return state, goal, done, info
-
-    def get_expert_action(self, state_robot, robot: Robot):
-        position_target, _ = self.bullet_client.getBasePositionAndOrientation(self.target)
-        position_target = np.array(position_target)
-
-        current_positions = [np.interp(position, [-1, 1], joint.limits) for joint, position in
-                             zip(robot.joints, state_robot['joint_positions'])]
-
-        current_positions_arm = np.array(current_positions[:-2])
-
-        action = np.zeros(robot.action_space.shape)
-
-        # move to target
-        goal_position = position_target.copy()
-
-        ik_result = robot.calculate_inverse_kinematics(goal_position, [1, 0, 0, 0], initial_pose=current_positions)
-
-        if ik_result is None:
-            return None
-
-        delta_poses_arm = ik_result[:-2] - current_positions_arm
-
-        action_arm = [delta_pose / (joint.limits[1] - joint.limits[0]) / robot.scale
-                      for (_, joint), delta_pose in zip(robot.joints_arm.items(), delta_poses_arm)]
-
-        action_arm = np.clip(action_arm, -1, 1)
-        action[:len(robot.joints_arm)] = action_arm
-
-        return action
 
 
 if __name__ == "__main__":
