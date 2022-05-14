@@ -24,12 +24,14 @@ class ReplayBufferUniform(ReplayBuffer):
 
         self.memory.append(experience)
 
-    def sample(self, n_samples):
+    def sample(self, n_samples, remove=False):
         """Randomly sample a batch of experiences from memory."""
-        experiences = random.choices(self.memory, k=n_samples)
+        if not remove:
+            experiences = random.choices(self.memory, k=n_samples)
+        else:
+            experiences = [self.memory.pop() for _ in range(min(len(self.memory), n_samples))]
 
-        experiences = \
-            map(np.stack, zip(*experiences))
+        experiences = map(np.stack, zip(*experiences))
 
         return experiences, None
 

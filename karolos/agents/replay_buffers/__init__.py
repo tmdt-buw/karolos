@@ -8,11 +8,6 @@ def get_replay_buffer(config):
     elif replay_buffer_name == "priority":
         from .replay_buffer_priority import ReplayBufferPriority
         buffer = ReplayBufferPriority(**config)
-    elif replay_buffer_name == "OnPolBuffer":
-        from .OnPolBuffer_WIP import OnPolBuffer
-        import warnings
-        warnings.warn("OnPolBuffer is WIP")
-        buffer = OnPolBuffer(**config)
     else:
         raise NotImplementedError(f"Unknown replay buffer {replay_buffer_name}")
 
