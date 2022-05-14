@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.distributions import MultivariateNormal
 
 
 class Clamp(torch.nn.Module):
@@ -11,7 +12,7 @@ class Clamp(torch.nn.Module):
         self.max = max
 
     def forward(self, x):
-        return torch.sigmoid(x) * (self.max - self.min) + self.min
+        return torch.clamp(x, self.min, self.max)
 
 
 def init_xavier_uniform(m):
@@ -20,8 +21,13 @@ def init_xavier_uniform(m):
 
 
 class NeuralNetwork(nn.Module):
-    def __init__(self, in_dim, network_structure):
+    def __init__(self, in_dims, network_structure):
         super(NeuralNetwork, self).__init__()
+
+        if type(in_dims) is int:
+            in_dim = in_dims
+        else:
+            in_dim = int(np.sum([np.product(dim) for dim in in_dims]))
 
         assert type(in_dim) == int
 
@@ -86,9 +92,76 @@ class NeuralNetwork(nn.Module):
         return activations
 
 
+class Actor(NeuralNetwork):
+    def __init__(self, state_dims, action_dim, network_structure, log_std_min=-20, log_std_max=2):
+        in_dim = int(np.sum([np.product(state_dim) for state_dim in state_dims]))
+
+        out_dim = int(np.product(action_dim)) * 2
+
+        super(Actor, self).__init__(in_dim, network_structure)
+
+        dummy = super(Actor, self).forward(torch.zeros((1, in_dim)))
+
+        self.operators.append(nn.Linear(dummy.shape[1], out_dim))
+
+        self.operators.apply(init_xavier_uniform)
+
+        self.std_clamp = Clamp(log_std_min, log_std_max)
+
+    def forward(self, *state_args, deterministic=True):
+        x = super(Actor, self).forward(*state_args)
+
+        mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
+
+        log_std = self.std_clamp(log_std)
+        std = log_std.exp()
+
+        normal = MultivariateNormal(mean, torch.diag_embed(std.pow(2)))
+
+        if deterministic:
+            action_base = mean
+        else:
+            action_base = normal.rsample()
+
+        log_prob = normal.log_prob(action_base)
+        log_prob.unsqueeze_(-1)
+
+        action = torch.tanh(action_base)
+
+        action_bound_compensation = (
+                2 * (np.log(2) - action_base - torch.nn.functional.softplus(-2 * action_base))).sum(dim=1,
+                                                                                                    keepdim=True)
+
+        log_prob.sub_(action_bound_compensation)
+
+        return action, log_prob
+
+    def evaluate(self, *state_args, action):
+        x = super(Actor, self).forward(*state_args)
+        mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
+
+        log_std = self.std_clamp(log_std)
+        std = log_std.exp()
+
+        normal = MultivariateNormal(mean, torch.diag_embed(std.pow(2)))
+
+        action_base = torch.atanh(action)
+
+        log_prob = normal.log_prob(action_base)
+        log_prob.unsqueeze_(-1)
+
+        action_bound_compensation = (2 * (np.log(2) - action_base - torch.nn.functional.softplus(-2 * action_base))) \
+            .sum(dim=1, keepdim=True)
+        log_prob.sub_(action_bound_compensation)
+
+        entropy = normal.entropy()
+
+        return log_prob, entropy
+
+
 class Critic(NeuralNetwork):
-    def __init__(self, state_dims, action_dim, network_structure):
-        in_dim = int(np.sum([np.product(arg) for arg in state_dims]) + np.product(action_dim))
+    def __init__(self, in_dims, network_structure):
+        in_dim = int(np.sum([np.product(arg) for arg in in_dims]))
 
         super(Critic, self).__init__(in_dim, network_structure)
 
@@ -100,19 +173,3 @@ class Critic(NeuralNetwork):
 
     def forward(self, *args):
         return super(Critic, self).forward(*args)
-
-
-if __name__ == "__main__":
-    use_cuda = torch.cuda.is_available()
-    device = torch.device('cuda' if use_cuda else 'cpu')
-
-    network_structure = [('linear', 64), ('relu', None), ('dropout', 0.2), ('linear', 32)]
-
-    neural_network = NeuralNetwork(21, network_structure).to(device)
-
-    print(neural_network)
-
-    x = torch.rand((1, 21)).to(device)
-    y = neural_network(x)
-
-    print(y.shape)

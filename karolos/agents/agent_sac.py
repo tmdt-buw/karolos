@@ -8,6 +8,7 @@ import os.path as osp
 import sys
 from pathlib import Path
 
+from gym import spaces
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,52 +17,7 @@ from torch.distributions import MultivariateNormal
 sys.path.append(str(Path(__file__).resolve().parent))
 
 from agent import Agent
-from nn import NeuralNetwork, Clamp, init_xavier_uniform, Critic
-
-
-class Actor(NeuralNetwork):
-    def __init__(self, state_dims, action_dim, network_structure, log_std_min=-20, log_std_max=2):
-        in_dim = int(np.sum([np.product(state_dim) for state_dim in state_dims]))
-
-        out_dim = int(np.product(action_dim)) * 2
-
-        super(Actor, self).__init__(in_dim, network_structure)
-
-        dummy = super(Actor, self).forward(torch.zeros((1, in_dim)))
-
-        self.operators.append(nn.Linear(dummy.shape[1], out_dim))
-
-        self.operators.apply(init_xavier_uniform)
-
-        self.std_clamp = Clamp(log_std_min, log_std_max)
-
-    def forward(self, *state_args, deterministic=True):
-        x = super(Actor, self).forward(*state_args)
-
-        mean, log_std = torch.split(x, x.shape[1] // 2, dim=1)
-
-        log_std = self.std_clamp(log_std)
-
-        if deterministic:
-            action = torch.tanh(mean)
-            log_prob = torch.zeros(log_std.shape[0]).unsqueeze_(-1)
-        else:
-            std = log_std.exp()
-
-            normal = MultivariateNormal(mean, torch.diag_embed(std.pow(2)))
-            action_base = normal.rsample()
-
-            log_prob = normal.log_prob(action_base)
-            log_prob.unsqueeze_(-1)
-
-            action = torch.tanh(action_base)
-
-            action_bound_compensation = torch.log(1. - action.pow(2) + np.finfo(float).eps).sum(dim=1, keepdim=True)
-
-            log_prob.sub_(action_bound_compensation)
-
-        return action, log_prob
-
+from nn import Actor, Critic
 
 class AgentSAC(Agent):
     def __init__(self, config, state_space, goal_space, action_space, reward_function, experiment_dir=None):
@@ -87,11 +43,11 @@ class AgentSAC(Agent):
         critic_structure = config.get('critic_structure', [])
 
         self.actor = Actor((self.state_dim, self.goal_dim), self.action_dim, actor_structure).to(self.device)
-        self.critic_1 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(self.device)
-        self.critic_2 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(self.device)
-        self.critic_target_1 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(
+        self.critic_1 = Critic((self.state_dim, self.goal_dim, self.action_dim), critic_structure).to(self.device)
+        self.critic_2 = Critic((self.state_dim, self.goal_dim, self.action_dim), critic_structure).to(self.device)
+        self.critic_target_1 = Critic((self.state_dim, self.goal_dim, self.action_dim), critic_structure).to(
             self.device)
-        self.critic_target_2 = Critic((self.state_dim, self.goal_dim), self.action_dim, critic_structure).to(
+        self.critic_target_2 = Critic((self.state_dim, self.goal_dim, self.action_dim), critic_structure).to(
             self.device)
 
         self.optimizer_actor = torch.optim.AdamW(self.actor.parameters(), lr=learning_rate_actor,
@@ -252,13 +208,29 @@ class AgentSAC(Agent):
         goals = torch.tensor(goals, dtype=torch.float).to(self.device)
 
         with torch.no_grad():
-            actions, _ = self.actor(states, goals, deterministic=deterministic)
+            actions_raw, _ = self.actor(states, goals, deterministic=deterministic)
 
-        actions = actions.detach().cpu().numpy()
+        actions_raw = actions_raw.detach().cpu().numpy()
 
-        actions = actions.clip(self.action_space.low, self.action_space.high)
+        if type(self.action_space) is spaces.Box:
+            actions = actions_raw.clip(self.action_space.low, self.action_space.high)
+        elif type(self.action_space) is spaces.Discrete:
+            actions = actions_raw
+        elif type(self.action_space) is spaces.Dict:
+            actions = [{}] * len(actions_raw)
 
-        return actions
+            idx_from = 0
+
+            for key, space in self.action_space.items():
+                idx_to = idx_from + space.shape[0]
+                for ii, action in enumerate(actions_raw[:,idx_from:idx_to].clip(space.low, space.high)):
+                    actions[ii][key] = action
+                idx_from = idx_to
+
+        else:
+            raise ValueError(f"Unexpected action_space type: {type(self.action_space)}")
+
+        return actions,
 
     def set_target_entropy(self, target_entropy):
         # todo: do we still need this function? Where is it used?

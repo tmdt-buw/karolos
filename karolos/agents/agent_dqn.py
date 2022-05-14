@@ -160,4 +160,4 @@ class AgentDQN(Agent):
 
             actions[indices_deterministic] = actions_deterministic
 
-        return actions
+        return actions,

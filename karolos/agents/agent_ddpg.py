@@ -99,11 +99,11 @@ class AgentDDPG(Agent):
 
         predicted_value = self.critic(states, goals, actions)
 
-        predicted_next_action = self.actor(next_states, next_goals)
+        predicted_next_actions = self.actor(next_states, next_goals)
 
         # Train critic
-        target_value = rewards + (1 - dones) * self.reward_discount * self.critic_target(next_states,
-                                                                                         predicted_next_action)
+        target_value = rewards + (1 - dones) * self.reward_discount * self.critic_target(next_states, next_goals,
+                                                                                         predicted_next_actions)
 
         critic_loss = self.loss_critic(predicted_value, target_value)
 
@@ -112,8 +112,8 @@ class AgentDDPG(Agent):
         self.optimizer_critic.step()
 
         # Training actor
-        predicted_actions = self.actor(states)
-        loss_actor = -self.critic(states, predicted_actions).mean()
+        predicted_actions = self.actor(states, goals)
+        loss_actor = -self.critic(states, goals, predicted_actions).mean()
 
         # imitate expert
 
@@ -170,4 +170,4 @@ class AgentDDPG(Agent):
 
         action = action.clip(self.action_space.low, self.action_space.high)
 
-        return action
+        return action,
