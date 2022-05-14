@@ -36,7 +36,7 @@ for robot, desired_state_robot in robots:
         print(f"Display: {robot} & {task}")
 
         env = get_env({
-            "environment": "karolos",
+            "name": "robot-task",
             "bullet_client": p,
 
             "task_config": {

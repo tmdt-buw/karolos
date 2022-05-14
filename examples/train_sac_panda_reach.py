@@ -32,7 +32,7 @@ if __name__ == "__main__":
             "critic_structure": [('linear', 128), ("tanh", None)] * 3,
         },
         "env_config": {
-            "environment": "karolos",
+            "name": "robot-task",
 
             "task_config": {
                 "name": "reach",

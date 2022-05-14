@@ -54,7 +54,7 @@ if __name__ == "__main__":
             ]
         },
         "env_config": {
-            "environment": "karolos",
+            "name": "robot-task",
 
             "task_config": {
                 "name": "reach",

@@ -29,7 +29,7 @@ for robot, task in product(robots, tasks):
     print(robot, task)
 
     env_config = {
-        "environment": "karolos",
+        "name": "robot-task",
         "bullet_client": p,
         "task_config": {
             "name": task,
