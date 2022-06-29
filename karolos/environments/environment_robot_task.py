@@ -47,7 +47,7 @@ class EnvironmentRobotTask(Environment):
 
         self.robot = get_robot(robot_config, self.bullet_client)
 
-        self.action_space = self.robot.action_space
+        self.action_space = spaces.flatten_space(self.robot.action_space)
 
         self.state_space = spaces.Dict({
             'robot': self.robot.state_space,
@@ -59,7 +59,7 @@ class EnvironmentRobotTask(Environment):
         self.reward_function = self.task.reward_function
         self.success_criterion = self.task.success_criterion
 
-    def __exit__(self):
+    def __del__(self):
         del self.robot
         del self.task
 
@@ -82,6 +82,8 @@ class EnvironmentRobotTask(Environment):
         return state, goal, info
 
     def step(self, action):
+        action = spaces.unflatten(self.robot.action_space, action)
+
         state_robot = self.robot.step(action)
         state_task, goal, done, info = self.task.step(state_robot, self.robot)
 

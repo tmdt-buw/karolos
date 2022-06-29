@@ -20,4 +20,6 @@ def get_robot(robot_config, bullet_client=None):
     else:
         raise ValueError(f"Unknown robot: {robot_name}")
 
+    robot.name = robot_name
+
     return robot

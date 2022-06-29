@@ -7,7 +7,7 @@ import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parent))
 
-from robot import Robot
+from robot import Robot, Link
 
 
 # todo implement domain randomization
@@ -38,6 +38,21 @@ class RobotUR5(Robot):
             "right_inner_finger_joint": (0.3, (0., .0425), 2., 20),
         }
 
+        links = {
+            "shoulder_link": Link(3.7, 0.01),
+            "upper_arm_link": Link(8.393, 0.01),
+            "forearm_link": Link(2.275, 0.01),
+            "wrist_1_link": Link(1.219, 0.01),
+            "wrist_2_link": Link(1.219, 0.01),
+            "wrist_3_link": Link(0.1879, 0.01),
+
+            "robotiq_85_base_link": Link(0.1879, 0.01),
+            "left_inner_finger": Link(0.1879, 0.01),
+            "right_inner_finger": Link(0.1879, 0.01),
+
+            "tcp": Link(0.0, 0.01),
+        }
+
         dht_params = [
             {"d": .089159, "a": 0., "alpha": np.pi / 2.},
             {"d": 0., "a": -.425, "alpha": 0.},
@@ -50,19 +65,13 @@ class RobotUR5(Robot):
             #{"theta": 0., "d": -.105, "a": 0., "alpha": np.pi},
         ]
 
-
-
-        self.index_tcp = 10
-
         super(RobotUR5, self).__init__(bullet_client=bullet_client,
                                        urdf_file=urdf_file,
                                        joints_arm=joints_arm,
                                        joints_hand=joints_hand,
+                                       links=links,
                                        dht_params=dht_params,
                                        offset=offset,
                                        sim_time=sim_time,
                                        scale=scale,
                                        parameter_distributions=parameter_distributions)
-
-        # todo introduce friction
-

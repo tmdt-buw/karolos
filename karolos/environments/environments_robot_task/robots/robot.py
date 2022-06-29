@@ -99,14 +99,16 @@ class Robot:
         self.bullet_client.stepSimulation()
 
         # define spaces
-        self.action_space = spaces.Box(-1., 1., shape=(len(self.joints),))
+        self.action_space = spaces.Dict({
+            "arm": spaces.Box(-1., 1., shape=(len(self.joints),), dtype=np.float64),
+            "hand": spaces.Box(-1., 1., shape=(1,), dtype=np.float64)
+        })
 
         self.state_space = spaces.Dict({
-            "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints),)),
-            # "joint_velocities": spaces.Box(-1., 1., shape=(len(self.joints),)),
-            # "tcp_position": spaces.Box(-1., 1., shape=(3,)),
-            # "tcp_orientation": spaces.Box(-1., 1., shape=(4,)),
-            "status_hand": spaces.Box(-1., 1., shape=(1,)),
+            "arm": spaces.Dict({
+                "joint_positions": spaces.Box(-1., 1., shape=(len(self.joints_arm),), dtype=np.float64)
+            }),
+            "hand": spaces.Box(-1., 1., shape=(1,), dtype=np.float64),
         })
 
         # initialize ik
@@ -122,15 +124,12 @@ class Robot:
         if dht_params is not None:
             self.dht_params = dht_params
 
-        # reset to initial position
-        self.reset()
-
     def __del__(self):
         self.bullet_client.removeBody(self.model_id)
 
     @property
     def joints(self):
-        return list(chain(self.joints_arm.values(), self.joints_hand.values()))
+        return self.joints_arm.values()
 
     def normalize_joints(self, joint_positions):
         return np.array([np.interp(joint_position, joint.limits, [-1, 1]) for joint, joint_position in
@@ -165,10 +164,10 @@ class Robot:
         :param action: the action
         :return: an observation
         """
-        assert self.action_space.contains(action), f"{action}"
+        assert action in self.action_space, f"{self.action_space} {action}"
 
-        action_arm = action[:len(self.joints_arm)]
-        action_hand = action[len(self.joints_arm):]
+        action_arm = action["arm"]
+        action_hand = action["hand"]
 
         action_arm = list(action_arm * self.scale)  # / self.max_steps)
 
@@ -232,7 +231,7 @@ class Robot:
 
         return state
 
-    def reset(self, desired_state=None):
+    def reset(self, desired_state=None, force=False):
         """Reset robot to initial pose and return new state."""
 
         # domain randomization
@@ -247,21 +246,28 @@ class Robot:
 
                 self.bullet_client.changeDynamics(self.model_id, link_id, **{parameter: parameter_value})
 
-        contact_points = True
+        if desired_state is None:
+            desired_state = {}
 
-        if desired_state is not None:
-            assert len(desired_state) == len(self.joints), \
-                f"Reset expected {len(self.joints)} values in desired state indead of {len(desired_state)}"
+        def complete_state(state_dict, space):
+            for key in space:
+                if key not in state_dict:
+                    state_dict[key] = space[key].sample()
+                elif type(space[key]) == spaces.Dict:
+                    state_dict[key] = complete_state(state_dict[key], space[key])
+            return state_dict
 
-            desired_state_arm = desired_state[:len(self.joints_arm)]
-            desired_state_hand = desired_state[len(self.joints_arm):]
+        desired_state = complete_state(desired_state, self.state_space)
 
-            for (_, joint), desired_state in zip(self.joints_arm.items(), desired_state_arm):
-                joint_position = np.interp(desired_state, [-1, 1], joint.limits)
+        # reset until state is valid
+        while True:
+            for (_, joint), desired_state_joint in zip(self.joints_arm.items(),
+                                                       desired_state["arm"]["joint_positions"]):
+                joint_position = np.interp(desired_state_joint, [-1, 1], joint.limits)
 
                 self.bullet_client.resetJointState(self.model_id, joint.id, joint_position)
 
-            if np.mean(desired_state_hand) >= 0:
+            if desired_state["hand"] >= 0:
                 self.status_hand = Robot.STATUS_HAND.OPEN
             else:
                 self.status_hand = Robot.STATUS_HAND.CLOSING
@@ -269,15 +275,11 @@ class Robot:
             self.bullet_client.stepSimulation()
             contact_points = self.bullet_client.getContactPoints(self.model_id, self.model_id)
 
-        # reset until state is valid
-        while contact_points:
-            for joint in self.joints:
-                joint_position = self.random.uniform(*joint.limits)
-
-                self.bullet_client.resetJointState(self.model_id, joint.id, joint_position)
-
-            self.bullet_client.stepSimulation()
-            contact_points = self.bullet_client.getContactPoints(self.model_id, self.model_id)
+            if not contact_points or force:
+                break
+            else:
+                # try reset again with random state
+                desired_state = self.state_space.sample()
 
         state = self.get_state()
 
@@ -318,16 +320,19 @@ class Robot:
         # joint_velocities = np.array(joint_velocities)
 
         state = {
-            "joint_positions": joint_positions,
-            # "joint_velocities": joint_velocities,
-            # "tcp_position": tcp_position,
-            # "tcp_orientation": tcp_orientation,
-            "status_hand": np.array(self.status_hand.value)
+            "arm": {"joint_positions": joint_positions},
+            "hand": np.array(self.status_hand.value)
         }
 
-        for key in state:
-            state[key] = state[key].clip(
-                self.state_space[key].low,
-                self.state_space[key].high)
+        def clip_state(state_dict, space):
+            for key in state_dict:
+                if type(state_dict[key]) == dict:
+                    state_dict[key] = clip_state(state_dict[key], space[key])
+                else:
+                    state_dict[key] = state_dict[key].clip(space[key].low,
+                                                           space[key].high)
+            return state_dict
+
+        state = clip_state(state, self.state_space)
 
         return state

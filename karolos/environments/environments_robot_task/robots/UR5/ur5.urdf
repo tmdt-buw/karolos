@@ -101,8 +101,8 @@
             <geometry>
                 <mesh filename="package://meshes/visual/forearm.obj"/>
             </geometry>
-            <material name="r">
-                <color rgba="0. 0.7 0.7 1.0"/>
+            <material name="LightGrey">
+                <color rgba="0.7 0.7 0.7 1.0"/>
             </material>
         </visual>
         <collision>
@@ -286,12 +286,12 @@
         </contact>
 
     </link>
-    <joint name="left_inner_finger_joint" type="prismatic">
+    <joint name="left_inner_finger_joint" type="fixed">
 <!--        <origin xyz="0.034585310861294 0 0.0454970193817975" rpy="0 0 0"/>-->
 <!--        <parent link="left_inner_knuckle"/>-->
         <parent link="robotiq_85_base_link"/>
         <child link="left_inner_finger"/>
-        <origin xyz="0.0064 0 0.126" rpy="0 0 0"/>
+        <origin xyz="0.04 0 0.126" rpy="0 0 0"/>
         <axis xyz="0.95307293 0. -0.30274081"/>
         <limit lower="0." upper=".0425" velocity="0.1" effort="10"/>
 <!--        <axis xyz="0 -1 0"/>-->
@@ -335,10 +335,10 @@
 
     </link>
 
-    <joint name="right_inner_finger_joint" type="prismatic">
+    <joint name="right_inner_finger_joint" type="fixed">
         <parent link="robotiq_85_base_link"/>
         <child link="right_inner_finger"/>
-        <origin xyz="-0.0064 0 0.126" rpy="0 0 3.1416"/>
+        <origin xyz="-0.04 0 0.126" rpy="0 0 3.1416"/>
         <axis xyz="0.95307293 0. -0.30274081"/>
         <limit lower="0." upper=".0425" velocity="0.1" effort="10"/>
     </joint>

@@ -1,11 +1,8 @@
 def get_env(env_config):
 
-    environment_name = env_config.pop("name")
+    environment_name = env_config.pop("name", "robot-task")
 
-    if environment_name == "imitation":
-        from karolos.environments.environment_imitation_learning import EnvironmentImitationLearning
-        env = EnvironmentImitationLearning(**env_config)
-    elif environment_name == "robot-task":
+    if environment_name == "robot-task":
         from karolos.environments.environment_robot_task import EnvironmentRobotTask
         env = EnvironmentRobotTask(**env_config)
     elif environment_name == "gym":

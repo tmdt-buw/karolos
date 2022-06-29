@@ -1,12 +1,8 @@
 import numpy as np
 import os
-from pathlib import Path
 import sys
 
 from pathlib import Path
-
-import pybullet as p
-import pybullet_data as pd
 
 sys.path.append(str(Path(__file__).resolve().parent))
 
@@ -14,11 +10,9 @@ from robot import Robot, Link
 
 
 class RobotPanda(Robot):
-    def __init__(self, bullet_client=None, offset=(0, 0, 0), sim_time=0., scale=1.,
-                 parameter_distributions=None):
+    def __init__(self, bullet_client, **kwargs):
         # load robot in simulation
-        urdf_file = os.path.join(str(Path(__file__).absolute().parent),
-                                 "Panda/panda.urdf")
+        urdf_file = os.path.join(str(Path(__file__).absolute().parent), "Panda/panda.urdf")
 
         joints_arm = {
             "panda_joint1": (0, (-2.8973, 2.8973), 2.1750, 87),
@@ -63,13 +57,12 @@ class RobotPanda(Robot):
 
         self.index_tcp = len(links) - 1
 
-        super(RobotPanda, self).__init__(bullet_client=bullet_client,
-                                         urdf_file=urdf_file,
-                                         joints_arm=joints_arm,
-                                         joints_hand=joints_hand,
-                                         links=links,
-                                         dht_params=dht_params,
-                                         offset=offset,
-                                         sim_time=sim_time,
-                                         scale=scale,
-                                         parameter_distributions=parameter_distributions)
+        super(RobotPanda, self).__init__(
+            urdf_file=urdf_file,
+            joints_arm=joints_arm,
+            joints_hand=joints_hand,
+            links=links,
+            dht_params=dht_params,
+            bullet_client=bullet_client,
+            **kwargs
+        )
