@@ -31,7 +31,7 @@ for robot_name in robots:
 
     state = robot.reset()
 
-    action = np.ones_like(robot.action_space.sample())
+    action = {k: np.ones_like(v) for k,v in robot.action_space.sample().items()}
 
     print("Perform max actions")
     for _ in range(25):

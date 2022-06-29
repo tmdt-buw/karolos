@@ -11,9 +11,9 @@ sys.path.append(str(Path(__file__).parents[1].resolve()))
 from karolos.environments import get_env
 
 robots = [
-    ("panda", [0, 0, 0, 0, 0, 0, .5, 0, 0]),
-    ("ur5", [0.25, 0, 0.25, 0.25, -0.25, 0, 0, 0]),
-    ("iiwa", [0, 0, 0, -0.7, 0, 0.5, 0, 0, 0])
+    ("panda", {"arm": {"joint_positions": [0, 0, 0, 0, 0, 0, .5]}}),
+    ("ur5", {"arm": {"joint_positions": [0.25, 0, 0.25, 0.25, -0.25, 0]}}),
+    ("iiwa", {"arm": {"joint_positions": [0, 0, 0, -0.7, 0, 0.5, 0]}})
 ]
 
 tasks = [("reach", [.5, -.5, .2]), ("pick_place", [.5, -.5, .2, .5, .5, .4]), ("throw", [-.5, 0, 0])]

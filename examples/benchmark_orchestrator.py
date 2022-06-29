@@ -44,7 +44,6 @@ def run_orchestrator(number_processes=1, number_threads=1, total_responses=1e4):
 
 if __name__ == "__main__":
     env_config = {
-        "environment": "karolos",
         "render": False,
         "task_config": {
             "name": "reach",
