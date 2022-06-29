@@ -27,7 +27,7 @@ state_spaces = unwind_space_shapes(state_space)
 @pytest.mark.parametrize('task', tasks)
 def test_expert(robot, task):
     env_config = {
-        "environment": "karolos",
+        "name": "robot-task",
         "task_config": {
             "name": task,
             "max_steps": 150

@@ -11,6 +11,8 @@ from ..agents import get_agent
 
 discrete_agents = ["dqn"]
 continuous_agents = ["sac", "ddpg", "ppo"]
+discrete_agents = []
+continuous_agents = ["ppo"]
 
 agents = discrete_agents + continuous_agents
 
@@ -50,14 +52,21 @@ def dummy_action(action_space):
     return action_space.sample()
 
 
-def get_dummy_trajectory(state_space, action_space):
+def get_dummy_trajectory(state_space, agent, length):
     trajectory = []
 
-    for _ in range(50):
-        trajectory.append(dummy_state(state_space, action_space))
-        trajectory.append(dummy_action(action_space))
+    for _ in range(length):
+        state, goal, info = dummy_state(state_space, agent.action_space)
+        trajectory.append((state, goal, info))
 
-    trajectory.append(dummy_state(state_space, action_space))
+        state = unwind_dict_values(state)
+        goal = unwind_dict_values(goal)
+
+        prediction = agent.predict([state], [goal], deterministic=False)
+
+        trajectory.append(list(zip(*prediction))[0])
+
+    trajectory.append(dummy_state(state_space, agent.action_space))
 
     return trajectory
 
@@ -71,7 +80,7 @@ def test_agent(agent):
     else:
         raise ValueError("Unknown action space type", agent)
 
-    trajectory = get_dummy_trajectory(state_space, agent.action_space)
+    trajectory = get_dummy_trajectory(state_space, agent, agent.batch_size)
 
     agent.add_experience_trajectory(trajectory)
 
@@ -84,6 +93,8 @@ def test_agent(agent):
         states.append(unwind_dict_values(state))
         goals.append(unwind_dict_values(goal))
 
-    actions = agent.predict(states, goals, deterministic=False)
+    predictions = agent.predict(states, goals, deterministic=False)
+
+    actions = next(iter(predictions))
 
     assert len(states) == len(actions)
