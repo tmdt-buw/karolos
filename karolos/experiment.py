@@ -3,17 +3,24 @@ import json
 import logging
 import os
 import os.path as osp
-from pathlib import Path
 import random
 import sys
+import warnings
 from collections import defaultdict
 from functools import partial
+from pathlib import Path
 
 import numpy as np
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
+
+from IPython import get_ipython
+
 from tqdm import tqdm
-import warnings
+
+shell = get_ipython().__class__.__name__
+if shell == 'ZMQInteractiveShell':
+    from tqdm.notebook import tqdm
 
 sys.path.append(str(Path(__file__).resolve().parent))
 
@@ -45,6 +52,7 @@ class Experiment:
         :param config_2:
         :return: bool if configs are similar
         """
+
         def ordered(obj):
             if isinstance(obj, dict):
                 return sorted((k, ordered(v)) for k, v in obj.items())
@@ -87,6 +95,7 @@ class Experiment:
         """
         requests = []
         results_episodes = []
+        failed_runs = 0
 
         for env_id, response in env_responses:
             func, data = response
@@ -98,18 +107,31 @@ class Experiment:
                                   f"The environment will be reset again."
                                   )
                     requests.append((env_id, "reset", self.get_initial_state(mode != "test", env_id)))
+                    failed_runs += 1
                 else:
                     self.trajectories.pop(env_id, None)
+
+                    if mode == "expert":
+                        state, goal, info = data
+                        if info.get("expert_action", None) is None:
+                            requests.append((env_id, "reset", self.get_initial_state(mode != "test", env_id)))
+                            failed_runs += 1
+                            continue
+
                     self.trajectories[env_id].append(data)
             elif func == "step":
                 state, goal, done, info = data
                 self.trajectories[env_id].append((state, goal, info))
 
-                done |= self.success_criterion(state=state, goal=goal, done=done, info=info)
+                success = self.success_criterion(state=state, goal=goal, done=done, info=info)
+                done |= success
 
-                if hasattr(self.agent, "is_on_policy"):
-                    if self.agent.is_on_policy and (mode != "test"):
-                        self._save_transition_onpol(goal=goal, done=done, info=info, env_id=env_id)
+                if mode == "expert":
+                    if info.get("expert_action", None) is None or (done and not success):
+                        requests.append((env_id, "reset", self.get_initial_state(mode != "test", env_id)))
+                        self.steps[env_id] -= len(self.trajectories.pop(env_id, [])) // 2 - 1
+                        failed_runs += 1
+                        continue
 
                 if done:
                     trajectory = self.trajectories.pop(env_id)
@@ -136,19 +158,19 @@ class Experiment:
         required_predictions = [env_id for env_id in self.trajectories.keys() if len(self.trajectories[env_id]) % 2]
 
         if required_predictions:
-
+            # todo: check how/if random & expert mode can work with agents that require meta information (e.g. ppo)
             if mode == "random":
                 predictions = [self.agent.action_space.sample() for _ in range(len(required_predictions))]
-                predictions = np.stack(predictions)
+                predictions = np.stack(predictions),
             elif mode == "expert":
                 predictions = []
 
                 for env_id in required_predictions:
-                    _, goal_info = self.trajectories[env_id][-1]
+                    state, goal, info = self.trajectories[env_id][-1]
 
-                    predictions.append(goal_info["expert_action"])
+                    predictions.append(info["expert_action"])
 
-                predictions = np.stack(predictions)
+                predictions = np.stack(predictions),
             else:
                 states = []
                 goals = []
@@ -167,24 +189,57 @@ class Experiment:
 
                 predictions = self.agent.predict(states, goals, deterministic=mode == "test")
 
-                if hasattr(self.agent, "is_on_policy"):
-                    if self.agent.is_on_policy and (mode != "test"):
-                        state_infos = self.agent.get_state_infos(states, goals, deterministic=mode == "test")
-
-                        for i, env_id in enumerate(required_predictions):
-                            self.state_infos[env_id] = state_infos[i]
-
-            for env_id, prediction in zip(required_predictions, predictions):
+            for env_id, *prediction in zip(required_predictions, *predictions):
                 self.trajectories[env_id].append(prediction)
-                requests.append((env_id, "step", prediction))
+                requests.append((env_id, "step", prediction[0]))
 
-        return requests, results_episodes
+        return requests, results_episodes, failed_runs
 
     def __init__(self, experiment_config):
         self.logger = logging.getLogger("trainer")
         self.logger.setLevel(logging.INFO)
 
         self.experiment_config = experiment_config
+
+    def generate_trajectories(self, number_trajectories, mode):
+
+        env_responses = self.orchestrator.reset_all(partial(self.get_initial_state, random=mode != "test"))
+
+        # subtract tests already launched in each environment
+        remaining_runs = number_trajectories - len(self.orchestrator)
+
+        # remove excessive tests
+        while remaining_runs < 0:
+            excessive_runs = min(abs(remaining_runs), len(env_responses))
+
+            remaining_runs += excessive_runs
+            env_responses = env_responses[:-excessive_runs]
+
+            env_responses += self.orchestrator.receive()
+
+        concluded_runs = []
+
+        pbar = tqdm(total=number_trajectories, desc=mode, leave=False)
+
+        while len(concluded_runs) < number_trajectories:
+            requests, results_episodes, failed_runs = self.process_responses(env_responses, mode=mode)
+            concluded_runs += results_episodes
+            pbar.update(len(results_episodes))
+
+            remaining_runs += failed_runs
+
+            for ii in reversed(range(len(requests))):
+                if requests[ii][1] == "reset":
+                    if remaining_runs:
+                        remaining_runs -= 1
+                    else:
+                        del requests[ii]
+
+            env_responses = self.orchestrator.send_receive(requests)
+
+        pbar.close()
+
+        return concluded_runs
 
     def run(self, results_dir="./results", experiment_name=None, seed=None):
         """
@@ -247,10 +302,6 @@ class Experiment:
                                    self.reward_function,
                                    experiment_dir)
 
-            if hasattr(self.agent, "is_on_policy"):
-                if self.agent.is_on_policy:
-                    self.state_infos = {}
-
             models_dir = osp.join(experiment_dir, "models")
 
             base_experiment = experiment_config.pop('base_experiment', None)
@@ -295,48 +346,7 @@ class Experiment:
 
                     next_test_timestep = (sum(self.steps.values()) // test_interval + 1) * test_interval
 
-                    # reset all
-                    env_responses = self.orchestrator.reset_all(partial(self.get_initial_state, random=False))
-
-                    # subtract tests already launched in each environment
-                    tests_to_run = number_tests - len(self.orchestrator)
-
-                    # remove excessive tests
-                    while tests_to_run < 0:
-                        excessive_tests = min(abs(tests_to_run), len(env_responses))
-
-                        tests_to_run += excessive_tests
-                        env_responses = env_responses[:-excessive_tests]
-
-                        env_responses += self.orchestrator.receive()
-
-                    concluded_tests = []
-
-                    pbar_test = tqdm(total=number_tests, desc="Test", leave=False)
-
-                    while len(concluded_tests) < number_tests:
-
-                        for response in env_responses:
-                            func, data = response[1]
-
-                            if func == "reset" and type(
-                                    data) == AssertionError:
-                                tests_to_run += 1
-
-                        requests, results_episodes = self.process_responses(env_responses, mode="test")
-                        concluded_tests += results_episodes
-                        pbar_test.update(len(results_episodes))
-
-                        for ii in reversed(range(len(requests))):
-                            if requests[ii][1] == "reset":
-                                if tests_to_run:
-                                    tests_to_run -= 1
-                                else:
-                                    del requests[ii]
-
-                        env_responses = self.orchestrator.send_receive(requests)
-
-                    pbar_test.close()
+                    concluded_tests = self.generate_trajectories(number_tests, mode="test")
 
                     # evaluate test
                     success_ratio = np.mean(concluded_tests)
@@ -351,7 +361,7 @@ class Experiment:
                     env_responses = self.orchestrator.reset_all(partial(self.get_initial_state, random=True))
 
                 # Train
-                requests, results_episodes = self.process_responses(env_responses, mode="train")
+                requests, results_episodes, _ = self.process_responses(env_responses, mode="train")
 
                 env_responses = self.orchestrator.send_receive(requests)
 

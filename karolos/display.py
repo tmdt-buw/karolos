@@ -2,23 +2,13 @@ import json
 import os
 import os.path as osp
 
-import numpy as np
-import matplotlib.pyplot as plt
-
-import pybullet as p
-import pybullet_data as pd
-
-from karolos.utils import unwind_dict_values
+from karolos.agents.utils import unwind_dict_values
 
 from karolos.agents import get_agent
 from karolos.environments import get_env
 
-# p.connect(p.GUI)
-# p.setAdditionalSearchPath(pd.getDataPath())
-
 # todo make experiment a parameter
-# experiments = os.listdir("results")
-experiment_folder = osp.join("results_persistent/", "agreed_clip_15")
+experiment_folder = osp.join("../examples/results/sac_panda_reach/")
 
 print(experiment_folder)
 print(os.listdir(experiment_folder))
@@ -35,18 +25,17 @@ print(env_config)
 print(agent_config)
 
 env = get_env(env_config)
-agent = get_agent(agent_config, env.observation_space,
+agent = get_agent(agent_config, env.state_space, env.goal_space,
                   env.action_space, reward_function=lambda x: 0, experiment_dir=".")
 
 models_folder = osp.join(experiment_folder, "models")
-
-models_folder = osp.join(models_folder, '2600934_1.000')
+models_folder = osp.join(models_folder, 'final')
 print(models_folder)
 
 agent.load(models_folder)
 
 while True:
-    state, goal_info = env.reset()
+    state, goal, info = env.reset()
     done = False
 
     actions = []
@@ -62,9 +51,9 @@ while True:
 
         actions.append(action.copy())
 
-        next_state, goal_info, done = env.step(action)
+        next_state, goal, info, done = env.step(action)
 
-        done |= env.success_criterion(goal_info)
+        done |= env.success_criterion(goal)
 
         # if done:
 
@@ -73,18 +62,7 @@ while True:
 
         state = next_state
 
-    print(env.reward_function(goal_info, done))
-
-    # for action in reversed(actions):
-    #     # rotation_q = p.getQuaternionFromEuler(action[-3:] * env.max_rotation)
-    #     # _, rotation_q_inv = p.invertTransform([0,0,0], rotation_q)
-    #
-    #     action[:3] = -action[:3]
-    #     action[3:] = -action[3:]
-    #     print(action)
-    #     # action[-3:] = np.array(p.getEulerFromQuaternion(rotation_q_inv)) / env.max_rotation
-    #
-    #     env.step(action)
+    print(env.reward_function(goal, done))
 
     print()
 
