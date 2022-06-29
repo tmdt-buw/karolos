@@ -1,8 +1,21 @@
-# Following PEP 517/518, this file should not not needed and replaced instead by the setup.cfg file and pyproject.toml.
-# Unfortunately it is still required py the pip editable mode `pip install -e`
-# See https://stackoverflow.com/a/60885212
-
 from setuptools import setup
 
-if __name__ == "__main__":
-    setup()
+setup(name='karolos',
+      version='0.3',
+      description='Open-Source Robot-Task Learning Simulation Framework',
+      url='https://github.com/tmdt-buw/karolos',
+      author='Christian Bitter',
+      author_email='bitter@uni-wuppertal.de',
+      license='MIT',
+      packages=['karolos'],
+      install_requires=[
+          "numpy>=1.19.5",
+          "torch>=1.11.0",
+          "tensorboard>=2.4.1",
+          "tqdm>=4.56.0",
+          "gym>=0.18.0",
+          "pybullet>=3.0.8",
+          "scipy>=1.6.0",
+          "klampt",
+      ],
+      zip_safe=False)
