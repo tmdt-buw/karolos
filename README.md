@@ -70,9 +70,21 @@ Communication is key!
 
 This project is published under the MIT license.
 
-## Citing KAROLOS
+## Citation
 
-Paper will be added soon.
+Please cite **Karolos** if you use this framework in your publications:
+```bibtex
+@misc{karolos,
+  title = {Karolos: An Open-Source Reinforcement Learning Framework for Robot-Task Environments},
+  author = {Bitter, Christian and Thun, Timo and Meisen, Tobias},
+  
+  publisher = {arXiv},
+  year = {2022},
+  
+  url = {https://arxiv.org/abs/2212.00906},
+  doi = {10.48550/ARXIV.2212.00906},
+}
+```
 
 ## Trivia
 
