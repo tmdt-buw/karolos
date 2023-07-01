@@ -42,15 +42,23 @@ conda install pytorch cudatoolkit=11.1 -c pytorch -c conda-forge
 
 ### Getting Started
 
-Run an experiment by launching a manager
+We recommend taking a look at the training examples `examples/train_*`.
 
-```
-python karolos/manager.py
+Running an experiment is done by specifying the training hyperparameters, initializing the experiment and then running it
+
+``` python
+from karolos.experiment import Experiment
+
+training_config = {...}
+
+experiment = Experiment(training_config)
+    
+experiment.run(results_dir="results/my_first_experiment")
 ```
 
 You can monitor the progress of your experiment in real-time with a tensorboard
 
-```
+``` bash
 tensorboard --logdir results
 ```
 
