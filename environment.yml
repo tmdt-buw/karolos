@@ -1,17 +1,19 @@
 name: karolos
 channels:
-  - pytorch
   - defaults
   - conda-forge
+  - pytorch
+  - nvidia
 dependencies:
-  - numpy=1.19.5
-  - pip=20.3.3
-  - python=3.8.6
-  - pytorch=1.11.0
-  - tensorboard=2.4.1
-  - tqdm=4.56.0
+  - numpy=1.23
+  - pip
+  - python=3.8
+  - pytorch=1.13.1
+  - pytorch-cuda
+  - tensorboard
+  - tqdm
   - pip:
-    - gym==0.18.0
-    - pybullet==3.0.8
-    - scipy==1.6.0
+    - gym
+    - pybullet
+    - scipy
     - klampt
