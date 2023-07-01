@@ -32,7 +32,7 @@ conda env create -f environment.yml
 conda activate karolos
 ```
 
-### Getting Started
+## Getting Started
 
 We recommend taking a look at the training examples, which you can run like this
 
