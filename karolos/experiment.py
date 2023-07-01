@@ -14,13 +14,18 @@ import numpy as np
 import torch
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from IPython import get_ipython
 
 from tqdm import tqdm
 
-shell = get_ipython().__class__.__name__
-if shell == 'ZMQInteractiveShell':
-    from tqdm.notebook import tqdm
+try:
+    from IPython import get_ipython
+
+    shell = get_ipython().__class__.__name__
+    if shell == 'ZMQInteractiveShell':
+        from tqdm.notebook import tqdm
+except:
+    pass
+
 
 sys.path.append(str(Path(__file__).resolve().parent))
 
