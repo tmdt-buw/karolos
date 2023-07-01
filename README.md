@@ -16,10 +16,7 @@ This way, you spend less time on data collection and more time on training and p
 -  __modularization__: More and more research in reinforcement learning is looking into the transfer of agents from one environment to another.
 KAROLOS was developed to quickly generate environments with different robot-task combinations.
 
-
-## Getting started
-
-### Installation
+## Installation
 
 First, clone the repository
 
@@ -28,23 +25,22 @@ git clone https://github.com/tmdt-buw/karolos
 cd karolos
 ```
 
-Install the dependencies using [Anaconda](https://docs.anaconda.com/anaconda/install/).
-```
+Install the dependencies using [Anaconda](https://docs.anaconda.com/anaconda/install/). It might be necessary to specify the pytorch/cuda version that fits your system. Make sure that `pytorch<=1.13.1`. 
+
+``` bash
 conda env create -f environment.yml
 conda activate karolos
 ```
 
-Install pytorch according to the [official guide](https://pytorch.org/get-started/locally/).
-You don't need ``torchvision`` and ``torchaudio``.
-```
-conda install pytorch cudatoolkit=11.1 -c pytorch -c conda-forge
-```
-
 ### Getting Started
 
-We recommend taking a look at the training examples `examples/train_*`.
+We recommend taking a look at the training examples, which you can run like this
 
-Running an experiment is done by specifying the training hyperparameters, initializing the experiment and then running it
+``` bash
+python examples/train_sac_panda_reach.py
+```
+
+Of course you will want to run your custom experiments. Running an experiment is done by specifying the training hyperparameters, initializing the experiment and then running it
 
 ``` python
 from karolos.experiment import Experiment
@@ -60,6 +56,34 @@ You can monitor the progress of your experiment in real-time with a tensorboard
 
 ``` bash
 tensorboard --logdir results
+```
+
+## Customizing KAROLOS to your needs
+
+KAROLOS was developed with the goal to be modular and customizable. If you require a different environment, agent, or replay buffer, you can achieve this with the following steps:
+
+1. Locate the component you want to add/change in the folder structure. E.g. if you want to add a new environment, go to `environment/`, if you want to add a new task for the provided `EnvironmentRobotTask`, go to `environment/robots`.
+2. Add a new file which contains the new component class. This class should inherit from the base class found in the folder, i.e. `environment/environment.py`, or `environment/robots.robot.py`.
+3. Register your component in the `__init__.py` found in the folder. This is necessary so your component will be found when constructing the experiment.
+4. Use your component by using the `name` tags in the config.
+``` json
+{
+"total_timesteps": 5_000_000,
+"test_interval": 500_000,
+"number_tests": 100,
+
+"agent_config": {
+    "name": "my_new_agent",
+    "custom_agent_param": ...,
+
+    "replay_buffer": {
+      "name": "my_new_replay_buffer",
+      "custom_replay_buffer_param": ...,
+    }
+},
+"env_config": {
+    "name": "my_new_env",
+    "custom_env_param": ...,
 ```
 
 ## Contribute to KAROLOS
