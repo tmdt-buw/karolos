@@ -7,11 +7,11 @@ import pybullet as p
 from gym import spaces
 from numpy.random import RandomState
 
-from karolos.agents.utils import unwind_dict_values
-
 sys.path.append(str(Path(__file__).resolve().parent))
 from task import Task
 
+sys.path.append(str(Path(__file__).resolve().parents[3]))
+from utils import unwind_dict_values
 
 class TaskReach(Task):
 

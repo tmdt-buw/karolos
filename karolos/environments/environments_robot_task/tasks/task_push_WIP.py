@@ -8,8 +8,11 @@ from gym import spaces
 import numpy as np
 from numpy.random import RandomState
 import os
+import sys
+from pathlib import Path
 
-from karolos.agents.utils import unwind_dict_values
+sys.path.append(str(Path(__file__).resolve().parents[3]))
+from utils import unwind_dict_values
 
 try:
     from . import Task

@@ -8,8 +8,10 @@ import torch
 from gym import spaces
 from torch.utils.tensorboard.writer import SummaryWriter
 
-sys.path.append(str(Path(__file__).resolve().parents[0]))
+sys.path.append(str(Path(__file__).resolve().parent))
 from replay_buffers import get_replay_buffer
+
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 from utils import unwind_space_shapes, unwind_dict_values
 
 

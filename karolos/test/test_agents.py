@@ -6,7 +6,7 @@ from gym import spaces
 
 sys.path.append(str(Path(__file__).parents[1].resolve()))
 
-from ..agents.utils import unwind_space_shapes, unwind_dict_values
+from ..utils import unwind_space_shapes, unwind_dict_values
 from ..agents import get_agent
 
 discrete_agents = ["dqn"]

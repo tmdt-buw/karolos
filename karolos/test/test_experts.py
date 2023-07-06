@@ -7,7 +7,7 @@ from gym import spaces
 
 sys.path.append(str(Path(__file__).parents[1].resolve()))
 
-from ..agents.utils import unwind_space_shapes
+from ..utils import unwind_space_shapes
 from ..environments import get_env
 
 robots = ["ur5", "panda"]

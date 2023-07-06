@@ -31,7 +31,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 from agents import get_agent
 from environments.orchestrator import Orchestrator
-from agents.utils import unwind_dict_values, set_seed
+from utils import unwind_dict_values, set_seed
 
 
 class Experiment:
