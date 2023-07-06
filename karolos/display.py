@@ -2,13 +2,14 @@ import json
 import os
 import os.path as osp
 
-from karolos.agents.utils import unwind_dict_values
+from utils import unwind_dict_values
 
-from karolos.agents import get_agent
-from karolos.environments import get_env
+from agents import get_agent
+from environments import get_env
 
 # todo make experiment a parameter
-experiment_folder = osp.join("../examples/results/sac_panda_reach/")
+print(os.listdir("."))
+experiment_folder = osp.join("results/train_sac_panda_reach/20230706-125802/")
 
 print(experiment_folder)
 print(os.listdir(experiment_folder))
@@ -44,25 +45,20 @@ while True:
         # print(state)
 
         state = unwind_dict_values(state)
+        goal = unwind_dict_values(goal)
 
-        action = agent.predict([state], deterministic=True)[0]
-
-        # action[3:] = 0
+        action, = agent.predict([state], [goal], deterministic=True)
+        action = action[0] # convert batch of size 1 to single action
 
         actions.append(action.copy())
 
-        next_state, goal, info, done = env.step(action)
+        next_state, goal, done, info = env.step(action)
 
         done |= env.success_criterion(goal)
 
-        # if done:
-
-        print(action)
-        print('',state)
-
         state = next_state
 
-    print(env.reward_function(goal, done))
+    print(f"Last episode reward: {env.reward_function(goal, done)}")
 
     print()
 
